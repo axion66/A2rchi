@@ -22,5 +22,8 @@ setup.sh
 .env
 build/
 src/cli/utils/_repository_info.py
-# G5 Workflow (local state - not committed)
-.g5/
+# G5 Workflow - ignore local state, keep artifacts
+.g5/state.sqlite
+.g5/activity.json
+.g5/traces/
+.g5/archive/
