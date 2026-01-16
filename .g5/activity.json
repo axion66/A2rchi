@@ -1,11 +1,124 @@
 {
   "events": [
     {
-      "id": "evt_1768595248325_1",
-      "timestamp": 1768595248325,
-      "type": "session_start",
-      "title": "Session started",
-      "description": "G5 workflow session initialized"
+      "id": "evt_1768596812202_4",
+      "timestamp": 1768597205498,
+      "type": "info",
+      "title": "Switched to task",
+      "description": "Now showing activity for: A2rchi"
+    },
+    {
+      "id": "evt_1768596812202_5",
+      "timestamp": 1768597277810,
+      "type": "spec_created",
+      "title": "Created config-loader.spec.md",
+      "description": ".g5/specs/utils/config-loader.spec.md",
+      "relatedFiles": [
+        ".g5/specs/utils/config-loader.spec.md"
+      ]
+    },
+    {
+      "id": "evt_1768596812202_6",
+      "timestamp": 1768597278857,
+      "type": "spec_updated",
+      "title": "Updated config-loader.spec.md",
+      "description": ".g5/specs/utils/config-loader.spec.md",
+      "relatedFiles": [
+        ".g5/specs/utils/config-loader.spec.md"
+      ]
+    },
+    {
+      "id": "evt_1768596812202_7",
+      "timestamp": 1768597285165,
+      "type": "spec_created",
+      "title": "Created env.spec.md",
+      "description": ".g5/specs/utils/env.spec.md",
+      "relatedFiles": [
+        ".g5/specs/utils/env.spec.md"
+      ]
+    },
+    {
+      "id": "evt_1768596812202_8",
+      "timestamp": 1768597285880,
+      "type": "spec_updated",
+      "title": "Updated env.spec.md",
+      "description": ".g5/specs/utils/env.spec.md",
+      "relatedFiles": [
+        ".g5/specs/utils/env.spec.md"
+      ]
+    },
+    {
+      "id": "evt_1768596812202_9",
+      "timestamp": 1768597296669,
+      "type": "spec_created",
+      "title": "Created logging.spec.md",
+      "description": ".g5/specs/utils/logging.spec.md",
+      "relatedFiles": [
+        ".g5/specs/utils/logging.spec.md"
+      ]
+    },
+    {
+      "id": "evt_1768596812202_10",
+      "timestamp": 1768597297804,
+      "type": "spec_updated",
+      "title": "Updated logging.spec.md",
+      "description": ".g5/specs/utils/logging.spec.md",
+      "relatedFiles": [
+        ".g5/specs/utils/logging.spec.md"
+      ]
+    },
+    {
+      "id": "evt_1768596812202_11",
+      "timestamp": 1768597306495,
+      "type": "spec_created",
+      "title": "Created sql.spec.md",
+      "description": ".g5/specs/utils/sql.spec.md",
+      "relatedFiles": [
+        ".g5/specs/utils/sql.spec.md"
+      ]
+    },
+    {
+      "id": "evt_1768596812202_12",
+      "timestamp": 1768597307567,
+      "type": "spec_updated",
+      "title": "Updated sql.spec.md",
+      "description": ".g5/specs/utils/sql.spec.md",
+      "relatedFiles": [
+        ".g5/specs/utils/sql.spec.md"
+      ]
+    },
+    {
+      "id": "evt_1768596812202_13",
+      "timestamp": 1768597317945,
+      "type": "spec_created",
+      "title": "Created benchmark-report.spec.md",
+      "description": ".g5/specs/utils/benchmark-report.spec.md",
+      "relatedFiles": [
+        ".g5/specs/utils/benchmark-report.spec.md"
+      ]
+    },
+    {
+      "id": "evt_1768596812202_14",
+      "timestamp": 1768597319080,
+      "type": "spec_updated",
+      "title": "Updated benchmark-report.spec.md",
+      "description": ".g5/specs/utils/benchmark-report.spec.md",
+      "relatedFiles": [
+        ".g5/specs/utils/benchmark-report.spec.md"
+      ]
+    },
+    {
+      "id": "evt_1768596812202_15",
+      "timestamp": 1768597348817,
+      "type": "gate_passed",
+      "title": "Gate passed: WORKFLOW_COMPLETE",
+      "description": "0 passed, 0 failed",
+      "details": {
+        "gateId": "WORKFLOW_COMPLETE",
+        "checksPassed": 0,
+        "checksFailed": 0,
+        "checkDetails": []
+      }
     }
   ]
 }
