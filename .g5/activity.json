@@ -1,0 +1,11 @@
+{
+  "events": [
+    {
+      "id": "evt_1768595248325_1",
+      "timestamp": 1768595248325,
+      "type": "session_start",
+      "title": "Session started",
+      "description": "G5 workflow session initialized"
+    }
+  ]
+}

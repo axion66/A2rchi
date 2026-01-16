@@ -1,0 +1,11 @@
+# Human-in-the-loop settings
+version: "1.0.0"
+
+phase_transitions:
+  auto_approve: false
+
+decisions:
+  timeout_minutes: 60
+
+notifications:
+  enabled: true
