@@ -49,7 +49,11 @@ class BaseCustomLLM(LLM):
     """Abstract class used to load a custom LLM."""
     
     # Class variable for caching expensive model loads
-    _MODEL_CACHE: ClassVar[Dict[Any, Any]] = {}
+    # NOTE: This is defined in SUBCLASSES, not in BaseCustomLLM itself.
+    # Each concrete implementation (e.g., LlamaLLM) defines its own
+    # _MODEL_CACHE at module level. The base class accesses it via
+    # self._MODEL_CACHE which is overridden by subclasses.
+    _MODEL_CACHE: ClassVar[Dict[Any, Any]] = {}  # Override in subclasses
     
     # Instance attributes
     n_tokens: int = 100
