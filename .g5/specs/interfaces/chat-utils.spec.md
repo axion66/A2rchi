@@ -137,12 +137,13 @@ username1: "hashed_password_1"
 username2: "hashed_password_2"
 ```
 
-### `validate_login(username: str, password: str, salt: str, accounts_path: str) -> bool`
+### `check_credentials(username: str, password: str, salt: str, accounts_path: str, file_name: str = 'accounts.yaml') -> bool`
 
 Validate user credentials.
 
 **Contract:**
-- POST: Returns `True` if hash matches stored hash
+- POST: Hashes `password + salt` using `simple_hash`
+- POST: Returns `True` if hash matches stored hash for username
 - POST: Returns `False` otherwise
 
 ---

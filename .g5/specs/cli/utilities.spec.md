@@ -124,12 +124,13 @@ Print summary of what would be created in a dry run.
 
 Located in `src/cli/utils/grafana_styling.py`.
 
-#### `assign_feedback_palette(dashboard_json: Dict) -> Dict`
-Assign consistent color palette to feedback-related panels.
+#### `assign_feedback_palette(configs: List[Dict]) -> List[Dict]`
+Produce a color palette for like/dislike feedback grouped by config name.
 
 **Contract:**
-- POST: Returns modified dashboard JSON
-- POST: Panels tagged for feedback get consistent colors
+- POST: Returns list of palette dicts, one per config
+- POST: Each dict has `name`, `like` (green), `dislike` (red) colors
+- POST: Colors cycle through predefined LIKE_COLORS and DISLIKE_COLORS
 
 ---
 

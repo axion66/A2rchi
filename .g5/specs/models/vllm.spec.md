@@ -112,7 +112,6 @@ SamplingParams(
     top_k=self.top_k,
     max_tokens=self.max_new_tokens,
     repetition_penalty=self.repetition_penalty,
-    seed=self.seed,
     stop=stop,
 )
 ```

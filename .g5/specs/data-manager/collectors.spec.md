@@ -94,32 +94,26 @@ Return metadata object or None. Default returns None.
 
 #### `ResourceMetadata`
 ```python
-@dataclass
+@dataclass(frozen=True)
 class ResourceMetadata:
-    """Metadata describing a collected resource."""
+    """Lightweight container for resource metadata."""
     
-    source_url: Optional[str] = None
-    source_type: Optional[str] = None
-    collected_at: Optional[datetime] = None
-    title: Optional[str] = None
-    author: Optional[str] = None
-    extra: Dict[str, Any] = field(default_factory=dict)
+    display_name: str
+    extra: Dict[str, str] = field(default_factory=dict)
 ```
+
+**Contracts:**
+- REQUIRES: `display_name` is a non-empty string
+- REQUIRES: All `extra` keys and values must be strings
+- ENSURES: Instance is immutable (frozen dataclass)
 
 **Methods:**
 
-##### `to_dict`
+##### `as_dict`
 ```python
-def to_dict(self) -> Dict[str, Any]
+def as_dict(self) -> Dict[str, str]
 ```
-Convert to dictionary for YAML serialization.
-
-##### `from_dict`
-```python
-@classmethod
-def from_dict(cls, data: Dict[str, Any]) -> ResourceMetadata
-```
-Create from dictionary.
+Return flat dictionary: `{"display_name": ..., **extra}`.
 
 ## Resource Lifecycle
 

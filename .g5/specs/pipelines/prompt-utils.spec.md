@@ -62,10 +62,11 @@ def __init__(self, name: str, prompt_template: str)
 **Supported Variables:**
 ```python
 SUPPORTED_INPUT_VARIABLES = [
-    'question', 'history', 'documents', 'context',
-    'submission_text', 'rubric_text', 'summary',
-    'analysis', 'additional_comments', 'condense_output',
-    'retriever_output', 'condensed_question', ...
+    "full_history",  # full history between user and agent
+    "history",       # history trimmed of the last user message
+    "question",      # last user message
+    "retriever_output", # output of retriever from the vectorstore
+    "condensed_output"  # output of condensing step
 ]
 ```
 

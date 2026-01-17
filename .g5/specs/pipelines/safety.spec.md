@@ -27,7 +27,7 @@ Wrapper function for running content through multiple safety checkers. Used by m
 def check_safety(
     text: str,
     safety_checkers: List[Callable],
-    context: str
+    text_type: str
 ) -> Tuple[bool, str]
 ```
 
@@ -36,7 +36,7 @@ Run text through all safety checkers and return combined result.
 **Parameters:**
 - `text` - Content to check
 - `safety_checkers` - List of checker callables (e.g., `SalesforceSafetyChecker`)
-- `context` - Description for logging ("prompt" or "output")
+- `text_type` - Description for logging ("prompt" or "output")
 
 **Returns:**
 - `(True, "")` if all checkers pass
@@ -45,7 +45,7 @@ Run text through all safety checkers and return combined result.
 **Contracts:**
 - REQUIRES: Each checker is callable with signature `(text) -> (name, is_safe, report)`
 - ENSURES: Returns immediately on first unsafe result
-- ENSURES: Logs checker results with context
+- ENSURES: Logs checker results with text_type
 - ENSURES: Constructs user-friendly message if unsafe
 
 **Checker Protocol:**

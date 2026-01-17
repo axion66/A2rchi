@@ -21,13 +21,13 @@ Central orchestration class of the A2rchi framework. Connects configuration, pip
 
 #### Constructor
 
-##### `__init__(pipeline: str, *args, config_name: str = None, **kwargs)`
+##### `__init__(pipeline: str, *args, **kwargs)`
 
 Initialize A2rchi with a named pipeline.
 
 **Contracts:**
 - PRE: `pipeline` is a valid pipeline class name in `src.a2rchi.pipelines`
-- POST: `self.config` loaded with model class mapping
+- POST: `self.config` loaded with model class mapping via `load_config(map=True, name=kwargs.get('config_name'))`
 - POST: `self.pipeline` is instantiated pipeline object
 - POST: `self.vs_connector` is VectorstoreConnector instance
 - ERROR: `ValueError` if pipeline class not found

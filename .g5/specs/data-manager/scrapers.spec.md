@@ -93,9 +93,9 @@ class LinkScraper:
 
 **Methods:**
 
-##### `scrape`
+##### `crawl`
 ```python
-def scrape(
+def crawl(
     self,
     url: str,
     depth: int,
@@ -103,12 +103,13 @@ def scrape(
     selenium_client: Optional[Any] = None
 ) -> List[ScrapedResource]
 ```
-Scrape URL and follow links to depth.
+Crawl URL and follow links to depth.
 
 **Contracts:**
 - ENSURES: Returns list of `ScrapedResource` objects
 - ENSURES: Respects `max_pages` limit
 - ENSURES: Uses Selenium if client provided
+- ENSURES: Tracks visited URLs to avoid duplicates
 
 ---
 

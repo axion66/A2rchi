@@ -37,7 +37,9 @@ class BasePipeline:
     pipeline_config: Dict[str, Any]
     llms: Dict[str, Any]
     prompts: Dict[str, ValidatedPromptTemplate]
-    retriever: Optional[Any] = None
+    
+    # Set via update_retriever (not in __init__)
+    # retriever: Optional[Any]
 ```
 
 **Constructor:**

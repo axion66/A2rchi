@@ -58,17 +58,15 @@ Collect tickets from all configured integrations.
 
 #### `TicketResource`
 ```python
+@dataclass
 class TicketResource(BaseResource):
-    """Resource representing a ticket from a tracking system."""
+    """Standard representation of a collected support ticket."""
     
     ticket_id: str
-    title: str
-    description: str
-    source_system: str  # "redmine", "jira", etc.
-    status: Optional[str]
-    created_at: Optional[datetime]
-    updated_at: Optional[datetime]
-    comments: List[str]
+    content: str
+    source_type: str
+    created_at: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 ```
 
 **Methods:**
@@ -77,25 +75,32 @@ class TicketResource(BaseResource):
 ```python
 def get_hash(self) -> str
 ```
-Return hash based on `{source_system}:{ticket_id}`.
+Return hash as `{source_type}_{normalised_ticket_id}`.
+
+**Contracts:**
+- ENSURES: Special characters in ticket_id replaced with underscores
 
 ##### `get_filename`
 ```python
 def get_filename(self) -> str
 ```
-Return `{source_system}_{ticket_id}.txt`.
+Return `{get_hash()}.txt`.
 
 ##### `get_content`
 ```python
 def get_content(self) -> str
 ```
-Return formatted ticket text with title, description, comments.
+Return the `content` field.
 
 ##### `get_metadata`
 ```python
 def get_metadata(self) -> ResourceMetadata
 ```
-Return metadata with source, dates, status.
+Return ResourceMetadata with display_name and extra fields.
+
+**Contracts:**
+- ENSURES: `display_name` from metadata dict or defaults to `{source_type}:{ticket_id}`
+- ENSURES: Includes ticket_id, source_type, and created_at in extra fields
 
 ## Integrations
 
