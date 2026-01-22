@@ -599,7 +599,23 @@ To use a local model, specify one of the local model classes in `models.py`:
 We support the following model classes in `models.py` for models accessed via APIs:
 
 - `OpenAILLM`
+- `OpenRouterLLM`
 - `AnthropicLLM`
+
+#### OpenRouter
+
+OpenRouter uses the OpenAI-compatible API. Configure it by setting `OpenRouterLLM` in your config and providing
+`OPENROUTER_API_KEY`. Optional attribution headers can be set via `OPENROUTER_SITE_URL` and `OPENROUTER_APP_NAME`.
+
+```yaml
+a2rchi:
+  model_class_map:
+    OpenRouterLLM:
+      class: OpenRouterLLM
+      kwargs:
+        model_name: openai/gpt-4o-mini
+        temperature: 0.7
+```
 
 ### Ollama
 

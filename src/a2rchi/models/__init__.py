@@ -6,7 +6,7 @@ from src.a2rchi.models.huggingface_image import HuggingFaceImageLLM
 from src.a2rchi.models.huggingface_open import HuggingFaceOpenLLM
 from src.a2rchi.models.llama import LlamaLLM
 from src.a2rchi.models.ollama import OllamaInterface
-from src.a2rchi.models.openai import OpenAILLM
+from src.a2rchi.models.openai import OpenAILLM, OpenRouterLLM
 from src.a2rchi.models.safety import SalesforceSafetyChecker
 from src.a2rchi.models.vllm import VLLM
 
@@ -20,6 +20,7 @@ __all__ = [
     "LlamaLLM",
     "OllamaInterface",
     "OpenAILLM",
+    "OpenRouterLLM",
     "SalesforceSafetyChecker",
     "VLLM",
     "print_model_params",

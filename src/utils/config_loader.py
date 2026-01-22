@@ -26,8 +26,9 @@ def load_config(map: bool = False, name: str = None):
         from langchain_openai import OpenAIEmbeddings
 
         from src.a2rchi.models import (VLLM, AnthropicLLM, DumbLLM,
-                                       HuggingFaceImageLLM, HuggingFaceOpenLLM,
-                                       LlamaLLM, OllamaInterface, OpenAILLM)
+                           HuggingFaceImageLLM, HuggingFaceOpenLLM,
+                           LlamaLLM, OllamaInterface, OpenAILLM,
+                           OpenRouterLLM)
         from src.data_manager.collectors.scrapers.integrations.sso_scraper import \
             CERNSSOScraper
         
@@ -35,6 +36,7 @@ def load_config(map: bool = False, name: str = None):
             "AnthropicLLM": AnthropicLLM,
             "OpenAIGPT4": OpenAILLM,
             "OpenAIGPT35": OpenAILLM,
+            "OpenRouterLLM": OpenRouterLLM,
             "DumbLLM": DumbLLM,
             "LlamaLLM": LlamaLLM,
             "HuggingFaceOpenLLM": HuggingFaceOpenLLM,

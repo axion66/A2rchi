@@ -130,6 +130,9 @@ echo "PG_PASSWORD=my_strong_password" > ~/.secrets.env
 If you are not using open-source models, supply the relevant API credentials:
 
 - `OPENAI_API_KEY`: OpenAI API key.
+- `OPENROUTER_API_KEY`: OpenRouter API key (for `OpenRouterLLM`).
+- `OPENROUTER_SITE_URL`: Optional site URL for OpenRouter attribution.
+- `OPENROUTER_APP_NAME`: Optional app name for OpenRouter attribution.
 - `ANTHROPIC_API_KEY`: Anthropic API key.
 - `HUGGINGFACEHUB_API_TOKEN`: HuggingFace access token (for private models or embeddings).
 
