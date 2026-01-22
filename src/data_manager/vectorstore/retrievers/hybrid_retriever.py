@@ -23,6 +23,7 @@ class HybridRetriever(BaseRetriever):
     bm25_b: float = 0.75
     _bm25_retriever: BM25LexicalRetriever = None
     _ensemble_retriever: EnsembleRetriever = None
+    _dense_retriever: BaseRetriever = None
     
     def __init__(self, vectorstore: VectorStore, k: int = 3,
                  bm25_weight: float = 0.6, semantic_weight: float = 0.4,
@@ -43,6 +44,9 @@ class HybridRetriever(BaseRetriever):
         Initialize BM25 and ensemble retrievers with documents from the vectorstore.
         """
         try:
+            dense_retriever = self.vectorstore.as_retriever(search_kwargs={"k": self.k})
+            self._dense_retriever = dense_retriever
+
             self._bm25_retriever = BM25LexicalRetriever(
                 vectorstore=self.vectorstore,
                 k=self.k,
@@ -51,9 +55,11 @@ class HybridRetriever(BaseRetriever):
             )
 
             if not self._bm25_retriever.ready:
-                raise RuntimeError("BM25 retriever not initialised; cannot build hybrid retriever.")
-
-            dense_retriever = self.vectorstore.as_retriever(search_kwargs={"k": self.k})
+                logger.warning(
+                    "BM25 retriever not initialised; falling back to semantic search only."
+                )
+                self._ensemble_retriever = None
+                return
             
             self._ensemble_retriever = EnsembleRetriever(
                 retrievers=[self._bm25_retriever, dense_retriever],
@@ -72,7 +78,10 @@ class HybridRetriever(BaseRetriever):
         logger.debug(f"Query: {query}")
         logger.debug(f"Using hybrid search (BM25 + semantic) to retrieve top-{self.k} docs")
         if self._ensemble_retriever is None:
-            raise RuntimeError("HybridRetriever not initialised; ensemble retriever is missing.")
+            if self._dense_retriever is None:
+                raise RuntimeError("HybridRetriever not initialised; no retriever available.")
+            logger.debug("Falling back to semantic-only retriever")
+            return self._dense_retriever.get_relevant_documents(query)
 
         # Get combined results from ensemble
         ensemble_docs = self._ensemble_retriever._get_relevant_documents(query, run_manager=run_manager)
