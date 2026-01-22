@@ -696,6 +696,38 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
   border-radius: 4px; /* Rounded corners for aesthetics */
 }
 
+/* Client-side rendered code blocks (marked.js + highlight.js) */
+.chat-details pre {
+  background: var(--incoming-chat-code-snippet);
+  border-radius: 8px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.chat-details pre code {
+  font-family: Consolas, Monaco, "Lucida Console", monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  background: transparent;
+  padding: 0;
+  border: none;
+}
+
+.chat-details code:not(pre code) {
+  background: var(--incoming-chat-code-snippet);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: Consolas, Monaco, "Lucida Console", monospace;
+  font-size: 0.9em;
+}
+
+/* Streaming response paragraph */
+.streaming-response {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .highlight .pre {
   background-color: transparent;
   border-radius: .375rem;
