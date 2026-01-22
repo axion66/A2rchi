@@ -14,6 +14,7 @@ const CONFIG = {
   STORAGE_KEYS: {
     CLIENT_ID: 'a2rchi_client_id',
     ACTIVE_CONVERSATION: 'a2rchi_active_conversation_id',
+    AB_WARNING_DISMISSED: 'a2rchi_ab_warning_dismissed',
   },
   ENDPOINTS: {
     STREAM: '/api/get_chat_response_stream',
@@ -22,6 +23,9 @@ const CONFIG = {
     LOAD_CONVERSATION: '/api/load_conversation',
     NEW_CONVERSATION: '/api/new_conversation',
     DELETE_CONVERSATION: '/api/delete_conversation',
+    AB_CREATE: '/api/ab/create',
+    AB_PREFERENCE: '/api/ab/preference',
+    AB_PENDING: '/api/ab/pending',
   },
   STREAMING: {
     TIMEOUT: 300000, // 5 minutes
@@ -246,6 +250,35 @@ const API = {
       }
     }
   },
+
+  // A/B Testing API methods
+  async createABComparison(data) {
+    return this.fetchJson(CONFIG.ENDPOINTS.AB_CREATE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...data,
+        client_id: this.clientId,
+      }),
+    });
+  },
+
+  async submitABPreference(comparisonId, preference) {
+    return this.fetchJson(CONFIG.ENDPOINTS.AB_PREFERENCE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        comparison_id: comparisonId,
+        preference: preference,
+        client_id: this.clientId,
+      }),
+    });
+  },
+
+  async getPendingABComparison(conversationId) {
+    const url = `${CONFIG.ENDPOINTS.AB_PENDING}?conversation_id=${conversationId}&client_id=${encodeURIComponent(this.clientId)}`;
+    return this.fetchJson(url);
+  },
 };
 
 // =============================================================================
@@ -406,8 +439,34 @@ const UI = {
     // A/B toggle in settings
     this.elements.abCheckbox?.addEventListener('change', (e) => {
       const isEnabled = e.target.checked;
+      if (isEnabled) {
+        // Show warning modal before enabling
+        const dismissed = sessionStorage.getItem(CONFIG.STORAGE_KEYS.AB_WARNING_DISMISSED);
+        if (!dismissed) {
+          e.target.checked = false; // Reset checkbox
+          this.showABWarningModal(
+            () => {
+              // On confirm
+              e.target.checked = true;
+              if (this.elements.abModelGroup) {
+                this.elements.abModelGroup.style.display = 'block';
+              }
+              sessionStorage.setItem(CONFIG.STORAGE_KEYS.AB_WARNING_DISMISSED, 'true');
+            },
+            () => {
+              // On cancel
+              e.target.checked = false;
+            }
+          );
+          return;
+        }
+      }
       if (this.elements.abModelGroup) {
         this.elements.abModelGroup.style.display = isEnabled ? 'block' : 'none';
+      }
+      // If disabling A/B mode while vote is pending, re-enable input
+      if (!isEnabled && Chat.state.abVotePending) {
+        Chat.cancelPendingABComparison();
       }
     });
     
@@ -631,6 +690,213 @@ const UI = {
       container.scrollTop = container.scrollHeight;
     }
   },
+
+  // =========================================================================
+  // A/B Testing UI Methods
+  // =========================================================================
+
+  showABWarningModal(onConfirm, onCancel) {
+    const modalHtml = `
+      <div class="ab-warning-modal-overlay" id="ab-warning-modal">
+        <div class="ab-warning-modal">
+          <div class="ab-warning-modal-header">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+            <h3>Enable A/B Testing Mode</h3>
+          </div>
+          <div class="ab-warning-modal-body">
+            <p>This will compare two AI responses for each message.</p>
+            <ul>
+              <li><strong>2× API usage</strong> - Each message generates two responses</li>
+              <li><strong>Voting required</strong> - You must choose the better response before continuing</li>
+              <li>You can disable A/B mode at any time to skip voting</li>
+            </ul>
+          </div>
+          <div class="ab-warning-modal-actions">
+            <button class="ab-warning-btn ab-warning-btn-cancel">Cancel</button>
+            <button class="ab-warning-btn ab-warning-btn-confirm">Enable A/B Mode</button>
+          </div>
+        </div>
+      </div>`;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    const modal = document.getElementById('ab-warning-modal');
+
+    const closeModal = () => modal?.remove();
+
+    modal.querySelector('.ab-warning-btn-cancel').addEventListener('click', () => {
+      closeModal();
+      onCancel?.();
+    });
+
+    modal.querySelector('.ab-warning-btn-confirm').addEventListener('click', () => {
+      closeModal();
+      onConfirm?.();
+    });
+
+    // Close on backdrop click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeModal();
+        onCancel?.();
+      }
+    });
+  },
+
+  showToast(message, duration = 3000) {
+    // Remove existing toast
+    document.querySelector('.toast')?.remove();
+
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    // Trigger animation
+    requestAnimationFrame(() => toast.classList.add('show'));
+
+    setTimeout(() => {
+      toast.classList.remove('show');
+      setTimeout(() => toast.remove(), 300);
+    }, duration);
+  },
+
+  addABComparisonContainer(msgIdA, msgIdB) {
+    // Remove empty state if present
+    const empty = this.elements.messagesInner?.querySelector('.messages-empty');
+    if (empty) empty.remove();
+
+    const html = `
+      <div class="ab-comparison" id="ab-comparison-active">
+        <div class="ab-response ab-response-a" data-id="${msgIdA}">
+          <div class="ab-response-header">
+            <span class="ab-response-label">Model A</span>
+          </div>
+          <div class="ab-response-content message-content"></div>
+        </div>
+        <div class="ab-response ab-response-b" data-id="${msgIdB}">
+          <div class="ab-response-header">
+            <span class="ab-response-label">Model B</span>
+          </div>
+          <div class="ab-response-content message-content"></div>
+        </div>
+      </div>`;
+
+    this.elements.messagesInner?.insertAdjacentHTML('beforeend', html);
+    this.scrollToBottom();
+  },
+
+  updateABResponse(responseId, html, streaming = false) {
+    const container = document.querySelector(`.ab-response[data-id="${responseId}"]`);
+    if (!container) return;
+
+    const contentEl = container.querySelector('.ab-response-content');
+    if (contentEl) {
+      contentEl.innerHTML = html;
+      if (streaming) {
+        contentEl.innerHTML += '<span class="streaming-cursor"></span>';
+      }
+    }
+    this.scrollToBottom();
+  },
+
+  showABVoteButtons(comparisonId) {
+    const comparison = document.getElementById('ab-comparison-active');
+    if (!comparison) return;
+
+    const voteHtml = `
+      <div class="ab-vote-container" data-comparison-id="${comparisonId}">
+        <div class="ab-vote-prompt">Which response was better?</div>
+        <div class="ab-vote-buttons">
+          <button class="ab-vote-btn ab-vote-btn-a" data-vote="a">
+            <span class="ab-vote-icon">👍</span>
+            <span>Model A</span>
+          </button>
+          <button class="ab-vote-btn ab-vote-btn-b" data-vote="b">
+            <span class="ab-vote-icon">👍</span>
+            <span>Model B</span>
+          </button>
+        </div>
+      </div>`;
+
+    comparison.insertAdjacentHTML('afterend', voteHtml);
+
+    // Bind vote button events
+    document.querySelectorAll('.ab-vote-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const vote = btn.dataset.vote;
+        Chat.submitABPreference(vote);
+      });
+    });
+
+    this.scrollToBottom();
+  },
+
+  hideABVoteButtons() {
+    document.querySelector('.ab-vote-container')?.remove();
+  },
+
+  markABWinner(preference) {
+    const comparison = document.getElementById('ab-comparison-active');
+    if (!comparison) return;
+
+    const responseA = comparison.querySelector('.ab-response-a');
+    const responseB = comparison.querySelector('.ab-response-b');
+
+    let winnerContent = '';
+    if (preference === 'a') {
+      winnerContent = responseA?.querySelector('.ab-response-content')?.innerHTML || '';
+    } else if (preference === 'b') {
+      winnerContent = responseB?.querySelector('.ab-response-content')?.innerHTML || '';
+    } else {
+      // Tie - keep both visible but mark them
+      responseA?.classList.add('ab-response-tie');
+      responseB?.classList.add('ab-response-tie');
+      comparison.removeAttribute('id');
+      return;
+    }
+
+    // Replace the entire comparison with a normal A2rchi message (matching createMessageHTML format)
+    const normalMessage = `
+      <div class="message assistant" data-id="ab-winner-${Date.now()}">
+        <div class="message-inner">
+          <div class="message-header">
+            <div class="message-avatar">✦</div>
+            <span class="message-sender">A2rchi</span>
+          </div>
+          <div class="message-content">${winnerContent}</div>
+        </div>
+      </div>`;
+
+    comparison.outerHTML = normalMessage;
+  },
+
+  removeABComparisonContainer() {
+    document.getElementById('ab-comparison-active')?.remove();
+    this.hideABVoteButtons();
+  },
+
+  showABError(message) {
+    this.removeABComparisonContainer();
+    const errorHtml = `
+      <div class="message assistant ab-error-message">
+        <div class="message-inner">
+          <div class="message-header">
+            <div class="message-avatar">⚠️</div>
+            <span class="message-sender">A/B Comparison Failed</span>
+          </div>
+          <div class="message-content">
+            <p style="color: var(--error-text);">${Utils.escapeHtml(message)}</p>
+            <p>Continuing in single-response mode.</p>
+          </div>
+        </div>
+      </div>`;
+    this.elements.messagesInner?.insertAdjacentHTML('beforeend', errorHtml);
+    this.scrollToBottom();
+  },
 };
 
 // =============================================================================
@@ -644,6 +910,9 @@ const Chat = {
     history: [], // [sender, content] pairs for API
     isStreaming: false,
     configs: [],
+    // A/B Testing state
+    activeABComparison: null,  // { comparisonId, responseAId, responseBId, configAId, configBId, userPromptMid }
+    abVotePending: false,      // true when waiting for user vote
   },
 
   async init() {
@@ -749,6 +1018,12 @@ const Chat = {
     const text = UI.getInputValue();
     if (!text || this.state.isStreaming) return;
 
+    // Block if A/B vote is pending
+    if (this.state.abVotePending) {
+      UI.showToast('Please vote on the current comparison first, or disable A/B mode');
+      return;
+    }
+
     // Add user message
     const userMsg = {
       id: `${Date.now()}-user`,
@@ -766,39 +1041,27 @@ const Chat = {
     // Determine which configs to use
     const configA = UI.getSelectedConfig('A');
     const configB = UI.getSelectedConfig('B');
-    const isAB = UI.isABEnabled();
+    const isAB = UI.isABEnabled() && configB;
 
-    // Stream responses
-    const tasks = [];
+    if (isAB) {
+      await this.sendABMessage(text, configA, configB);
+    } else {
+      await this.sendSingleMessage(configA);
+    }
+  },
 
-    // Config A response
-    const msgIdA = `${Date.now()}-assistant-a`;
-    const assistantMsgA = {
-      id: msgIdA,
+  async sendSingleMessage(configName) {
+    const msgId = `${Date.now()}-assistant`;
+    const assistantMsg = {
+      id: msgId,
       sender: 'A2rchi',
       html: '',
-      label: isAB ? `Model A: ${configA}` : null,
     };
-    this.state.messages.push(assistantMsgA);
-    UI.addMessage(assistantMsgA);
-    tasks.push(this.streamResponse(msgIdA, configA));
-
-    // Config B response (if A/B enabled)
-    if (isAB && configB) {
-      const msgIdB = `${Date.now()}-assistant-b`;
-      const assistantMsgB = {
-        id: msgIdB,
-        sender: 'A2rchi',
-        html: '',
-        label: `Model B: ${configB}`,
-      };
-      this.state.messages.push(assistantMsgB);
-      UI.addMessage(assistantMsgB);
-      tasks.push(this.streamResponse(msgIdB, configB));
-    }
+    this.state.messages.push(assistantMsg);
+    UI.addMessage(assistantMsg);
 
     try {
-      await Promise.all(tasks);
+      await this.streamResponse(msgId, configName);
     } catch (e) {
       console.error('Streaming error:', e);
     } finally {
@@ -807,6 +1070,191 @@ const Chat = {
       UI.elements.inputField?.focus();
       await this.loadConversations();
     }
+  },
+
+  async sendABMessage(userText, configA, configB) {
+    // Randomize which config gets A vs B
+    const shuffled = Math.random() < 0.5;
+    const [actualConfigA, actualConfigB] = shuffled ? [configB, configA] : [configA, configB];
+
+    const msgIdA = `${Date.now()}-ab-a`;
+    const msgIdB = `${Date.now()}-ab-b`;
+
+    // Create side-by-side container
+    UI.addABComparisonContainer(msgIdA, msgIdB);
+
+    // Track streaming results
+    const results = {
+      a: { text: '', messageId: null, configId: null, error: null },
+      b: { text: '', messageId: null, configId: null, error: null },
+    };
+
+    try {
+      // Stream both responses in parallel
+      await Promise.all([
+        this.streamABResponse(msgIdA, actualConfigA, results.a),
+        this.streamABResponse(msgIdB, actualConfigB, results.b),
+      ]);
+
+      // Check for errors
+      if (results.a.error || results.b.error) {
+        const errorMsg = results.a.error || results.b.error;
+        UI.showABError(errorMsg);
+        this.state.isStreaming = false;
+        UI.setInputDisabled(false);
+        await this.loadConversations();
+        return;
+      }
+
+      // Get config IDs
+      const configAId = this.getConfigId(actualConfigA);
+      const configBId = this.getConfigId(actualConfigB);
+
+      // Create A/B comparison record
+      const response = await API.createABComparison({
+        conversation_id: this.state.conversationId,
+        user_prompt_mid: results.a.userPromptMid || results.b.userPromptMid,
+        response_a_mid: results.a.messageId,
+        response_b_mid: results.b.messageId,
+        config_a_id: configAId,
+        config_b_id: configBId,
+        is_config_a_first: !shuffled,
+      });
+
+      if (response?.comparison_id) {
+        this.state.activeABComparison = {
+          comparisonId: response.comparison_id,
+          responseAId: results.a.messageId,
+          responseBId: results.b.messageId,
+          responseAText: results.a.text,
+          responseBText: results.b.text,
+          configAId: configAId,
+          configBId: configBId,
+        };
+        this.state.abVotePending = true;
+
+        // Show vote buttons
+        UI.showABVoteButtons(response.comparison_id);
+      }
+
+    } catch (e) {
+      console.error('A/B comparison error:', e);
+      UI.showABError(e.message || 'Failed to create comparison');
+      this.state.isStreaming = false;
+      UI.setInputDisabled(false);
+      await this.loadConversations();
+      return;
+    }
+
+    this.state.isStreaming = false;
+    // Keep input disabled until vote
+    await this.loadConversations();
+  },
+
+  async streamABResponse(elementId, configName, result) {
+    let streamedText = '';
+
+    try {
+      for await (const event of API.streamResponse(this.state.history, this.state.conversationId, configName)) {
+        if (event.type === 'chunk') {
+          streamedText += event.content || '';
+          UI.updateABResponse(elementId, Markdown.render(streamedText), true);
+        } else if (event.type === 'step' && event.step_type === 'agent') {
+          const content = event.content || '';
+          if (content) {
+            streamedText = content;
+            UI.updateABResponse(elementId, Markdown.render(streamedText), true);
+          }
+        } else if (event.type === 'final') {
+          const finalText = event.response || streamedText;
+          UI.updateABResponse(elementId, Markdown.render(finalText), false);
+
+          if (event.conversation_id != null) {
+            this.state.conversationId = event.conversation_id;
+            Storage.setActiveConversationId(event.conversation_id);
+          }
+
+          result.text = finalText;
+          result.messageId = event.message_id;
+          result.userPromptMid = event.user_message_id;
+
+          // Re-highlight code blocks
+          if (typeof hljs !== 'undefined') {
+            setTimeout(() => hljs.highlightAll(), 0);
+          }
+          return;
+        } else if (event.type === 'error') {
+          result.error = event.message || 'Stream error';
+          UI.updateABResponse(
+            elementId,
+            `<p style="color: var(--error-text);">${Utils.escapeHtml(result.error)}</p>`,
+            false
+          );
+          return;
+        }
+      }
+    } catch (e) {
+      console.error('A/B stream error:', e);
+      result.error = e.message || 'Streaming failed';
+      UI.updateABResponse(
+        elementId,
+        `<p style="color: var(--error-text);">${Utils.escapeHtml(result.error)}</p>`,
+        false
+      );
+    }
+  },
+
+  getConfigId(configName) {
+    const config = this.state.configs.find((c) => c.name === configName);
+    return config?.id || null;
+  },
+
+  async submitABPreference(preference) {
+    if (!this.state.activeABComparison) return;
+
+    try {
+      await API.submitABPreference(this.state.activeABComparison.comparisonId, preference);
+
+      // Update UI to show result
+      UI.markABWinner(preference);
+      UI.hideABVoteButtons();
+
+      // Add the winning response to history for context
+      const winningText =
+        preference === 'b'
+          ? this.state.activeABComparison.responseBText
+          : this.state.activeABComparison.responseAText;
+      this.state.history.push(['A2rchi', winningText]);
+
+      // Clear A/B state
+      this.state.activeABComparison = null;
+      this.state.abVotePending = false;
+      UI.setInputDisabled(false);
+      UI.elements.inputField?.focus();
+    } catch (e) {
+      console.error('Failed to submit preference:', e);
+      UI.showToast('Failed to submit preference. Please try again.');
+    }
+  },
+
+  cancelPendingABComparison() {
+    // Called when user disables A/B mode while vote is pending
+    if (!this.state.abVotePending) return;
+
+    // Add response A to history as default
+    if (this.state.activeABComparison?.responseAText) {
+      this.state.history.push(['A2rchi', this.state.activeABComparison.responseAText]);
+    }
+
+    // Mark as tie/skipped visually
+    UI.markABWinner('tie');
+    UI.hideABVoteButtons();
+
+    // Clear state
+    this.state.activeABComparison = null;
+    this.state.abVotePending = false;
+    UI.setInputDisabled(false);
+    UI.showToast('A/B comparison skipped');
   },
 
   async streamResponse(messageId, configName) {

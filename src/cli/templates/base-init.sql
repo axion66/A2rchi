@@ -69,6 +69,34 @@ CREATE TABLE IF NOT EXISTS agent_tool_calls (
     FOREIGN KEY (message_id) REFERENCES conversations(message_id) ON DELETE CASCADE
 );
 
+-- A/B comparison tracking for preference collection
+CREATE TABLE IF NOT EXISTS ab_comparisons (
+    comparison_id SERIAL PRIMARY KEY,
+    conversation_id INTEGER NOT NULL,
+    user_prompt_mid INTEGER NOT NULL,         -- message_id of the user's question
+    response_a_mid INTEGER NOT NULL,          -- message_id of response A
+    response_b_mid INTEGER NOT NULL,          -- message_id of response B
+    config_a_id INTEGER NOT NULL,             -- config used for response A
+    config_b_id INTEGER NOT NULL,             -- config used for response B
+    is_config_a_first BOOLEAN NOT NULL,       -- true if config A was the "first" config (for randomization tracking)
+    preference VARCHAR(10),                   -- 'a', 'b', 'tie', or NULL (not yet voted)
+    preference_ts TIMESTAMP,                  -- when the preference was recorded
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    
+    FOREIGN KEY (conversation_id) REFERENCES conversation_metadata(conversation_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_prompt_mid) REFERENCES conversations(message_id) ON DELETE CASCADE,
+    FOREIGN KEY (response_a_mid) REFERENCES conversations(message_id) ON DELETE CASCADE,
+    FOREIGN KEY (response_b_mid) REFERENCES conversations(message_id) ON DELETE CASCADE,
+    FOREIGN KEY (config_a_id) REFERENCES configs(config_id),
+    FOREIGN KEY (config_b_id) REFERENCES configs(config_id)
+);
+
+-- Indexes for efficient A/B comparison queries
+CREATE INDEX IF NOT EXISTS idx_ab_comparisons_conversation ON ab_comparisons(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_ab_comparisons_configs ON ab_comparisons(config_a_id, config_b_id);
+CREATE INDEX IF NOT EXISTS idx_ab_comparisons_preference ON ab_comparisons(preference) WHERE preference IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ab_comparisons_pending ON ab_comparisons(conversation_id) WHERE preference IS NULL;
+
 -- create grafana user if it does not exist
 {% if use_grafana -%}
 DO
@@ -83,6 +111,7 @@ BEGIN
         GRANT SELECT ON public.feedback TO grafana;
         GRANT SELECT ON public.configs TO grafana;
         GRANT SELECT ON public.agent_tool_calls TO grafana;
+        GRANT SELECT ON public.ab_comparisons TO grafana;
     END IF;
 END
 $do$;

@@ -125,3 +125,51 @@ FROM agent_tool_calls
 WHERE message_id = %s
 ORDER BY step_number ASC;
 """
+
+# =============================================================================
+# A/B Comparison Queries
+# =============================================================================
+
+SQL_INSERT_AB_COMPARISON = """
+INSERT INTO ab_comparisons (
+    conversation_id, user_prompt_mid, response_a_mid, response_b_mid, 
+    config_a_id, config_b_id, is_config_a_first
+)
+VALUES (%s, %s, %s, %s, %s, %s, %s)
+RETURNING comparison_id;
+"""
+
+SQL_UPDATE_AB_PREFERENCE = """
+UPDATE ab_comparisons
+SET preference = %s, preference_ts = %s
+WHERE comparison_id = %s;
+"""
+
+SQL_GET_AB_COMPARISON = """
+SELECT comparison_id, conversation_id, user_prompt_mid, response_a_mid, response_b_mid,
+       config_a_id, config_b_id, is_config_a_first, preference, preference_ts, created_at
+FROM ab_comparisons
+WHERE comparison_id = %s;
+"""
+
+SQL_GET_PENDING_AB_COMPARISON = """
+SELECT comparison_id, conversation_id, user_prompt_mid, response_a_mid, response_b_mid,
+       config_a_id, config_b_id, is_config_a_first, preference, preference_ts, created_at
+FROM ab_comparisons
+WHERE conversation_id = %s AND preference IS NULL
+ORDER BY created_at DESC
+LIMIT 1;
+"""
+
+SQL_DELETE_AB_COMPARISON = """
+DELETE FROM ab_comparisons
+WHERE comparison_id = %s;
+"""
+
+SQL_GET_AB_COMPARISONS_BY_CONVERSATION = """
+SELECT comparison_id, conversation_id, user_prompt_mid, response_a_mid, response_b_mid,
+       config_a_id, config_b_id, is_config_a_first, preference, preference_ts, created_at
+FROM ab_comparisons
+WHERE conversation_id = %s
+ORDER BY created_at ASC;
+"""

@@ -32,7 +32,14 @@ from src.a2rchi.a2rchi import A2rchi
 from src.utils.config_loader import CONFIGS_PATH, get_config_names, load_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
-from src.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO, SQL_INSERT_CONFIG, SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP, SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION, SQL_INSERT_TOOL_CALLS, SQL_QUERY_CONVO_WITH_FEEDBACK, SQL_DELETE_REACTION_FEEDBACK
+from src.utils.sql import (
+    SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO,
+    SQL_INSERT_CONFIG, SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP,
+    SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION,
+    SQL_INSERT_TOOL_CALLS, SQL_QUERY_CONVO_WITH_FEEDBACK, SQL_DELETE_REACTION_FEEDBACK,
+    SQL_INSERT_AB_COMPARISON, SQL_UPDATE_AB_PREFERENCE, SQL_GET_AB_COMPARISON,
+    SQL_GET_PENDING_AB_COMPARISON, SQL_DELETE_AB_COMPARISON, SQL_GET_AB_COMPARISONS_BY_CONVERSATION,
+)
 from src.interfaces.chat_app.document_utils import *
 from src.interfaces.chat_app.utils import collapse_assistant_sequences
 
@@ -457,6 +464,189 @@ class ChatWrapper:
         self.conn.close()
         self.cursor, self.conn = None, None
 
+    # =========================================================================
+    # A/B Comparison Methods
+    # =========================================================================
+
+    def create_ab_comparison(
+        self,
+        conversation_id: int,
+        user_prompt_mid: int,
+        response_a_mid: int,
+        response_b_mid: int,
+        config_a_id: int,
+        config_b_id: int,
+        is_config_a_first: bool,
+    ) -> int:
+        """
+        Create an A/B comparison record linking two responses to the same user prompt.
+        
+        Args:
+            conversation_id: The conversation this comparison belongs to
+            user_prompt_mid: Message ID of the user's question
+            response_a_mid: Message ID of response A
+            response_b_mid: Message ID of response B
+            config_a_id: Config ID used for response A
+            config_b_id: Config ID used for response B
+            is_config_a_first: True if config A was the "first" config before randomization
+            
+        Returns:
+            The comparison_id of the newly created record
+        """
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                SQL_INSERT_AB_COMPARISON,
+                (conversation_id, user_prompt_mid, response_a_mid, response_b_mid,
+                 config_a_id, config_b_id, is_config_a_first)
+            )
+            comparison_id = cursor.fetchone()[0]
+            conn.commit()
+            logger.info(f"Created A/B comparison {comparison_id} for conversation {conversation_id}")
+            return comparison_id
+        finally:
+            cursor.close()
+            conn.close()
+
+    def update_ab_preference(self, comparison_id: int, preference: str) -> None:
+        """
+        Record user's preference for an A/B comparison.
+        
+        Args:
+            comparison_id: The comparison to update
+            preference: 'a', 'b', or 'tie'
+        """
+        if preference not in ('a', 'b', 'tie'):
+            raise ValueError(f"Invalid preference: {preference}")
+            
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                SQL_UPDATE_AB_PREFERENCE,
+                (preference, datetime.now(), comparison_id)
+            )
+            conn.commit()
+            logger.info(f"Updated A/B comparison {comparison_id} with preference '{preference}'")
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_ab_comparison(self, comparison_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get an A/B comparison by ID.
+        
+        Returns:
+            Dict with comparison data or None if not found
+        """
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(SQL_GET_AB_COMPARISON, (comparison_id,))
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            return {
+                'comparison_id': row[0],
+                'conversation_id': row[1],
+                'user_prompt_mid': row[2],
+                'response_a_mid': row[3],
+                'response_b_mid': row[4],
+                'config_a_id': row[5],
+                'config_b_id': row[6],
+                'is_config_a_first': row[7],
+                'preference': row[8],
+                'preference_ts': row[9].isoformat() if row[9] else None,
+                'created_at': row[10].isoformat() if row[10] else None,
+            }
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_pending_ab_comparison(self, conversation_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get the most recent incomplete A/B comparison for a conversation.
+        
+        Returns:
+            Dict with comparison data or None if no pending comparison
+        """
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(SQL_GET_PENDING_AB_COMPARISON, (conversation_id,))
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            return {
+                'comparison_id': row[0],
+                'conversation_id': row[1],
+                'user_prompt_mid': row[2],
+                'response_a_mid': row[3],
+                'response_b_mid': row[4],
+                'config_a_id': row[5],
+                'config_b_id': row[6],
+                'is_config_a_first': row[7],
+                'preference': row[8],
+                'preference_ts': row[9].isoformat() if row[9] else None,
+                'created_at': row[10].isoformat() if row[10] else None,
+            }
+        finally:
+            cursor.close()
+            conn.close()
+
+    def delete_ab_comparison(self, comparison_id: int) -> bool:
+        """
+        Delete an A/B comparison (e.g., on abort/failure).
+        
+        Returns:
+            True if a record was deleted, False otherwise
+        """
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(SQL_DELETE_AB_COMPARISON, (comparison_id,))
+            deleted = cursor.rowcount > 0
+            conn.commit()
+            if deleted:
+                logger.info(f"Deleted A/B comparison {comparison_id}")
+            return deleted
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_ab_comparisons_by_conversation(self, conversation_id: int) -> List[Dict[str, Any]]:
+        """
+        Get all A/B comparisons for a conversation.
+        
+        Returns:
+            List of comparison dicts
+        """
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(SQL_GET_AB_COMPARISONS_BY_CONVERSATION, (conversation_id,))
+            rows = cursor.fetchall()
+            return [
+                {
+                    'comparison_id': row[0],
+                    'conversation_id': row[1],
+                    'user_prompt_mid': row[2],
+                    'response_a_mid': row[3],
+                    'response_b_mid': row[4],
+                    'config_a_id': row[5],
+                    'config_b_id': row[6],
+                    'is_config_a_first': row[7],
+                    'preference': row[8],
+                    'preference_ts': row[9].isoformat() if row[9] else None,
+                    'created_at': row[10].isoformat() if row[10] else None,
+                }
+                for row in rows
+            ]
+        finally:
+            cursor.close()
+            conn.close()
+
 
     def query_conversation_history(self, conversation_id, client_id):
         """
@@ -464,28 +654,26 @@ class ChatWrapper:
         is determined by ascending message_id. Each tuple contains the sender and
         the message content
         """
-        # create connection to database
-        self.conn = psycopg2.connect(**self.pg_config)
-        self.cursor = self.conn.cursor()
+        # create connection to database (use local vars for thread safety)
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
 
         # ensure conversation belongs to client before querying
-        self.cursor.execute(SQL_GET_CONVERSATION_METADATA, (conversation_id, client_id))
-        metadata = self.cursor.fetchone()
+        cursor.execute(SQL_GET_CONVERSATION_METADATA, (conversation_id, client_id))
+        metadata = cursor.fetchone()
         if metadata is None:
-            self.cursor.close()
-            self.conn.close()
-            self.cursor, self.conn = None, None
+            cursor.close()
+            conn.close()
             raise ConversationAccessError("Conversation does not exist for this client")
 
         # query conversation history
-        self.cursor.execute(SQL_QUERY_CONVO, (conversation_id,))
-        history = self.cursor.fetchall()
+        cursor.execute(SQL_QUERY_CONVO, (conversation_id,))
+        history = cursor.fetchall()
         history = collapse_assistant_sequences(history, sender_name=A2RCHI_SENDER)
 
         # clean up database connection state
-        self.cursor.close()
-        self.conn.close()
-        self.cursor, self.conn = None, None
+        cursor.close()
+        conn.close()
 
         return history
 
@@ -506,17 +694,16 @@ class ChatWrapper:
         # title, created_at, last_message_at, version
         insert_tup = (title, now, now, client_id, version)
 
-        # create connection to database
-        self.conn = psycopg2.connect(**self.pg_config)
-        self.cursor = self.conn.cursor()
-        self.cursor.execute(SQL_CREATE_CONVERSATION, insert_tup)
-        conversation_id = self.cursor.fetchone()[0]
-        self.conn.commit()
+        # create connection to database (use local vars for thread safety)
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        cursor.execute(SQL_CREATE_CONVERSATION, insert_tup)
+        conversation_id = cursor.fetchone()[0]
+        conn.commit()
 
         # clean up database connection state
-        self.cursor.close()
-        self.conn.close()
-        self.cursor, self.conn = None, None
+        cursor.close()
+        conn.close()
 
         logger.info(f"Created new conversation with ID: {conversation_id}")
         return conversation_id
@@ -528,18 +715,17 @@ class ChatWrapper:
         """
         now = datetime.now()
 
-        # create connection to database
-        self.conn = psycopg2.connect(**self.pg_config)
-        self.cursor = self.conn.cursor()
+        # create connection to database (use local vars for thread safety)
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
 
         # update timestamp
-        self.cursor.execute(SQL_UPDATE_CONVERSATION_TIMESTAMP, (now, conversation_id, client_id))
-        self.conn.commit()
+        cursor.execute(SQL_UPDATE_CONVERSATION_TIMESTAMP, (now, conversation_id, client_id))
+        conn.commit()
 
         # clean up database connection state
-        self.cursor.close()
-        self.conn.close()
-        self.cursor, self.conn = None, None
+        cursor.close()
+        conn.close()
 
     def prepare_context_for_storage(self, source_documents, scores):
         scores = scores or []
@@ -595,17 +781,16 @@ class ChatWrapper:
             ]
         )
 
-        # create connection to database
-        self.conn = psycopg2.connect(**self.pg_config)
-        self.cursor = self.conn.cursor()
-        psycopg2.extras.execute_values(self.cursor, SQL_INSERT_CONVO, insert_tups)
-        self.conn.commit()
-        message_ids = list(map(lambda tup: tup[0], self.cursor.fetchall()))
+        # create connection to database (use local vars for thread safety)
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        psycopg2.extras.execute_values(cursor, SQL_INSERT_CONVO, insert_tups)
+        conn.commit()
+        message_ids = list(map(lambda tup: tup[0], cursor.fetchall()))
 
         # clean up database connection state
-        self.cursor.close()
-        self.conn.close()
-        self.cursor, self.conn = None, None
+        cursor.close()
+        conn.close()
 
         return message_ids
 
@@ -631,16 +816,15 @@ class ChatWrapper:
             timestamps['server_response_msg_ts'] - timestamps['server_received_msg_ts']
         )
 
-        # create connection to database
-        self.conn = psycopg2.connect(**self.pg_config)
-        self.cursor = self.conn.cursor()
-        self.cursor.execute(SQL_INSERT_TIMING, insert_tup)
-        self.conn.commit()
+        # create connection to database (use local vars for thread safety)
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        cursor.execute(SQL_INSERT_TIMING, insert_tup)
+        conn.commit()
 
         # clean up database connection state
-        self.cursor.close()
-        self.conn.close()
-        self.cursor, self.conn = None, None
+        cursor.close()
+        conn.close()
 
     def insert_tool_calls_from_messages(self, conversation_id: int, message_id: int, messages: List) -> None:
         """
@@ -699,14 +883,13 @@ class ChatWrapper:
             
         logger.debug("Inserting %d tool calls for message %d", len(insert_tups), message_id)
 
-        self.conn = psycopg2.connect(**self.pg_config)
-        self.cursor = self.conn.cursor()
-        psycopg2.extras.execute_values(self.cursor, SQL_INSERT_TOOL_CALLS, insert_tups)
-        self.conn.commit()
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        psycopg2.extras.execute_values(cursor, SQL_INSERT_TOOL_CALLS, insert_tups)
+        conn.commit()
 
-        self.cursor.close()
-        self.conn.close()
-        self.cursor, self.conn = None, None
+        cursor.close()
+        conn.close()
 
     def _init_timestamps(self) -> Dict[str, datetime]:
         return {
@@ -1079,6 +1262,8 @@ class ChatWrapper:
                 "response": output,
                 "conversation_id": context.conversation_id,
                 "a2rchi_msg_id": message_ids[-1] if message_ids else None,
+                "message_id": message_ids[-1] if message_ids else None,
+                "user_message_id": message_ids[0] if message_ids and len(message_ids) > 1 else None,
                 "server_response_msg_ts": timestamps["server_response_msg_ts"].timestamp(),
                 "final_response_msg_ts": datetime.now().timestamp(),
             }
@@ -1177,6 +1362,12 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/load_conversation', 'load_conversation', self.require_auth(self.load_conversation), methods=["POST"])
         self.add_endpoint('/api/new_conversation', 'new_conversation', self.require_auth(self.new_conversation), methods=["POST"])
         self.add_endpoint('/api/delete_conversation', 'delete_conversation', self.require_auth(self.delete_conversation), methods=["POST"])
+
+        # A/B testing endpoints
+        logger.info("Adding A/B testing API endpoints")
+        self.add_endpoint('/api/ab/create', 'ab_create', self.require_auth(self.ab_create_comparison), methods=["POST"])
+        self.add_endpoint('/api/ab/preference', 'ab_preference', self.require_auth(self.ab_submit_preference), methods=["POST"])
+        self.add_endpoint('/api/ab/pending', 'ab_pending', self.require_auth(self.ab_get_pending), methods=["GET"])
 
         # add unified auth endpoints
         if self.auth_enabled:
@@ -1437,12 +1628,14 @@ class FlaskAppWrapper(object):
         options = []
         for name in config_names:
             description = ""
+            config_id = None
             try:
                 payload = load_config(name=name)
                 description = payload.get("a2rchi", {}).get("agent_description", "No description provided")
+                config_id = self.chat._get_or_create_config_id(name, payload)
             except Exception as exc:
                 logger.warning(f"Failed to load config {name} for description: {exc}")
-            options.append({"name": name, "description": description})
+            options.append({"name": name, "description": description, "id": config_id})
         return jsonify({'options': options}), 200
 
     def _parse_chat_request(self) -> Dict[str, Any]:
@@ -2101,6 +2294,151 @@ class FlaskAppWrapper(object):
             return jsonify({'error': f'Invalid parameter: {str(e)}'}), 400
         except Exception as e:
             print(f"ERROR in delete_conversation: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    # =========================================================================
+    # A/B Testing API Endpoints
+    # =========================================================================
+
+    def ab_create_comparison(self):
+        """
+        Create a new A/B comparison record linking two responses.
+
+        POST body:
+        - conversation_id: The conversation ID
+        - user_prompt_mid: Message ID of the user's question
+        - response_a_mid: Message ID of response A
+        - response_b_mid: Message ID of response B
+        - config_a_id: Config ID used for response A
+        - config_b_id: Config ID used for response B
+        - is_config_a_first: True if config A was the "first" config before randomization
+        - client_id: Client ID for authorization
+
+        Returns:
+            JSON with comparison_id
+        """
+        try:
+            data = request.json
+            conversation_id = data.get('conversation_id')
+            user_prompt_mid = data.get('user_prompt_mid')
+            response_a_mid = data.get('response_a_mid')
+            response_b_mid = data.get('response_b_mid')
+            config_a_id = data.get('config_a_id')
+            config_b_id = data.get('config_b_id')
+            is_config_a_first = data.get('is_config_a_first', True)
+            client_id = data.get('client_id')
+
+            # Validate required fields
+            missing = []
+            if not conversation_id:
+                missing.append('conversation_id')
+            if not user_prompt_mid:
+                missing.append('user_prompt_mid')
+            if not response_a_mid:
+                missing.append('response_a_mid')
+            if not response_b_mid:
+                missing.append('response_b_mid')
+            if not config_a_id:
+                missing.append('config_a_id')
+            if not config_b_id:
+                missing.append('config_b_id')
+            if not client_id:
+                missing.append('client_id')
+
+            if missing:
+                return jsonify({'error': f'Missing required fields: {", ".join(missing)}'}), 400
+
+            # Create the comparison
+            comparison_id = self.chat.create_ab_comparison(
+                conversation_id=conversation_id,
+                user_prompt_mid=user_prompt_mid,
+                response_a_mid=response_a_mid,
+                response_b_mid=response_b_mid,
+                config_a_id=config_a_id,
+                config_b_id=config_b_id,
+                is_config_a_first=is_config_a_first,
+            )
+
+            return jsonify({
+                'success': True,
+                'comparison_id': comparison_id,
+            }), 200
+
+        except Exception as e:
+            logger.error(f"Error creating A/B comparison: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    def ab_submit_preference(self):
+        """
+        Submit user's preference for an A/B comparison.
+
+        POST body:
+        - comparison_id: The comparison ID
+        - preference: 'a', 'b', or 'tie'
+        - client_id: Client ID for authorization
+
+        Returns:
+            JSON with success status
+        """
+        try:
+            data = request.json
+            comparison_id = data.get('comparison_id')
+            preference = data.get('preference')
+            client_id = data.get('client_id')
+
+            if not comparison_id:
+                return jsonify({'error': 'comparison_id is required'}), 400
+            if not preference:
+                return jsonify({'error': 'preference is required'}), 400
+            if preference not in ('a', 'b', 'tie'):
+                return jsonify({'error': 'preference must be "a", "b", or "tie"'}), 400
+            if not client_id:
+                return jsonify({'error': 'client_id is required'}), 400
+
+            # Update the preference
+            self.chat.update_ab_preference(comparison_id, preference)
+
+            return jsonify({
+                'success': True,
+                'comparison_id': comparison_id,
+                'preference': preference,
+            }), 200
+
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        except Exception as e:
+            logger.error(f"Error submitting A/B preference: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    def ab_get_pending(self):
+        """
+        Get the pending (unvoted) A/B comparison for a conversation.
+
+        Query params:
+        - conversation_id: The conversation ID
+        - client_id: Client ID for authorization
+
+        Returns:
+            JSON with comparison data or null if none pending
+        """
+        try:
+            conversation_id = request.args.get('conversation_id', type=int)
+            client_id = request.args.get('client_id')
+
+            if not conversation_id:
+                return jsonify({'error': 'conversation_id is required'}), 400
+            if not client_id:
+                return jsonify({'error': 'client_id is required'}), 400
+
+            comparison = self.chat.get_pending_ab_comparison(conversation_id)
+
+            return jsonify({
+                'success': True,
+                'comparison': comparison,
+            }), 200
+
+        except Exception as e:
+            logger.error(f"Error getting pending A/B comparison: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
     def is_authenticated(self):
