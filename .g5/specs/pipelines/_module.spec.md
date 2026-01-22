@@ -11,6 +11,7 @@ children:
   - a2rchi/pipelines/token-limiter
   - a2rchi/pipelines/prompt-utils
   - a2rchi/pipelines/safety
+  - a2rchi/pipelines/agents
 ---
 
 # Pipelines Module

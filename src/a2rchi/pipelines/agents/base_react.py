@@ -1,8 +1,11 @@
 from typing import Any, Callable, Dict, List, Optional, Sequence, Iterator, AsyncIterator
 
 from langchain.agents import create_agent
-from langchain_core.messages import AIMessage, BaseMessage, BaseMessageChunk, HumanMessage, SystemMessage
-from langgraph.errors import GraphRecursionError
+from langchain_core.messages import BaseMessage, SystemMessage
+try:
+    from langchain_core.messages import BaseMessageChunk
+except ImportError:
+    BaseMessageChunk = None
 from langgraph.graph.state import CompiledStateGraph
 
 from src.a2rchi.pipelines.agents.utils.prompt_utils import read_prompt
@@ -18,8 +21,6 @@ class BaseReActAgent:
     BaseReActAgent provides a foundational structure for building pipeline classes that
     process user queries using configurable language models and prompts.
     """
-
-    DEFAULT_RECURSION_LIMIT = 100
 
     def __init__(
         self,
@@ -97,132 +98,96 @@ class BaseReActAgent:
         if self.agent is None:
             self.refresh_agent(force=True)
         logger.debug("Agent refreshed, invoking now")
-        recursion_limit = self._recursion_limit()
-        try:
-            answer_output = self.agent.invoke(agent_inputs, {"recursion_limit": recursion_limit})
-            logger.debug("Agent invocation completed")
-            logger.debug(answer_output)
-            messages = self._extract_messages(answer_output)
-            metadata = self._metadata_from_agent_output(answer_output)
-            output = self._build_output_from_messages(messages, metadata=metadata)
-            return output
-        except GraphRecursionError as exc:
-            logger.warning(
-                "Recursion limit hit for %s (limit=%s): %s",
-                self.__class__.__name__,
-                recursion_limit,
-                exc,
-            )
-            return self._handle_recursion_limit_error(
-                error=exc,
-                recursion_limit=recursion_limit,
-                latest_messages=[],
-                agent_inputs=agent_inputs,
-            )
+        answer_output = self.agent.invoke(agent_inputs, {"recursion_limit": 50})
+        logger.debug("Agent invocation completed")
+        logger.debug(answer_output)
+        messages = self._extract_messages(answer_output)
+        metadata = self._metadata_from_agent_output(answer_output)
+        output = self._build_output_from_messages(messages, metadata=metadata)
+        return output
 
     def stream(self, **kwargs) -> Iterator[PipelineOutput]:
-        """Stream agent updates synchronously with structured trace events and token-level streaming."""
+        """Stream agent updates synchronously."""
         logger.debug("Streaming %s", self.__class__.__name__)
         agent_inputs = self._prepare_agent_inputs(**kwargs)
         if self.agent is None:
             self.refresh_agent(force=True)
 
         latest_messages: List[BaseMessage] = []
-        accumulated_content = ""
-        recursion_limit = self._recursion_limit()
-        try:
-            # Use both "messages" (token-level) and "updates" (node-level) streaming
-            for mode, event in self.agent.stream(
-                agent_inputs, 
-                stream_mode=["messages", "updates"], 
-                config={"recursion_limit": recursion_limit}
-            ):
-                logger.debug("Received stream event (mode=%s): %s", mode, event)
-                
-                if mode == "messages":
-                    # Token-level streaming from LLM
-                    token_chunk, metadata = event
-                    if hasattr(token_chunk, 'content') and token_chunk.content:
-                        accumulated_content += token_chunk.content
-                        yield self.finalize_output(
-                            answer=accumulated_content,
-                            memory=self.active_memory,
-                            messages=[],
-                            metadata={"streaming": True},
-                            tool_calls=[],
-                            final=False,
-                        )
-                elif mode == "updates":
-                    # Node-level updates (tool calls, final messages)
-                    messages = self._extract_messages(event)
-                    if messages:
-                        latest_messages = messages
-                        content = self._message_content(messages[-1])
-                        tool_calls = self._extract_tool_calls(messages)
-                        # Reset accumulated content when we get a full message
-                        accumulated_content = content
-                        yield self.finalize_output(
-                            answer=content,
-                            memory=self.active_memory,
-                            messages=messages,
-                            metadata={},
-                            tool_calls=tool_calls,
-                            final=False,
-                        )
-        except GraphRecursionError as exc:
-            logger.warning(
-                "Recursion limit hit during stream for %s (limit=%s): %s",
-                self.__class__.__name__,
-                recursion_limit,
-                exc,
+        latest_text = ""
+        for event in self.agent.stream(agent_inputs, stream_mode="messages"):
+            logger.debug("Received stream event: %s", event)
+            messages = self._extract_messages(event)
+            if messages:
+                latest_messages = messages
+                content = self._message_content(messages[-1])
+                if content:
+                    if content.startswith(latest_text):
+                        latest_text = content
+                    elif latest_text.startswith(content):
+                        latest_text = latest_text
+                    else:
+                        latest_text += content
+                tool_calls = self._extract_tool_calls(messages)
+                yield self.finalize_output(
+                    answer=content,
+                    memory=self.active_memory,
+                    messages=messages,
+                    metadata={},
+                    tool_calls=tool_calls,
+                    final=False,
+                )
+        if latest_text:
+            yield self.finalize_output(
+                answer=latest_text,
+                memory=self.active_memory,
+                messages=latest_messages,
+                metadata={},
+                tool_calls=self._extract_tool_calls(latest_messages),
+                final=True,
             )
-            yield self._handle_recursion_limit_error(
-                error=exc,
-                recursion_limit=recursion_limit,
-                latest_messages=latest_messages,
-                agent_inputs=agent_inputs,
-            )
-            return
-        yield self._build_output_from_messages(latest_messages)
+        else:
+            yield self._build_output_from_messages(latest_messages)
 
     async def astream(self, **kwargs) -> AsyncIterator[PipelineOutput]:
-        """Stream agent updates asynchronously with structured trace events."""
+        """Stream agent updates asynchronously."""
         logger.debug("Streaming %s asynchronously", self.__class__.__name__)
         agent_inputs = self._prepare_agent_inputs(**kwargs)
         if self.agent is None:
             self.refresh_agent(force=True)
 
         latest_messages: List[BaseMessage] = []
-        recursion_limit = self._recursion_limit()
-        try:
-            async for event in self.agent.astream(agent_inputs, stream_mode="updates", config={"recursion_limit": recursion_limit}):
-                messages = self._extract_messages(event)
-                if messages:
-                    latest_messages = messages
-                    content = self._message_content(messages[-1])
-                    if content:
-                        yield self.finalize_output(
-                            answer=content,
-                            memory=self.active_memory,
-                            messages=messages,
-                            metadata={},
-                            final=False,
-                        )
-        except GraphRecursionError as exc:
-            logger.warning(
-                "Recursion limit hit during async stream for %s (limit=%s): %s",
-                self.__class__.__name__,
-                recursion_limit,
-                exc,
+        latest_text = ""
+        async for event in self.agent.astream(agent_inputs, stream_mode="messages"):
+            messages = self._extract_messages(event)
+            if messages:
+                latest_messages = messages
+                content = self._message_content(messages[-1])
+                if content:
+                    if content.startswith(latest_text):
+                        latest_text = content
+                    elif latest_text.startswith(content):
+                        latest_text = latest_text
+                    else:
+                        latest_text += content
+                    yield self.finalize_output(
+                        answer=content,
+                        memory=self.active_memory,
+                        messages=messages,
+                        metadata={},
+                        final=False,
+                    )
+        if latest_text:
+            yield self.finalize_output(
+                answer=latest_text,
+                memory=self.active_memory,
+                messages=latest_messages,
+                metadata={},
+                tool_calls=self._extract_tool_calls(latest_messages),
+                final=True,
             )
-            yield await self._handle_recursion_limit_error_async(
-                error=exc,
-                recursion_limit=recursion_limit,
-                latest_messages=latest_messages,
-                agent_inputs=agent_inputs,
-            )
-            return
-        yield self._build_output_from_messages(latest_messages)
+        else:
+            yield self._build_output_from_messages(latest_messages)
 
     def _init_llms(self) -> None:
         """Initialise language models declared for the pipeline."""
@@ -363,12 +328,7 @@ class BaseReActAgent:
 
     def _metadata_from_agent_output(self, answer_output: Dict[str, Any]) -> Dict[str, Any]:
         """Hook for subclasses to enrich metadata returned to callers."""
-        # Include model/pipeline tracking info
-        model_used = getattr(self.agent_llm, 'model_name', None) or getattr(self.agent_llm, 'model', 'unknown')
-        return {
-            "model_used": model_used,
-            "pipeline_used": self.__class__.__name__,
-        }
+        return {}
 
     def _extract_messages(self, payload: Any) -> List[BaseMessage]:
         """Pull LangChain messages from a stream/update payload."""
@@ -462,214 +422,3 @@ class BaseReActAgent:
             metadata=safe_metadata,
             final=final,
         )
-
-    def _recursion_limit(self) -> int:
-        """Read and validate recursion limit from pipeline config."""
-        value = self.pipeline_config.get("recursion_limit", self.DEFAULT_RECURSION_LIMIT)
-        try:
-            limit = int(value)
-            if limit <= 0:
-                raise ValueError("recursion_limit must be positive")
-            logger.info("Using recursion_limit=%s for %s", limit, self.__class__.__name__)
-            return limit
-        except Exception:
-            logger.warning("Invalid recursion_limit '%s' for %s; using default %s", value, self.__class__.__name__, self.DEFAULT_RECURSION_LIMIT)
-            return self.DEFAULT_RECURSION_LIMIT
-
-    def _last_user_message_content(self, messages: Sequence[BaseMessage]) -> Optional[str]:
-        """Extract content of the most recent user/human message."""
-        for msg in reversed(list(messages or [])):
-            role = getattr(msg, "type", "").lower()
-            if role in ("human", "user"):
-                return self._message_content(msg)
-        return None
-
-    def _recursion_metadata(self, recursion_limit: int, error: Exception) -> Dict[str, Any]:
-        metadata: Dict[str, Any] = {
-            "recursion_exhausted": True,
-            "recursion_limit": recursion_limit,
-            "error": str(error),
-        }
-        last_node = getattr(error, "node", None) or getattr(error, "step", None)
-        if last_node:
-            metadata["last_node"] = last_node
-        return metadata
-
-    def _handle_recursion_limit_error(
-        self,
-        *,
-        error: Exception,
-        recursion_limit: int,
-        latest_messages: Sequence[BaseMessage],
-        agent_inputs: Optional[Dict[str, Any]] = None,
-    ) -> PipelineOutput:
-        """Build a best-effort response after recursion exhaustion."""
-        metadata = self._recursion_metadata(recursion_limit, error)
-        wrap_message = self._generate_wrap_up_message(
-            recursion_limit=recursion_limit,
-            error=error,
-            latest_messages=latest_messages,
-            agent_inputs=agent_inputs,
-        )
-        messages: List[BaseMessage] = list(latest_messages) if latest_messages else []
-        if wrap_message:
-            messages.append(wrap_message)
-        else:
-            messages.append(
-                AIMessage(
-                    content=(
-                        f"Recursion limit {recursion_limit} reached. "
-                        "No additional summary could be generated."
-                    )
-                )
-            )
-        tool_calls = self._extract_tool_calls(messages)
-        return self.finalize_output(
-            answer=self._message_content(messages[-1]),
-            memory=self.active_memory,
-            messages=messages,
-            metadata=metadata,
-            tool_calls=tool_calls,
-            final=True,
-        )
-
-    async def _handle_recursion_limit_error_async(
-        self,
-        *,
-        error: Exception,
-        recursion_limit: int,
-        latest_messages: Sequence[BaseMessage],
-        agent_inputs: Optional[Dict[str, Any]] = None,
-    ) -> PipelineOutput:
-        """Async wrapper to build a best-effort response after recursion exhaustion."""
-        metadata = self._recursion_metadata(recursion_limit, error)
-        wrap_message = await self._generate_wrap_up_message_async(
-            recursion_limit=recursion_limit,
-            error=error,
-            latest_messages=latest_messages,
-            agent_inputs=agent_inputs,
-        )
-        messages: List[BaseMessage] = list(latest_messages) if latest_messages else []
-        if wrap_message:
-            messages.append(wrap_message)
-        else:
-            messages.append(
-                AIMessage(
-                    content=(
-                        f"Recursion limit {recursion_limit} reached. "
-                        "No additional summary could be generated."
-                    )
-                )
-            )
-        tool_calls = self._extract_tool_calls(messages)
-        return self.finalize_output(
-            answer=self._message_content(messages[-1]),
-            memory=self.active_memory,
-            messages=messages,
-            metadata=metadata,
-            tool_calls=tool_calls,
-            final=True,
-        )
-
-    def _generate_wrap_up_message(
-        self,
-        *,
-        recursion_limit: int,
-        error: Exception,
-        latest_messages: Sequence[BaseMessage],
-        agent_inputs: Optional[Dict[str, Any]],
-    ) -> Optional[BaseMessage]:
-        """Perform a single LLM-only wrap-up to summarize steps and answer."""
-        prompt = self._build_wrap_up_prompt(recursion_limit, error, latest_messages, agent_inputs)
-        try:
-            response = self.agent_llm.invoke([SystemMessage(content=prompt), HumanMessage(content="Provide the final response now.")])
-            if isinstance(response, BaseMessage):
-                return response
-            return AIMessage(content=str(response))
-        except Exception as exc:
-            logger.error("Failed to generate wrap-up message after recursion limit: %s", exc)
-            return AIMessage(
-                content=(
-                    f"Recursion limit {recursion_limit} reached and wrap-up generation failed: {exc}"
-                )
-            )
-
-    async def _generate_wrap_up_message_async(
-        self,
-        *,
-        recursion_limit: int,
-        error: Exception,
-        latest_messages: Sequence[BaseMessage],
-        agent_inputs: Optional[Dict[str, Any]],
-    ) -> Optional[BaseMessage]:
-        """Async LLM-only wrap-up to summarize steps and answer."""
-        prompt = self._build_wrap_up_prompt(recursion_limit, error, latest_messages, agent_inputs)
-        try:
-            if hasattr(self.agent_llm, "ainvoke"):
-                response = await self.agent_llm.ainvoke([SystemMessage(content=prompt), HumanMessage(content="Provide the final response now.")])
-            else:
-                response = self.agent_llm.invoke([SystemMessage(content=prompt), HumanMessage(content="Provide the final response now.")])
-            if isinstance(response, BaseMessage):
-                return response
-            return AIMessage(content=str(response))
-        except Exception as exc:
-            logger.error("Failed to generate async wrap-up message after recursion limit: %s", exc)
-            return AIMessage(
-                content=(
-                    f"Recursion limit {recursion_limit} reached and wrap-up generation failed: {exc}"
-                )
-            )
-
-    def _build_wrap_up_prompt(
-        self,
-        recursion_limit: int,
-        error: Exception,
-        latest_messages: Sequence[BaseMessage],
-        agent_inputs: Optional[Dict[str, Any]],
-    ) -> str:
-        """Construct a concise wrap-up prompt using gathered context."""
-        messages = list(latest_messages or [])
-        input_messages = []
-        if agent_inputs and isinstance(agent_inputs, dict):
-            input_messages = agent_inputs.get("messages") or []
-        user_question = self._last_user_message_content(messages or input_messages) or "Unavailable"
-
-        conversation_snippets = []
-        for msg in messages[-6:]:
-            conversation_snippets.append(f"- {self._format_message(msg)}")
-
-        memory = self.active_memory
-        notes = memory.intermediate_steps() if memory else []
-        document_summaries: List[str] = []
-        if memory:
-            for doc in memory.unique_documents()[:5]:
-                metadata = doc.metadata or {}
-                location = metadata.get("path") or metadata.get("source") or metadata.get("document_id") or "document"
-                snippet = (doc.page_content or "")[:400]
-                document_summaries.append(f"- {location}: {snippet}")
-
-        prompt_sections: List[str] = [
-            (
-                "You are finalizing an interrupted ReAct agent run. The graph hit its recursion limit "
-                f"({recursion_limit}) and can no longer call tools. Provide one concise wrap-up response: "
-                "summarize what was attempted, cite retrieved evidence briefly, and answer the user's request "
-                "as best as possible. Do NOT call tools."
-            ),
-            f"User request or latest message:\n{user_question}",
-        ]
-        if conversation_snippets:
-            prompt_sections.append("Recent conversation (latest last):\n" + "\n".join(conversation_snippets))
-        if notes:
-            prompt_sections.append("Notes / steps recorded:\n" + "\n".join(f"- {n}" for n in notes))
-        if document_summaries:
-            prompt_sections.append("Retrieved documents (truncated):\n" + "\n".join(document_summaries))
-        error_text = str(error) if error else ""
-        if error_text:
-            prompt_sections.append(f"Error detail: {error_text}")
-        prompt_sections.append(
-            "Respond with:\n"
-            "1) Brief summary of what was attempted.\n"
-            "2) Best possible answer using the above context.\n"
-            f"3) Explicitly note that the run stopped after hitting the recursion limit {recursion_limit}."
-        )
-        return "\n\n".join(prompt_sections)
