@@ -1339,10 +1339,12 @@ const Chat = {
     UI.addMessage(assistantMsg);
 
     try {
+      UI.showCancelButton(msgId);
       await this.streamResponse(msgId, configName);
     } catch (e) {
       console.error('Streaming error:', e);
     } finally {
+      UI.hideCancelButton(msgId);
       this.state.isStreaming = false;
       UI.setInputDisabled(false);
       UI.elements.inputField?.focus();
