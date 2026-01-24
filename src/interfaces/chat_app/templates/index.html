@@ -22,6 +22,9 @@
 </head>
 <body>
   <div class="app">
+    <!-- Sidebar Overlay (for mobile) -->
+    <div class="sidebar-overlay" aria-hidden="true"></div>
+    
     <!-- Sidebar -->
     <aside class="sidebar">
       <div class="sidebar-header">
@@ -31,8 +34,8 @@
           </svg>
           A2rchi
         </div>
-        <button class="new-chat-btn" title="New chat">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="new-chat-btn" title="New chat" aria-label="New chat">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <line x1="12" y1="5" x2="12" y2="19"></line>
             <line x1="5" y1="12" x2="19" y2="12"></line>
           </svg>
@@ -43,9 +46,10 @@
 
     <!-- Header -->
     <header class="header">
+      <h1 class="visually-hidden">A2rchi Chat</h1>
       <div class="header-left">
-        <button class="sidebar-toggle" title="Toggle sidebar">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="sidebar-toggle" title="Toggle sidebar" aria-label="Toggle sidebar" aria-expanded="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <line x1="3" y1="12" x2="21" y2="12"></line>
             <line x1="3" y1="6" x2="21" y2="6"></line>
             <line x1="3" y1="18" x2="21" y2="18"></line>
@@ -64,20 +68,21 @@
     <footer class="input-area">
       <div class="input-container">
         <div class="input-wrapper">
-          <textarea class="input-field" placeholder="Ask A2rchi..." rows="1"></textarea>
+          <textarea class="input-field" placeholder="Ask A2rchi..." rows="1" aria-label="Message input"></textarea>
         </div>
         <div class="input-toolbar">
           <div class="toolbar-left">
-            <select class="model-select model-select-a" title="Select model"></select>
-            <button class="settings-btn" title="Settings">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <label for="model-select-a" class="visually-hidden">Select model</label>
+            <select id="model-select-a" class="model-select model-select-a" title="Select model"></select>
+            <button class="settings-btn" title="Settings" aria-label="Settings">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <circle cx="12" cy="12" r="3"></circle>
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
               </svg>
             </button>
           </div>
-          <button class="send-btn" title="Send message">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <button class="send-btn" title="Send message" aria-label="Send message">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
             </svg>
           </button>
@@ -91,8 +96,8 @@
       <div class="settings-panel">
         <div class="settings-header">
           <h3>Settings</h3>
-          <button class="settings-close">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <button class="settings-close" aria-label="Close settings">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
@@ -100,17 +105,38 @@
         </div>
         <div class="settings-body">
           <div class="settings-group">
-            <label class="settings-label">A/B Testing</label>
+            <span class="settings-label" id="ab-testing-label">A/B Testing</span>
             <p class="settings-description">Compare responses from two different models side by side.</p>
             <label class="settings-toggle">
-              <input type="checkbox" class="ab-checkbox">
+              <input type="checkbox" class="ab-checkbox" id="ab-checkbox" aria-describedby="ab-testing-label">
               <span class="toggle-slider"></span>
               <span class="toggle-label">Enable A/B comparison</span>
             </label>
           </div>
           <div class="settings-group ab-model-group" style="display: none;">
-            <label class="settings-label">Model B</label>
-            <select class="model-select model-select-b"></select>
+            <label class="settings-label" for="model-select-b">Model B</label>
+            <select id="model-select-b" class="model-select model-select-b"></select>
+          </div>
+          <div class="settings-group">
+            <span class="settings-label" id="transparency-label">Agent Transparency</span>
+            <p class="settings-description">Control how much detail to show about agent tool calls and reasoning.</p>
+            <div class="settings-radio-group trace-verbose-options" role="radiogroup" aria-labelledby="transparency-label">
+              <label class="settings-radio">
+                <input type="radio" name="trace-verbose" value="minimal" id="trace-minimal">
+                <span class="radio-label">Minimal</span>
+                <span class="radio-description">Final answer only</span>
+              </label>
+              <label class="settings-radio">
+                <input type="radio" name="trace-verbose" value="normal" id="trace-normal" checked>
+                <span class="radio-label">Normal</span>
+                <span class="radio-description">Show tool calls (collapsed)</span>
+              </label>
+              <label class="settings-radio">
+                <input type="radio" name="trace-verbose" value="verbose" id="trace-verbose">
+                <span class="radio-label">Verbose</span>
+                <span class="radio-description">Show everything expanded</span>
+              </label>
+            </div>
           </div>
         </div>
       </div>

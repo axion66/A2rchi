@@ -173,3 +173,64 @@ FROM ab_comparisons
 WHERE conversation_id = %s
 ORDER BY created_at ASC;
 """
+
+# =============================================================================
+# Agent Trace Queries
+# =============================================================================
+
+SQL_CREATE_AGENT_TRACE = """
+INSERT INTO agent_traces (
+    trace_id, conversation_id, message_id, user_message_id, 
+    config_id, pipeline_name, events, started_at, status
+)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
+"""
+
+SQL_UPDATE_AGENT_TRACE = """
+UPDATE agent_traces
+SET events = %s,
+    completed_at = %s,
+    status = %s,
+    message_id = COALESCE(%s, message_id),
+    total_tool_calls = %s,
+    total_duration_ms = %s,
+    cancelled_by = %s,
+    cancellation_reason = %s
+WHERE trace_id = %s;
+"""
+
+SQL_GET_AGENT_TRACE = """
+SELECT trace_id, conversation_id, message_id, user_message_id,
+       config_id, pipeline_name, events, started_at, completed_at,
+       status, total_tool_calls, total_tokens_used, total_duration_ms,
+       cancelled_by, cancellation_reason, created_at
+FROM agent_traces
+WHERE trace_id = %s;
+"""
+
+SQL_GET_TRACE_BY_MESSAGE = """
+SELECT trace_id, conversation_id, message_id, user_message_id,
+       config_id, pipeline_name, events, started_at, completed_at,
+       status, total_tool_calls, total_tokens_used, total_duration_ms,
+       cancelled_by, cancellation_reason, created_at
+FROM agent_traces
+WHERE message_id = %s;
+"""
+
+SQL_GET_ACTIVE_TRACE = """
+SELECT trace_id, conversation_id, message_id, user_message_id,
+       config_id, pipeline_name, events, started_at, status
+FROM agent_traces
+WHERE conversation_id = %s AND status = 'running'
+ORDER BY started_at DESC
+LIMIT 1;
+"""
+
+SQL_CANCEL_ACTIVE_TRACES = """
+UPDATE agent_traces
+SET status = 'cancelled',
+    completed_at = %s,
+    cancelled_by = %s,
+    cancellation_reason = %s
+WHERE conversation_id = %s AND status = 'running';
+"""

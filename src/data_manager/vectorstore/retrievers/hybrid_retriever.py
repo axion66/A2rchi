@@ -81,7 +81,7 @@ class HybridRetriever(BaseRetriever):
             if self._dense_retriever is None:
                 raise RuntimeError("HybridRetriever not initialised; no retriever available.")
             logger.debug("Falling back to semantic-only retriever")
-            return self._dense_retriever.get_relevant_documents(query)
+            return self._dense_retriever.invoke(query)
 
         # Get combined results from ensemble
         ensemble_docs = self._ensemble_retriever._get_relevant_documents(query, run_manager=run_manager)

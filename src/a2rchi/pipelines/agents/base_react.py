@@ -1,4 +1,5 @@
-from typing import Any, Callable, Dict, List, Optional, Sequence, Iterator, AsyncIterator
+from typing import Any, Callable, Dict, List, Optional, Sequence, Iterator, AsyncIterator, Set
+import time
 
 from langchain.agents import create_agent
 from langchain_core.messages import BaseMessage, SystemMessage
@@ -107,87 +108,268 @@ class BaseReActAgent:
         return output
 
     def stream(self, **kwargs) -> Iterator[PipelineOutput]:
-        """Stream agent updates synchronously."""
+        """Stream agent updates synchronously with structured trace events."""
         logger.debug("Streaming %s", self.__class__.__name__)
         agent_inputs = self._prepare_agent_inputs(**kwargs)
         if self.agent is None:
             self.refresh_agent(force=True)
 
-        latest_messages: List[BaseMessage] = []
-        latest_text = ""
+        all_messages: List[BaseMessage] = []  # Accumulated full messages
+        accumulated_content = ""  # Accumulated content from streaming
+        active_tool_calls: Dict[str, float] = {}  # tool_call_id -> start_time
+        emitted_tool_starts: Set[str] = set()
+        emitted_tool_ends: Set[str] = set()
+        
         for event in self.agent.stream(agent_inputs, stream_mode="messages"):
-            logger.debug("Received stream event: %s", event)
+            logger.debug("Received stream event type=%s: %s", type(event).__name__, str(event)[:200])
             messages = self._extract_messages(event)
-            if messages:
-                latest_messages = messages
-                content = self._message_content(messages[-1])
-                if content:
-                    if content.startswith(latest_text):
-                        latest_text = content
-                    elif latest_text.startswith(content):
-                        latest_text = latest_text
-                    else:
-                        latest_text += content
-                tool_calls = self._extract_tool_calls(messages)
+            if not messages:
+                continue
+            
+            message = messages[-1]
+            msg_type = str(getattr(message, "type", "")).lower()
+            msg_class = type(message).__name__.lower()
+            logger.debug("Message type=%s, class=%s, content=%s", msg_type, msg_class, str(getattr(message, 'content', ''))[:100])
+            
+            # Track all non-chunk messages
+            if "chunk" not in msg_class:
+                all_messages.extend(messages)
+            
+            # Detect tool call start (AIMessage with tool_calls)
+            if hasattr(message, "tool_calls") and message.tool_calls:
+                for tc in message.tool_calls:
+                    tc_id = tc.get("id", "")
+                    if tc_id and tc_id not in emitted_tool_starts:
+                        emitted_tool_starts.add(tc_id)
+                        active_tool_calls[tc_id] = time.time()
+                        yield self.finalize_output(
+                            answer="",
+                            memory=self.active_memory,
+                            messages=all_messages,
+                            metadata={
+                                "event_type": "tool_start",
+                                "tool_call_id": tc_id,
+                                "tool_name": tc.get("name", "unknown"),
+                                "tool_args": tc.get("args", {}),
+                            },
+                            final=False,
+                        )
+            
+            # Detect tool result (ToolMessage with tool_call_id)
+            tool_call_id = getattr(message, "tool_call_id", None)
+            if tool_call_id and tool_call_id not in emitted_tool_ends:
                 yield self.finalize_output(
-                    answer=content,
+                    answer="",
                     memory=self.active_memory,
-                    messages=messages,
-                    metadata={},
-                    tool_calls=tool_calls,
+                    messages=all_messages,
+                    metadata={
+                        "event_type": "tool_output",
+                        "tool_call_id": tool_call_id,
+                        "output": self._message_content(message),
+                    },
                     final=False,
                 )
-        if latest_text:
+                
+                emitted_tool_ends.add(tool_call_id)
+                duration_ms = None
+                if tool_call_id in active_tool_calls:
+                    duration_ms = int((time.time() - active_tool_calls[tool_call_id]) * 1000)
+                    del active_tool_calls[tool_call_id]
+                
+                yield self.finalize_output(
+                    answer="",
+                    memory=self.active_memory,
+                    messages=all_messages,
+                    metadata={
+                        "event_type": "tool_end",
+                        "tool_call_id": tool_call_id,
+                        "status": "success",
+                        "duration_ms": duration_ms,
+                    },
+                    final=False,
+                )
+            
+            # AI content streaming - accumulate content from chunks
+            if msg_type in {"ai", "assistant"} or "ai" in msg_class:
+                if not getattr(message, "tool_calls", None):
+                    content = self._message_content(message)
+                    if content:
+                        # For chunks, content is delta; for full messages, content is cumulative
+                        if "chunk" in msg_class:
+                            accumulated_content += content
+                        else:
+                            # Full message - use its content directly
+                            accumulated_content = content
+                        
+                        yield self.finalize_output(
+                            answer=accumulated_content,
+                            memory=self.active_memory,
+                            messages=all_messages,
+                            metadata={"event_type": "text"},
+                            tool_calls=self._extract_tool_calls(all_messages),
+                            final=False,
+                        )
+        
+        # Final output
+        logger.debug("Stream finished. accumulated_content='%s', all_messages count=%d", 
+                     accumulated_content[:100] if accumulated_content else "", len(all_messages))
+        
+        final_answer = accumulated_content
+        if not final_answer and all_messages:
+            # Find the last AI message with content
+            for msg in reversed(all_messages):
+                msg_type = str(getattr(msg, "type", "")).lower()
+                if msg_type in {"ai", "assistant"} or "ai" in type(msg).__name__.lower():
+                    content = self._message_content(msg)
+                    if content:
+                        final_answer = content
+                        logger.debug("Found final answer from AI message: %s", content[:100])
+                        break
+        
+        if final_answer:
             yield self.finalize_output(
-                answer=latest_text,
+                answer=final_answer,
                 memory=self.active_memory,
-                messages=latest_messages,
-                metadata={},
-                tool_calls=self._extract_tool_calls(latest_messages),
+                messages=all_messages,
+                metadata={"event_type": "final"},
+                tool_calls=self._extract_tool_calls(all_messages),
                 final=True,
             )
         else:
-            yield self._build_output_from_messages(latest_messages)
+            logger.warning("No final answer found from stream. Messages: %s", 
+                          [self._format_message(m) for m in all_messages[:5]])
+            output = self._build_output_from_messages(all_messages)
+            output.metadata["event_type"] = "final"
+            yield output
 
     async def astream(self, **kwargs) -> AsyncIterator[PipelineOutput]:
-        """Stream agent updates asynchronously."""
+        """Stream agent updates asynchronously with structured trace events."""
         logger.debug("Streaming %s asynchronously", self.__class__.__name__)
         agent_inputs = self._prepare_agent_inputs(**kwargs)
         if self.agent is None:
             self.refresh_agent(force=True)
 
-        latest_messages: List[BaseMessage] = []
-        latest_text = ""
+        all_messages: List[BaseMessage] = []
+        accumulated_content = ""
+        active_tool_calls: Dict[str, float] = {}
+        emitted_tool_starts: Set[str] = set()
+        emitted_tool_ends: Set[str] = set()
+        
         async for event in self.agent.astream(agent_inputs, stream_mode="messages"):
             messages = self._extract_messages(event)
-            if messages:
-                latest_messages = messages
-                content = self._message_content(messages[-1])
-                if content:
-                    if content.startswith(latest_text):
-                        latest_text = content
-                    elif latest_text.startswith(content):
-                        latest_text = latest_text
-                    else:
-                        latest_text += content
-                    yield self.finalize_output(
-                        answer=content,
-                        memory=self.active_memory,
-                        messages=messages,
-                        metadata={},
-                        final=False,
-                    )
-        if latest_text:
+            if not messages:
+                continue
+            
+            message = messages[-1]
+            msg_type = str(getattr(message, "type", "")).lower()
+            msg_class = type(message).__name__.lower()
+            
+            # Track all non-chunk messages
+            if "chunk" not in msg_class:
+                all_messages.extend(messages)
+            
+            # Detect tool call start
+            if hasattr(message, "tool_calls") and message.tool_calls:
+                for tc in message.tool_calls:
+                    tc_id = tc.get("id", "")
+                    if tc_id and tc_id not in emitted_tool_starts:
+                        emitted_tool_starts.add(tc_id)
+                        active_tool_calls[tc_id] = time.time()
+                        yield self.finalize_output(
+                            answer="",
+                            memory=self.active_memory,
+                            messages=all_messages,
+                            metadata={
+                                "event_type": "tool_start",
+                                "tool_call_id": tc_id,
+                                "tool_name": tc.get("name", "unknown"),
+                                "tool_args": tc.get("args", {}),
+                            },
+                            final=False,
+                        )
+            
+            # Detect tool result
+            tool_call_id = getattr(message, "tool_call_id", None)
+            if tool_call_id and tool_call_id not in emitted_tool_ends:
+                yield self.finalize_output(
+                    answer="",
+                    memory=self.active_memory,
+                    messages=all_messages,
+                    metadata={
+                        "event_type": "tool_output",
+                        "tool_call_id": tool_call_id,
+                        "output": self._message_content(message),
+                    },
+                    final=False,
+                )
+                
+                emitted_tool_ends.add(tool_call_id)
+                duration_ms = None
+                if tool_call_id in active_tool_calls:
+                    duration_ms = int((time.time() - active_tool_calls[tool_call_id]) * 1000)
+                    del active_tool_calls[tool_call_id]
+                
+                yield self.finalize_output(
+                    answer="",
+                    memory=self.active_memory,
+                    messages=all_messages,
+                    metadata={
+                        "event_type": "tool_end",
+                        "tool_call_id": tool_call_id,
+                        "status": "success",
+                        "duration_ms": duration_ms,
+                    },
+                    final=False,
+                )
+            
+            # AI content streaming - accumulate content from chunks
+            if msg_type in {"ai", "assistant"} or "ai" in msg_class:
+                if not getattr(message, "tool_calls", None):
+                    content = self._message_content(message)
+                    if content:
+                        if "chunk" in msg_class:
+                            accumulated_content += content
+                        else:
+                            accumulated_content = content
+                        
+                        yield self.finalize_output(
+                            answer=accumulated_content,
+                            memory=self.active_memory,
+                            messages=all_messages,
+                            metadata={"event_type": "text"},
+                            final=False,
+                        )
+        
+        # Final output
+        logger.debug("Async stream finished. accumulated_content='%s', all_messages count=%d", 
+                     accumulated_content[:100] if accumulated_content else "", len(all_messages))
+        
+        final_answer = accumulated_content
+        if not final_answer and all_messages:
+            for msg in reversed(all_messages):
+                msg_type = str(getattr(msg, "type", "")).lower()
+                if msg_type in {"ai", "assistant"} or "ai" in type(msg).__name__.lower():
+                    content = self._message_content(msg)
+                    if content:
+                        final_answer = content
+                        logger.debug("Found final answer from AI message: %s", content[:100])
+                        break
+        
+        if final_answer:
             yield self.finalize_output(
-                answer=latest_text,
+                answer=final_answer,
                 memory=self.active_memory,
-                messages=latest_messages,
-                metadata={},
-                tool_calls=self._extract_tool_calls(latest_messages),
+                messages=all_messages,
+                metadata={"event_type": "final"},
+                tool_calls=self._extract_tool_calls(all_messages),
                 final=True,
             )
         else:
-            yield self._build_output_from_messages(latest_messages)
+            logger.warning("No final answer found from async stream. Messages: %s", 
+                          [self._format_message(m) for m in all_messages[:5]])
+            output = self._build_output_from_messages(all_messages)
+            output.metadata["event_type"] = "final"
+            yield output
 
     def _init_llms(self) -> None:
         """Initialise language models declared for the pipeline."""

@@ -15,6 +15,7 @@ const CONFIG = {
     CLIENT_ID: 'a2rchi_client_id',
     ACTIVE_CONVERSATION: 'a2rchi_active_conversation_id',
     AB_WARNING_DISMISSED: 'a2rchi_ab_warning_dismissed',
+    TRACE_VERBOSE_MODE: 'a2rchi_trace_verbose_mode',
   },
   ENDPOINTS: {
     STREAM: '/api/get_chat_response_stream',
@@ -26,9 +27,15 @@ const CONFIG = {
     AB_CREATE: '/api/ab/create',
     AB_PREFERENCE: '/api/ab/preference',
     AB_PENDING: '/api/ab/pending',
+    TRACE_GET: '/api/trace',
+    CANCEL_STREAM: '/api/cancel_stream',
   },
   STREAMING: {
     TIMEOUT: 300000, // 5 minutes
+  },
+  TRACE: {
+    MAX_TOOL_OUTPUT_PREVIEW: 500,
+    AUTO_COLLAPSE_TOOL_COUNT: 5,
   },
 };
 
@@ -200,7 +207,7 @@ const API = {
     });
   },
 
-  async *streamResponse(history, conversationId, configName) {
+  async *streamResponse(history, conversationId, configName, signal = null) {
     const response = await fetch(CONFIG.ENDPOINTS.STREAM, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -212,8 +219,9 @@ const API = {
         client_timeout: CONFIG.STREAMING.TIMEOUT,
         client_id: this.clientId,
         include_agent_steps: true,  // Required for streaming chunks
-        include_tool_steps: false,
+        include_tool_steps: true,   // Enable tool step events for trace
       }),
+      signal: signal,
     });
 
     if (response.status === 401) {
@@ -230,24 +238,28 @@ const API = {
     const decoder = new TextDecoder();
     let buffer = '';
 
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
-      
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
         
-        try {
-          yield JSON.parse(trimmed);
-        } catch (e) {
-          console.error('Failed to parse stream event:', e);
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          
+          try {
+            yield JSON.parse(trimmed);
+          } catch (e) {
+            console.error('Failed to parse stream event:', e);
+          }
         }
       }
+    } finally {
+      reader.releaseLock();
     }
   },
 
@@ -393,6 +405,7 @@ const UI = {
       app: document.querySelector('.app'),
       sidebar: document.querySelector('.sidebar'),
       sidebarToggle: document.querySelector('.sidebar-toggle'),
+      sidebarOverlay: document.querySelector('.sidebar-overlay'),
       conversationList: document.querySelector('.conversation-list'),
       newChatBtn: document.querySelector('.new-chat-btn'),
       messagesContainer: document.querySelector('.messages'),
@@ -407,14 +420,28 @@ const UI = {
       settingsClose: document.querySelector('.settings-close'),
       abCheckbox: document.querySelector('.ab-checkbox'),
       abModelGroup: document.querySelector('.ab-model-group'),
+      traceVerboseOptions: document.querySelector('.trace-verbose-options'),
     };
 
     this.bindEvents();
+    this.initTraceVerboseMode();
+  },
+
+  initTraceVerboseMode() {
+    // Set the initial radio button based on stored preference
+    const storedMode = localStorage.getItem(CONFIG.STORAGE_KEYS.TRACE_VERBOSE_MODE) || 'normal';
+    const radio = document.querySelector(`input[name="trace-verbose"][value="${storedMode}"]`);
+    if (radio) {
+      radio.checked = true;
+    }
   },
 
   bindEvents() {
     // Sidebar toggle
     this.elements.sidebarToggle?.addEventListener('click', () => this.toggleSidebar());
+    
+    // Sidebar overlay click to close (mobile)
+    this.elements.sidebarOverlay?.addEventListener('click', () => this.closeSidebar());
     
     // New chat
     this.elements.newChatBtn?.addEventListener('click', () => Chat.newConversation());
@@ -469,6 +496,13 @@ const UI = {
         Chat.cancelPendingABComparison();
       }
     });
+
+    // Trace verbose mode radio buttons
+    this.elements.traceVerboseOptions?.addEventListener('change', (e) => {
+      if (e.target.name === 'trace-verbose') {
+        Chat.setTraceVerboseMode(e.target.value);
+      }
+    });
     
     // Close modal on Escape
     document.addEventListener('keydown', (e) => {
@@ -491,7 +525,31 @@ const UI = {
   },
 
   toggleSidebar() {
-    this.elements.app?.classList.toggle('sidebar-collapsed');
+    const isMobile = window.innerWidth <= 768;
+    if (isMobile) {
+      // On mobile, toggle sidebar-open to show/hide the overlay sidebar
+      this.elements.app?.classList.toggle('sidebar-open');
+    } else {
+      // On desktop, toggle sidebar-collapsed to collapse the sidebar
+      this.elements.app?.classList.toggle('sidebar-collapsed');
+    }
+    // Update aria-expanded state
+    const toggle = this.elements.sidebarToggle;
+    if (toggle) {
+      const isOpen = isMobile 
+        ? this.elements.app?.classList.contains('sidebar-open')
+        : !this.elements.app?.classList.contains('sidebar-collapsed');
+      toggle.setAttribute('aria-expanded', isOpen);
+    }
+  },
+
+  closeSidebar() {
+    // Close the sidebar on mobile (called by overlay click)
+    this.elements.app?.classList.remove('sidebar-open');
+    const toggle = this.elements.sidebarToggle;
+    if (toggle) {
+      toggle.setAttribute('aria-expanded', 'false');
+    }
   },
 
   isABEnabled() {
@@ -563,12 +621,12 @@ const UI = {
         html += `
           <div class="conversation-item ${isActive ? 'active' : ''}" 
                data-id="${conv.conversation_id}">
-            <svg class="conversation-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg class="conversation-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
             <span class="conversation-item-title">${title}</span>
-            <button class="conversation-item-delete" data-id="${conv.conversation_id}">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button class="conversation-item-delete" data-id="${conv.conversation_id}" aria-label="Delete conversation" title="Delete conversation">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
               </svg>
             </button>
@@ -620,7 +678,9 @@ const UI = {
 
   createMessageHTML(msg) {
     const isUser = msg.sender === 'User';
-    const avatar = isUser ? '👤' : '✦';
+    const avatar = isUser 
+      ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>'
+      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2z"/></svg>';
     const senderName = isUser ? 'You' : 'A2rchi';
     const roleClass = isUser ? 'user' : 'assistant';
     
@@ -696,11 +756,16 @@ const UI = {
   // =========================================================================
 
   showABWarningModal(onConfirm, onCancel) {
+    // Prevent duplicate modals
+    if (document.getElementById('ab-warning-modal')) {
+      return;
+    }
+    
     const modalHtml = `
       <div class="ab-warning-modal-overlay" id="ab-warning-modal">
         <div class="ab-warning-modal">
           <div class="ab-warning-modal-header">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
               <line x1="12" y1="9" x2="12" y2="13"></line>
               <line x1="12" y1="17" x2="12.01" y2="17"></line>
@@ -769,18 +834,32 @@ const UI = {
     const empty = this.elements.messagesInner?.querySelector('.messages-empty');
     if (empty) empty.remove();
 
+    const showTrace = Chat.state.traceVerboseMode !== 'minimal';
+    const traceIconSvg = `<svg class="trace-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>`;
+    const traceHtml = (id) => showTrace ? `
+          <div class="trace-container ab-trace-container" data-message-id="${id}">
+            <div class="trace-header" onclick="UI.toggleTraceExpanded('${id}')">
+              ${traceIconSvg}
+              <span class="trace-label">Agent Activity</span>
+              <span class="toggle-icon">▼</span>
+            </div>
+            <div class="trace-content"></div>
+          </div>` : '';
+
     const html = `
       <div class="ab-comparison" id="ab-comparison-active">
         <div class="ab-response ab-response-a" data-id="${msgIdA}">
           <div class="ab-response-header">
             <span class="ab-response-label">Model A</span>
           </div>
+          ${traceHtml(msgIdA)}
           <div class="ab-response-content message-content"></div>
         </div>
         <div class="ab-response ab-response-b" data-id="${msgIdB}">
           <div class="ab-response-header">
             <span class="ab-response-label">Model B</span>
           </div>
+          ${traceHtml(msgIdB)}
           <div class="ab-response-content message-content"></div>
         </div>
       </div>`;
@@ -847,10 +926,13 @@ const UI = {
     const responseB = comparison.querySelector('.ab-response-b');
 
     let winnerContent = '';
+    let winnerTrace = '';
     if (preference === 'a') {
       winnerContent = responseA?.querySelector('.ab-response-content')?.innerHTML || '';
+      winnerTrace = responseA?.querySelector('.trace-container')?.outerHTML || '';
     } else if (preference === 'b') {
       winnerContent = responseB?.querySelector('.ab-response-content')?.innerHTML || '';
+      winnerTrace = responseB?.querySelector('.trace-container')?.outerHTML || '';
     } else {
       // Tie - keep both visible but mark them
       responseA?.classList.add('ab-response-tie');
@@ -860,6 +942,7 @@ const UI = {
     }
 
     // Replace the entire comparison with a normal A2rchi message (matching createMessageHTML format)
+    // Include the trace container from the winning response
     const normalMessage = `
       <div class="message assistant" data-id="ab-winner-${Date.now()}">
         <div class="message-inner">
@@ -867,6 +950,7 @@ const UI = {
             <div class="message-avatar">✦</div>
             <span class="message-sender">A2rchi</span>
           </div>
+          ${winnerTrace}
           <div class="message-content">${winnerContent}</div>
         </div>
       </div>`;
@@ -897,7 +981,197 @@ const UI = {
     this.elements.messagesInner?.insertAdjacentHTML('beforeend', errorHtml);
     this.scrollToBottom();
   },
+
+  // =========================================================================
+  // Agent Trace Rendering
+  // =========================================================================
+
+  createTraceContainer(messageId) {
+    const msgEl = this.elements.messagesInner?.querySelector(`[data-id="${messageId}"]`);
+    if (!msgEl) return;
+
+    // Insert trace container before message content
+    const inner = msgEl.querySelector('.message-inner');
+    if (!inner) return;
+
+    const existingTrace = inner.querySelector('.trace-container');
+    if (existingTrace) return;
+
+    const traceIconSvg = `<svg class="trace-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>`;
+    const traceHtml = `
+      <div class="trace-container" data-message-id="${messageId}">
+        <div class="trace-header">
+          ${traceIconSvg}
+          <span class="trace-label">Agent Activity</span>
+          <button class="trace-toggle" aria-label="Toggle agent activity details" title="Toggle agent activity" onclick="UI.toggleTraceExpanded('${messageId}')">
+            <span class="toggle-icon" aria-hidden="true">▼</span>
+          </button>
+        </div>
+        <div class="trace-content"></div>
+      </div>`;
+
+    inner.insertAdjacentHTML('afterbegin', traceHtml);
+  },
+
+  toggleTraceExpanded(messageId) {
+    const container = document.querySelector(`.trace-container[data-message-id="${messageId}"]`);
+    if (!container) return;
+
+    container.classList.toggle('collapsed');
+    const toggleIcon = container.querySelector('.toggle-icon');
+    if (toggleIcon) {
+      toggleIcon.textContent = container.classList.contains('collapsed') ? '▶' : '▼';
+    }
+  },
+
+  renderToolStart(messageId, event) {
+    const traceContent = document.querySelector(`.trace-container[data-message-id="${messageId}"] .trace-content`);
+    if (!traceContent) return;
+
+    const toolHtml = `
+      <div class="tool-block tool-running" data-tool-call-id="${event.tool_call_id}">
+        <div class="tool-header" onclick="UI.toggleToolExpanded('${event.tool_call_id}')">
+          <span class="tool-icon">🔧</span>
+          <span class="tool-name">${Utils.escapeHtml(event.tool_name)}</span>
+          <span class="tool-status">
+            <span class="spinner"></span> Running...
+          </span>
+        </div>
+        <div class="tool-details">
+          <div class="tool-args">
+            <div class="tool-section-label">Arguments</div>
+            <pre><code>${this.formatToolArgs(event.tool_args)}</code></pre>
+          </div>
+          <div class="tool-output-section" style="display: none;">
+            <div class="tool-section-label">Output</div>
+            <pre><code class="tool-output-content"></code></pre>
+          </div>
+        </div>
+      </div>`;
+
+    traceContent.insertAdjacentHTML('beforeend', toolHtml);
+    this.scrollToBottom();
+
+    // Auto-expand if verbose mode
+    if (Chat.state.traceVerboseMode === 'verbose') {
+      const toolBlock = traceContent.querySelector(`[data-tool-call-id="${event.tool_call_id}"]`);
+      toolBlock?.classList.add('expanded');
+    }
+  },
+
+  renderToolOutput(messageId, event) {
+    const toolBlock = document.querySelector(`.tool-block[data-tool-call-id="${event.tool_call_id}"]`);
+    if (!toolBlock) return;
+
+    const outputSection = toolBlock.querySelector('.tool-output-section');
+    const outputContent = toolBlock.querySelector('.tool-output-content');
+    
+    if (outputSection) {
+      outputSection.style.display = 'block';
+    }
+    
+    if (outputContent) {
+      let displayText = event.output || '';
+      if (displayText.length > CONFIG.TRACE.MAX_TOOL_OUTPUT_PREVIEW) {
+        displayText = displayText.slice(0, CONFIG.TRACE.MAX_TOOL_OUTPUT_PREVIEW) + '...';
+      }
+      outputContent.textContent = displayText;
+      
+      if (event.truncated && event.full_length) {
+        const notice = document.createElement('div');
+        notice.className = 'truncation-notice';
+        notice.textContent = `Showing ${CONFIG.TRACE.MAX_TOOL_OUTPUT_PREVIEW} of ${event.full_length} chars`;
+        outputSection.appendChild(notice);
+      }
+    }
+
+    this.scrollToBottom();
+  },
+
+  renderToolEnd(messageId, event) {
+    const toolBlock = document.querySelector(`.tool-block[data-tool-call-id="${event.tool_call_id}"]`);
+    if (!toolBlock) return;
+
+    toolBlock.classList.remove('tool-running');
+    toolBlock.classList.add(event.status === 'success' ? 'tool-success' : 'tool-error');
+
+    const statusEl = toolBlock.querySelector('.tool-status');
+    if (statusEl) {
+      if (event.status === 'success') {
+        const durationText = event.duration_ms ? ` ${event.duration_ms}ms` : '';
+        statusEl.innerHTML = `<span class="checkmark">✓</span>${durationText}`;
+      } else {
+        statusEl.innerHTML = `<span class="error-icon">✗</span> Error`;
+      }
+    }
+
+    // Auto-collapse if many tools
+    const toolCount = document.querySelectorAll('.tool-block').length;
+    if (Chat.state.traceVerboseMode === 'normal' && toolCount > CONFIG.TRACE.AUTO_COLLAPSE_TOOL_COUNT) {
+      toolBlock.classList.remove('expanded');
+    }
+  },
+
+  toggleToolExpanded(toolCallId) {
+    const toolBlock = document.querySelector(`.tool-block[data-tool-call-id="${toolCallId}"]`);
+    if (toolBlock) {
+      toolBlock.classList.toggle('expanded');
+    }
+  },
+
+  finalizeTrace(messageId, trace) {
+    const container = document.querySelector(`.trace-container[data-message-id="${messageId}"]`);
+    if (!container) return;
+
+    const toolCount = trace.toolCalls.size;
+    const label = container.querySelector('.trace-label');
+    if (label && toolCount > 0) {
+      label.textContent = `Agent Activity (${toolCount} tool${toolCount === 1 ? '' : 's'})`;
+    }
+
+    // Auto-collapse in normal mode
+    if (Chat.state.traceVerboseMode === 'normal') {
+      container.classList.add('collapsed');
+      const toggleIcon = container.querySelector('.toggle-icon');
+      if (toggleIcon) toggleIcon.textContent = '▶';
+    }
+  },
+
+  formatToolArgs(args) {
+    if (!args) return '';
+    try {
+      if (typeof args === 'string') {
+        return Utils.escapeHtml(args);
+      }
+      return Utils.escapeHtml(JSON.stringify(args, null, 2));
+    } catch {
+      return Utils.escapeHtml(String(args));
+    }
+  },
+
+  showCancelButton(messageId) {
+    const msgEl = this.elements.messagesInner?.querySelector(`[data-id="${messageId}"]`);
+    if (!msgEl) return;
+
+    const existing = msgEl.querySelector('.cancel-stream-btn');
+    if (existing) return;
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'cancel-stream-btn';
+    cancelBtn.innerHTML = '⏹ Stop';
+    cancelBtn.onclick = () => Chat.cancelStream();
+
+    msgEl.querySelector('.message-inner')?.appendChild(cancelBtn);
+  },
+
+  hideCancelButton(messageId) {
+    const msgEl = this.elements.messagesInner?.querySelector(`[data-id="${messageId}"]`);
+    msgEl?.querySelector('.cancel-stream-btn')?.remove();
+  },
 };
+
+// Make UI globally accessible for onclick handlers
+window.UI = UI;
 
 // =============================================================================
 // Chat Controller
@@ -913,6 +1187,10 @@ const Chat = {
     // A/B Testing state
     activeABComparison: null,  // { comparisonId, responseAId, responseBId, configAId, configBId, userPromptMid }
     abVotePending: false,      // true when waiting for user vote
+    // Trace state
+    activeTrace: null,         // { traceId, events: [], toolCalls: Map<toolCallId, toolData> }
+    traceVerboseMode: localStorage.getItem(CONFIG.STORAGE_KEYS.TRACE_VERBOSE_MODE) || 'normal', // 'minimal' | 'normal' | 'verbose'
+    abortController: null,     // AbortController for cancellation
   },
 
   async init() {
@@ -1153,10 +1431,41 @@ const Chat = {
 
   async streamABResponse(elementId, configName, result) {
     let streamedText = '';
+    const showTrace = this.state.traceVerboseMode !== 'minimal';
+    const toolCalls = new Map(); // Track tool calls for this response
 
     try {
       for await (const event of API.streamResponse(this.state.history, this.state.conversationId, configName)) {
-        if (event.type === 'chunk') {
+        // Handle trace events
+        if (event.type === 'tool_start') {
+          toolCalls.set(event.tool_call_id, {
+            name: event.tool_name,
+            args: event.tool_args,
+            status: 'running',
+            output: null,
+            duration: null,
+          });
+          if (showTrace) {
+            UI.renderToolStart(elementId, event);
+          }
+        } else if (event.type === 'tool_output') {
+          const toolData = toolCalls.get(event.tool_call_id);
+          if (toolData) {
+            toolData.output = event.output;
+          }
+          if (showTrace) {
+            UI.renderToolOutput(elementId, event);
+          }
+        } else if (event.type === 'tool_end') {
+          const toolData = toolCalls.get(event.tool_call_id);
+          if (toolData) {
+            toolData.status = event.status;
+            toolData.duration = event.duration_ms;
+          }
+          if (showTrace) {
+            UI.renderToolEnd(elementId, event);
+          }
+        } else if (event.type === 'chunk') {
           streamedText += event.content || '';
           UI.updateABResponse(elementId, Markdown.render(streamedText), true);
         } else if (event.type === 'step' && event.step_type === 'agent') {
@@ -1167,6 +1476,12 @@ const Chat = {
           }
         } else if (event.type === 'final') {
           const finalText = event.response || streamedText;
+          
+          // Finalize trace display
+          if (showTrace) {
+            UI.finalizeTrace(elementId, { toolCalls });
+          }
+          
           UI.updateABResponse(elementId, Markdown.render(finalText), false);
 
           if (event.conversation_id != null) {
@@ -1259,10 +1574,63 @@ const Chat = {
 
   async streamResponse(messageId, configName) {
     let streamedText = '';
+    
+    // Initialize trace state for this stream
+    this.state.activeTrace = {
+      traceId: null,
+      events: [],
+      toolCalls: new Map(), // Map<toolCallId, { name, args, status, output, duration }>
+    };
+
+    // Create abort controller for cancellation
+    this.state.abortController = new AbortController();
+
+    // Create trace container if in verbose/normal mode
+    const showTrace = this.state.traceVerboseMode !== 'minimal';
+    if (showTrace) {
+      UI.createTraceContainer(messageId);
+    }
 
     try {
-      for await (const event of API.streamResponse(this.state.history, this.state.conversationId, configName)) {
-        if (event.type === 'chunk') {
+      for await (const event of API.streamResponse(
+        this.state.history,
+        this.state.conversationId,
+        configName,
+        this.state.abortController.signal
+      )) {
+        // Handle trace events
+        if (event.type === 'tool_start') {
+          this.state.activeTrace.toolCalls.set(event.tool_call_id, {
+            name: event.tool_name,
+            args: event.tool_args,
+            status: 'running',
+            output: null,
+            duration: null,
+          });
+          this.state.activeTrace.events.push(event);
+          if (showTrace) {
+            UI.renderToolStart(messageId, event);
+          }
+        } else if (event.type === 'tool_output') {
+          const toolData = this.state.activeTrace.toolCalls.get(event.tool_call_id);
+          if (toolData) {
+            toolData.output = event.output;
+          }
+          this.state.activeTrace.events.push(event);
+          if (showTrace) {
+            UI.renderToolOutput(messageId, event);
+          }
+        } else if (event.type === 'tool_end') {
+          const toolData = this.state.activeTrace.toolCalls.get(event.tool_call_id);
+          if (toolData) {
+            toolData.status = event.status;
+            toolData.duration = event.duration_ms;
+          }
+          this.state.activeTrace.events.push(event);
+          if (showTrace) {
+            UI.renderToolEnd(messageId, event);
+          }
+        } else if (event.type === 'chunk') {
           // Chunks are individual tokens - concatenate them
           streamedText += event.content || '';
           UI.updateMessage(messageId, {
@@ -1281,6 +1649,17 @@ const Chat = {
           }
         } else if (event.type === 'final') {
           const finalText = event.response || streamedText;
+          
+          // Store trace ID
+          if (event.trace_id) {
+            this.state.activeTrace.traceId = event.trace_id;
+          }
+          
+          // Finalize trace display
+          if (showTrace) {
+            UI.finalizeTrace(messageId, this.state.activeTrace);
+          }
+          
           UI.updateMessage(messageId, {
             html: Markdown.render(finalText),
             streaming: false,
@@ -1304,14 +1683,63 @@ const Chat = {
             streaming: false,
           });
           return;
+        } else if (event.type === 'cancelled') {
+          UI.updateMessage(messageId, {
+            html: streamedText 
+              ? Markdown.render(streamedText) + '<p class="cancelled-notice"><em>Response cancelled</em></p>'
+              : '<p class="cancelled-notice"><em>Response cancelled</em></p>',
+            streaming: false,
+          });
+          return;
         }
       }
     } catch (e) {
+      if (e.name === 'AbortError') {
+        UI.updateMessage(messageId, {
+          html: streamedText 
+            ? Markdown.render(streamedText) + '<p class="cancelled-notice"><em>Response cancelled</em></p>'
+            : '<p class="cancelled-notice"><em>Response cancelled</em></p>',
+          streaming: false,
+        });
+        return;
+      }
       console.error('Stream error:', e);
       UI.updateMessage(messageId, {
         html: `<p style="color: var(--error-text);">${Utils.escapeHtml(e.message || 'Streaming failed')}</p>`,
         streaming: false,
       });
+    } finally {
+      this.state.abortController = null;
+      this.state.activeTrace = null;
+    }
+  },
+
+  async cancelStream() {
+    if (this.state.abortController) {
+      this.state.abortController.abort();
+      
+      // Also notify server
+      if (this.state.conversationId) {
+        try {
+          await fetch(CONFIG.ENDPOINTS.CANCEL_STREAM, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              conversation_id: this.state.conversationId,
+              client_id: Storage.getClientId(),
+            }),
+          });
+        } catch (e) {
+          console.error('Failed to notify server of cancellation:', e);
+        }
+      }
+    }
+  },
+
+  setTraceVerboseMode(mode) {
+    if (['minimal', 'normal', 'verbose'].includes(mode)) {
+      this.state.traceVerboseMode = mode;
+      localStorage.setItem(CONFIG.STORAGE_KEYS.TRACE_VERBOSE_MODE, mode);
     }
   },
 };

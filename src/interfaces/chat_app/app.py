@@ -2,9 +2,10 @@ import json
 import os
 import re
 import time
+import uuid
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Iterator, List, Optional
 from urllib.parse import urlparse
 from functools import wraps
@@ -39,6 +40,8 @@ from src.utils.sql import (
     SQL_INSERT_TOOL_CALLS, SQL_QUERY_CONVO_WITH_FEEDBACK, SQL_DELETE_REACTION_FEEDBACK,
     SQL_INSERT_AB_COMPARISON, SQL_UPDATE_AB_PREFERENCE, SQL_GET_AB_COMPARISON,
     SQL_GET_PENDING_AB_COMPARISON, SQL_DELETE_AB_COMPARISON, SQL_GET_AB_COMPARISONS_BY_CONVERSATION,
+    SQL_CREATE_AGENT_TRACE, SQL_UPDATE_AGENT_TRACE, SQL_GET_AGENT_TRACE,
+    SQL_GET_TRACE_BY_MESSAGE, SQL_GET_ACTIVE_TRACE, SQL_CANCEL_ACTIVE_TRACES,
 )
 from src.interfaces.chat_app.document_utils import *
 from src.interfaces.chat_app.utils import collapse_assistant_sequences
@@ -647,6 +650,195 @@ class ChatWrapper:
             cursor.close()
             conn.close()
 
+    # =========================================================================
+    # Agent Trace Methods
+    # =========================================================================
+
+    def create_agent_trace(
+        self,
+        conversation_id: int,
+        user_message_id: int,
+        config_id: Optional[int] = None,
+        pipeline_name: Optional[str] = None,
+    ) -> str:
+        """
+        Create a new agent trace record for tracking execution.
+        
+        Returns:
+            The trace_id (UUID string) of the newly created trace
+        """
+        trace_id = str(uuid.uuid4())
+        started_at = datetime.now(timezone.utc)
+        
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                SQL_CREATE_AGENT_TRACE,
+                (trace_id, conversation_id, None, user_message_id,
+                 config_id, pipeline_name, json.dumps([]), started_at, 'running')
+            )
+            conn.commit()
+            logger.info(f"Created agent trace {trace_id} for conversation {conversation_id}")
+            return trace_id
+        finally:
+            cursor.close()
+            conn.close()
+
+    def update_agent_trace(
+        self,
+        trace_id: str,
+        events: List[Dict[str, Any]],
+        status: str = 'running',
+        message_id: Optional[int] = None,
+        total_tool_calls: Optional[int] = None,
+        total_duration_ms: Optional[int] = None,
+        cancelled_by: Optional[str] = None,
+        cancellation_reason: Optional[str] = None,
+    ) -> None:
+        """
+        Update an agent trace with new events and/or status.
+        """
+        completed_at = datetime.now(timezone.utc) if status in ('completed', 'cancelled', 'error') else None
+        
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                SQL_UPDATE_AGENT_TRACE,
+                (json.dumps(events), completed_at, status, message_id,
+                 total_tool_calls, total_duration_ms, cancelled_by, cancellation_reason,
+                 trace_id)
+            )
+            conn.commit()
+            logger.debug(f"Updated agent trace {trace_id}: status={status}")
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_agent_trace(self, trace_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get an agent trace by ID.
+        
+        Returns:
+            Dict with trace data or None if not found
+        """
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(SQL_GET_AGENT_TRACE, (trace_id,))
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            return {
+                'trace_id': row[0],
+                'conversation_id': row[1],
+                'message_id': row[2],
+                'user_message_id': row[3],
+                'config_id': row[4],
+                'pipeline_name': row[5],
+                'events': row[6],  # Already JSON from JSONB
+                'started_at': row[7].isoformat() if row[7] else None,
+                'completed_at': row[8].isoformat() if row[8] else None,
+                'status': row[9],
+                'total_tool_calls': row[10],
+                'total_tokens_used': row[11],
+                'total_duration_ms': row[12],
+                'cancelled_by': row[13],
+                'cancellation_reason': row[14],
+                'created_at': row[15].isoformat() if row[15] else None,
+            }
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_trace_by_message(self, message_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get agent trace by the final message ID.
+        """
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(SQL_GET_TRACE_BY_MESSAGE, (message_id,))
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            return {
+                'trace_id': row[0],
+                'conversation_id': row[1],
+                'message_id': row[2],
+                'user_message_id': row[3],
+                'config_id': row[4],
+                'pipeline_name': row[5],
+                'events': row[6],
+                'started_at': row[7].isoformat() if row[7] else None,
+                'completed_at': row[8].isoformat() if row[8] else None,
+                'status': row[9],
+                'total_tool_calls': row[10],
+                'total_tokens_used': row[11],
+                'total_duration_ms': row[12],
+                'cancelled_by': row[13],
+                'cancellation_reason': row[14],
+                'created_at': row[15].isoformat() if row[15] else None,
+            }
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_active_trace(self, conversation_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get the currently running trace for a conversation, if any.
+        """
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(SQL_GET_ACTIVE_TRACE, (conversation_id,))
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            return {
+                'trace_id': row[0],
+                'conversation_id': row[1],
+                'message_id': row[2],
+                'user_message_id': row[3],
+                'config_id': row[4],
+                'pipeline_name': row[5],
+                'events': row[6],
+                'started_at': row[7].isoformat() if row[7] else None,
+                'status': row[8],
+            }
+        finally:
+            cursor.close()
+            conn.close()
+
+    def cancel_active_traces(
+        self,
+        conversation_id: int,
+        cancelled_by: str = 'user',
+        cancellation_reason: Optional[str] = None,
+    ) -> int:
+        """
+        Cancel all running traces for a conversation.
+        
+        Returns:
+            Number of traces cancelled
+        """
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                SQL_CANCEL_ACTIVE_TRACES,
+                (datetime.now(timezone.utc), cancelled_by, cancellation_reason, conversation_id)
+            )
+            count = cursor.rowcount
+            conn.commit()
+            if count > 0:
+                logger.info(f"Cancelled {count} active traces for conversation {conversation_id}")
+            return count
+        finally:
+            cursor.close()
+            conn.close()
+
 
     def query_conversation_history(self, conversation_id, client_id):
         """
@@ -1178,6 +1370,10 @@ class ChatWrapper:
         context = None
         last_output = None
         last_streamed_text = ""
+        trace_id = None
+        trace_events: List[Dict[str, Any]] = []
+        tool_call_count = 0
+        stream_start_time = time.time()
 
         try:
             context, error_code = self._prepare_chat_context(
@@ -1201,24 +1397,75 @@ class ChatWrapper:
 
             requested_config = self._resolve_config_name(config_name)
             self.update_config(config_name=requested_config)
+            
+            # Create trace for this streaming request
+            config_id = self._get_config_id(requested_config)
+            trace_id = self.create_agent_trace(
+                conversation_id=context.conversation_id,
+                user_message_id=0,  # Will be updated at finalization
+                config_id=config_id,
+                pipeline_name=self.a2rchi.pipeline_name if hasattr(self.a2rchi, 'pipeline_name') else None,
+            )
 
             for output in self.a2rchi.stream(history=context.history, conversation_id=context.conversation_id):
-                logger.debug("Recieved streaming output chunk: %s", output)
+                logger.debug("Received streaming output chunk: %s", output)
                 last_output = output
-                if getattr(output, "final", False):
-                    continue
-                for event in self._stream_events_from_output(
-                    output,
-                    include_agent_steps=False,
-                    include_tool_steps=include_tool_steps,
-                    conversation_id=context.conversation_id,
-                    max_chars=max_step_chars,
-                ):
-                    yield event
-
-                if include_agent_steps:
+                
+                # Extract event_type from metadata (new structured events from BaseReActAgent)
+                event_type = output.metadata.get("event_type", "text") if output.metadata else "text"
+                timestamp = datetime.now(timezone.utc).isoformat()
+                
+                # Handle different event types
+                if event_type == "tool_start":
+                    tool_call_count += 1
+                    trace_event = {
+                        "type": "tool_start",
+                        "tool_call_id": output.metadata.get("tool_call_id", ""),
+                        "tool_name": output.metadata.get("tool_name", "unknown"),
+                        "tool_args": output.metadata.get("tool_args", {}),
+                        "timestamp": timestamp,
+                        "conversation_id": context.conversation_id,
+                    }
+                    trace_events.append(trace_event)
+                    if include_tool_steps:
+                        yield trace_event
+                        
+                elif event_type == "tool_output":
+                    tool_output = output.metadata.get("output", "")
+                    truncated = len(tool_output) > max_step_chars
+                    full_length = len(tool_output) if truncated else None
+                    display_output = self._truncate_text(tool_output, max_step_chars)
+                    
+                    trace_event = {
+                        "type": "tool_output",
+                        "tool_call_id": output.metadata.get("tool_call_id", ""),
+                        "output": display_output,
+                        "truncated": truncated,
+                        "full_length": full_length,
+                        "timestamp": timestamp,
+                        "conversation_id": context.conversation_id,
+                    }
+                    trace_events.append(trace_event)
+                    if include_tool_steps:
+                        yield trace_event
+                        
+                elif event_type == "tool_end":
+                    trace_event = {
+                        "type": "tool_end",
+                        "tool_call_id": output.metadata.get("tool_call_id", ""),
+                        "status": output.metadata.get("status", "success"),
+                        "duration_ms": output.metadata.get("duration_ms"),
+                        "timestamp": timestamp,
+                        "conversation_id": context.conversation_id,
+                    }
+                    trace_events.append(trace_event)
+                    if include_tool_steps:
+                        yield trace_event
+                        
+                elif event_type == "text":
+                    # Stream text content
                     content = getattr(output, "answer", "") or ""
-                    if content:
+                    if content and include_agent_steps:
                         if content.startswith(last_streamed_text):
                             delta = content[len(last_streamed_text):]
                         else:
@@ -1231,12 +1478,60 @@ class ChatWrapper:
                                 "content": delta[i:i + chunk_size],
                                 "conversation_id": context.conversation_id,
                             }
+                    # Record text event in trace
+                    if content:
+                        trace_events.append({
+                            "type": "text",
+                            "content": content,
+                            "timestamp": timestamp,
+                        })
+                        
+                elif event_type == "final":
+                    # Final event handled below after loop
+                    pass
+                else:
+                    # Fallback: legacy event handling for non-agent pipelines
+                    if getattr(output, "final", False):
+                        continue
+                    for event in self._stream_events_from_output(
+                        output,
+                        include_agent_steps=False,
+                        include_tool_steps=include_tool_steps,
+                        conversation_id=context.conversation_id,
+                        max_chars=max_step_chars,
+                    ):
+                        yield event
+
+                    if include_agent_steps:
+                        content = getattr(output, "answer", "") or ""
+                        if content:
+                            if content.startswith(last_streamed_text):
+                                delta = content[len(last_streamed_text):]
+                            else:
+                                delta = content
+                            last_streamed_text = content
+                            chunk_size = 80
+                            for i in range(0, len(delta), chunk_size):
+                                yield {
+                                    "type": "chunk",
+                                    "content": delta[i:i + chunk_size],
+                                    "conversation_id": context.conversation_id,
+                                }
 
             timestamps["chain_finished_ts"] = datetime.now()
 
             if last_output is None:
+                if trace_id:
+                    self.update_agent_trace(
+                        trace_id=trace_id,
+                        events=trace_events,
+                        status='error',
+                        cancelled_by='system',
+                        cancellation_reason='No output from pipeline',
+                    )
                 yield {"type": "error", "status": 500, "message": "server error; see chat logs for message"}
                 return
+                
             # keep track of total number of queries and log this amount
             self.number_of_queries += 1
             logger.info(f"Number of queries is: {self.number_of_queries}")
@@ -1256,6 +1551,21 @@ class ChatWrapper:
 
             if message_ids:
                 self.insert_timing(message_ids[-1], timestamps)
+                
+            # Calculate total duration
+            total_duration_ms = int((time.time() - stream_start_time) * 1000)
+            
+            # Update trace with final state
+            if trace_id:
+                user_message_id = message_ids[0] if message_ids and len(message_ids) > 1 else None
+                self.update_agent_trace(
+                    trace_id=trace_id,
+                    events=trace_events,
+                    status='completed',
+                    message_id=message_ids[-1] if message_ids else None,
+                    total_tool_calls=tool_call_count,
+                    total_duration_ms=total_duration_ms,
+                )
 
             yield {
                 "type": "final",
@@ -1264,21 +1574,65 @@ class ChatWrapper:
                 "a2rchi_msg_id": message_ids[-1] if message_ids else None,
                 "message_id": message_ids[-1] if message_ids else None,
                 "user_message_id": message_ids[0] if message_ids and len(message_ids) > 1 else None,
+                "trace_id": trace_id,
                 "server_response_msg_ts": timestamps["server_response_msg_ts"].timestamp(),
                 "final_response_msg_ts": datetime.now().timestamp(),
             }
 
+        except GeneratorExit:
+            # User cancelled the stream
+            if trace_id:
+                total_duration_ms = int((time.time() - stream_start_time) * 1000)
+                self.update_agent_trace(
+                    trace_id=trace_id,
+                    events=trace_events,
+                    status='cancelled',
+                    total_tool_calls=tool_call_count,
+                    total_duration_ms=total_duration_ms,
+                    cancelled_by='user',
+                    cancellation_reason='Stream cancelled by client',
+                )
+            raise
         except ConversationAccessError as exc:
             logger.warning("Unauthorized conversation access attempt: %s", exc)
+            if trace_id:
+                self.update_agent_trace(
+                    trace_id=trace_id,
+                    events=trace_events,
+                    status='error',
+                    cancelled_by='system',
+                    cancellation_reason=str(exc),
+                )
             yield {"type": "error", "status": 403, "message": "conversation not found"}
         except Exception as exc:
             logger.error("Failed to stream response: %s", exc, exc_info=True)
+            if trace_id:
+                self.update_agent_trace(
+                    trace_id=trace_id,
+                    events=trace_events,
+                    status='error',
+                    cancelled_by='system',
+                    cancellation_reason=str(exc),
+                )
             yield {"type": "error", "status": 500, "message": "server error; see chat logs for message"}
         finally:
             if self.cursor is not None:
                 self.cursor.close()
             if self.conn is not None:
                 self.conn.close()
+
+    def _get_config_id(self, config_name: str) -> Optional[int]:
+        """Get config_id from configs table by name, or None if not found."""
+        try:
+            conn = psycopg2.connect(**self.pg_config)
+            cursor = conn.cursor()
+            cursor.execute("SELECT config_id FROM configs WHERE config_name = %s", (config_name,))
+            row = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            return row[0] if row else None
+        except Exception:
+            return None
 
 
 class FlaskAppWrapper(object):
@@ -1368,6 +1722,12 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/ab/create', 'ab_create', self.require_auth(self.ab_create_comparison), methods=["POST"])
         self.add_endpoint('/api/ab/preference', 'ab_preference', self.require_auth(self.ab_submit_preference), methods=["POST"])
         self.add_endpoint('/api/ab/pending', 'ab_pending', self.require_auth(self.ab_get_pending), methods=["GET"])
+
+        # Agent trace endpoints
+        logger.info("Adding agent trace API endpoints")
+        self.add_endpoint('/api/trace/<trace_id>', 'get_trace', self.require_auth(self.get_trace), methods=["GET"])
+        self.add_endpoint('/api/trace/message/<int:message_id>', 'get_trace_by_message', self.require_auth(self.get_trace_by_message), methods=["GET"])
+        self.add_endpoint('/api/cancel_stream', 'cancel_stream', self.require_auth(self.cancel_stream), methods=["POST"])
 
         # add unified auth endpoints
         if self.auth_enabled:
@@ -2439,6 +2799,95 @@ class FlaskAppWrapper(object):
 
         except Exception as e:
             logger.error(f"Error getting pending A/B comparison: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    # =========================================================================
+    # Agent Trace Endpoints
+    # =========================================================================
+
+    def get_trace(self, trace_id: str):
+        """
+        Get an agent trace by ID.
+
+        URL params:
+        - trace_id: The trace UUID
+
+        Returns:
+            JSON with trace data
+        """
+        try:
+            trace = self.chat.get_agent_trace(trace_id)
+            if trace is None:
+                return jsonify({'error': 'Trace not found'}), 404
+
+            return jsonify({
+                'success': True,
+                'trace': trace,
+            }), 200
+
+        except Exception as e:
+            logger.error(f"Error getting trace {trace_id}: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    def get_trace_by_message(self, message_id: int):
+        """
+        Get agent trace by the final message ID.
+
+        URL params:
+        - message_id: The message ID
+
+        Returns:
+            JSON with trace data
+        """
+        try:
+            trace = self.chat.get_trace_by_message(message_id)
+            if trace is None:
+                return jsonify({'error': 'Trace not found for message'}), 404
+
+            return jsonify({
+                'success': True,
+                'trace': trace,
+            }), 200
+
+        except Exception as e:
+            logger.error(f"Error getting trace for message {message_id}: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    def cancel_stream(self):
+        """
+        Cancel an active streaming request for a conversation.
+
+        POST body:
+        - conversation_id: The conversation ID
+        - client_id: Client ID for authorization
+
+        Returns:
+            JSON with cancellation status
+        """
+        try:
+            data = request.json
+            conversation_id = data.get('conversation_id')
+            client_id = data.get('client_id')
+
+            if not conversation_id:
+                return jsonify({'error': 'conversation_id is required'}), 400
+            if not client_id:
+                return jsonify({'error': 'client_id is required'}), 400
+
+            # Cancel any active traces for this conversation
+            cancelled_count = self.chat.cancel_active_traces(
+                conversation_id=conversation_id,
+                cancelled_by='user',
+                cancellation_reason='Cancelled by user request',
+            )
+
+            return jsonify({
+                'success': True,
+                'cancelled_count': cancelled_count,
+            }), 200
+
+        except Exception as e:
+            logger.error(f"Error cancelling stream for conversation {conversation_id}: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
     def is_authenticated(self):
