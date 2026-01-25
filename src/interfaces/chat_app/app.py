@@ -30,6 +30,7 @@ from pygments.lexers import (BashLexer, CLexer, CppLexer, FortranLexer,
 
 from src.a2rchi.a2rchi import A2rchi
 # from src.data_manager.data_manager import DataManager
+from src.data_manager.data_viewer_service import DataViewerService
 from src.utils.config_loader import CONFIGS_PATH, get_config_names, load_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
@@ -134,6 +135,9 @@ class ChatWrapper:
         embedding_name = self.config["data_manager"]["embedding_name"]
         self.similarity_score_reference = self.config["data_manager"]["embedding_class_map"][embedding_name]["similarity_score_reference"]
         self.sources_config = self.config["data_manager"]["sources"]
+
+        # initialize data viewer service for per-chat document selection
+        self.data_viewer = DataViewerService(data_path=self.data_path)
 
         # store postgres connection info
         self.pg_config = {
@@ -1092,6 +1096,32 @@ class ChatWrapper:
     def _resolve_config_name(self, config_name: Optional[str]) -> str:
         return config_name or self.current_config_name or self.default_config_name
 
+    def _create_provider_llm(self, provider: str, model: str, api_key: str = None):
+        """
+        Create a LangChain chat model using the provider abstraction layer.
+        
+        Args:
+            provider: Provider type (openai, anthropic, gemini, openrouter, local)
+            model: Model ID/name to use
+            api_key: Optional API key (overrides environment variable)
+        
+        Returns:
+            A LangChain BaseChatModel instance, or None if creation fails
+        """
+        try:
+            if api_key:
+                from src.a2rchi.providers import get_chat_model_with_api_key
+                return get_chat_model_with_api_key(provider, model, api_key)
+            else:
+                from src.a2rchi.providers import get_model
+                return get_model(provider, model)
+        except ImportError as e:
+            logger.warning(f"Providers module not available: {e}")
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to create provider LLM {provider}/{model}: {e}")
+            raise
+
     def _prepare_chat_context(
         self,
         message: List[str],
@@ -1365,6 +1395,9 @@ class ChatWrapper:
         include_agent_steps: bool = True,
         include_tool_steps: bool = True,
         max_step_chars: int = 800,
+        provider: str = None,
+        model: str = None,
+        provider_api_key: str = None,
     ) -> Iterator[Dict[str, Any]]:
         timestamps = self._init_timestamps()
         context = None
@@ -1397,6 +1430,21 @@ class ChatWrapper:
 
             requested_config = self._resolve_config_name(config_name)
             self.update_config(config_name=requested_config)
+            
+            # If provider and model are specified, override the pipeline's LLM
+            if provider and model:
+                try:
+                    override_llm = self._create_provider_llm(provider, model, provider_api_key)
+                    if override_llm and hasattr(self.a2rchi, 'pipeline') and hasattr(self.a2rchi.pipeline, 'agent_llm'):
+                        original_llm = self.a2rchi.pipeline.agent_llm
+                        self.a2rchi.pipeline.agent_llm = override_llm
+                        # Force agent refresh to use new LLM
+                        if hasattr(self.a2rchi.pipeline, 'refresh_agent'):
+                            self.a2rchi.pipeline.refresh_agent(force=True)
+                        logger.info(f"Overrode pipeline LLM with {provider}/{model}")
+                except Exception as e:
+                    logger.warning(f"Failed to create provider LLM {provider}/{model}: {e}")
+                    yield {"type": "warning", "message": f"Using default model: {e}"}
             
             # Create trace for this streaming request
             config_id = self._get_config_id(requested_config)
@@ -1653,6 +1701,13 @@ class FlaskAppWrapper(object):
             import secrets
             secret_key = secrets.token_hex(32)
         self.app.secret_key = secret_key
+        
+        # Session cookie security settings (BYOK security hardening)
+        self.app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access
+        self.app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
+        # SESSION_COOKIE_SECURE should be True in production (HTTPS only)
+        # Leave it False for local development to work over HTTP
+        
         self.app.config['ACCOUNTS_FOLDER'] = self.global_config["ACCOUNTS_PATH"]
         os.makedirs(self.app.config['ACCOUNTS_FOLDER'], exist_ok=True)
 
@@ -1728,6 +1783,27 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/trace/<trace_id>', 'get_trace', self.require_auth(self.get_trace), methods=["GET"])
         self.add_endpoint('/api/trace/message/<int:message_id>', 'get_trace_by_message', self.require_auth(self.get_trace_by_message), methods=["GET"])
         self.add_endpoint('/api/cancel_stream', 'cancel_stream', self.require_auth(self.cancel_stream), methods=["POST"])
+
+        # Provider endpoints
+        logger.info("Adding provider API endpoints")
+        self.add_endpoint('/api/providers', 'get_providers', self.require_auth(self.get_providers), methods=["GET"])
+        self.add_endpoint('/api/providers/models', 'get_provider_models', self.require_auth(self.get_provider_models), methods=["GET"])
+        self.add_endpoint('/api/providers/validate', 'validate_provider', self.require_auth(self.validate_provider), methods=["POST"])
+        self.add_endpoint('/api/providers/keys', 'get_provider_api_keys', self.require_auth(self.get_provider_api_keys), methods=["GET"])
+        self.add_endpoint('/api/providers/keys/set', 'set_provider_api_key', self.require_auth(self.set_provider_api_key), methods=["POST"])
+        self.add_endpoint('/api/providers/keys/clear', 'clear_provider_api_key', self.require_auth(self.clear_provider_api_key), methods=["POST"])
+        self.add_endpoint('/api/pipeline/default_model', 'get_pipeline_default_model', self.require_auth(self.get_pipeline_default_model), methods=["GET"])
+
+        # Data viewer endpoints
+        logger.info("Adding data viewer API endpoints")
+        self.add_endpoint('/data', 'data_viewer', self.require_auth(self.data_viewer_page))
+        self.add_endpoint('/api/data/documents', 'list_data_documents', self.require_auth(self.list_data_documents), methods=["GET"])
+        self.add_endpoint('/api/data/documents/<document_hash>/content', 'get_data_document_content', self.require_auth(self.get_data_document_content), methods=["GET"])
+        self.add_endpoint('/api/data/documents/<document_hash>/enable', 'enable_data_document', self.require_auth(self.enable_data_document), methods=["POST"])
+        self.add_endpoint('/api/data/documents/<document_hash>/disable', 'disable_data_document', self.require_auth(self.disable_data_document), methods=["POST"])
+        self.add_endpoint('/api/data/bulk-enable', 'bulk_enable_documents', self.require_auth(self.bulk_enable_documents), methods=["POST"])
+        self.add_endpoint('/api/data/bulk-disable', 'bulk_disable_documents', self.require_auth(self.bulk_disable_documents), methods=["POST"])
+        self.add_endpoint('/api/data/stats', 'get_data_stats', self.require_auth(self.get_data_stats), methods=["GET"])
 
         # add unified auth endpoints
         if self.auth_enabled:
@@ -1998,6 +2074,411 @@ class FlaskAppWrapper(object):
             options.append({"name": name, "description": description, "id": config_id})
         return jsonify({'options': options}), 200
 
+    def get_providers(self):
+        """
+        Get list of all enabled providers and their available models.
+        
+        Returns:
+            JSON with providers list, each containing:
+            - type: Provider type (openai, anthropic, etc.)
+            - display_name: Human-readable name
+            - enabled: Whether the provider has valid credentials
+            - models: List of available models
+        """
+        try:
+            from src.a2rchi.providers import (
+                list_provider_types,
+                get_provider,
+                ProviderType,
+            )
+            
+            providers_data = []
+            for provider_type in list_provider_types():
+                try:
+                    provider = get_provider(provider_type)
+                    models = provider.list_models()
+                    providers_data.append({
+                        'type': provider_type.value,
+                        'display_name': provider.display_name,
+                        'enabled': provider.is_enabled,
+                        'default_model': provider.config.default_model,
+                        'models': [
+                            {
+                                'id': m.id,
+                                'name': m.name,
+                                'display_name': m.display_name,
+                                'context_window': m.context_window,
+                                'supports_tools': m.supports_tools,
+                                'supports_streaming': m.supports_streaming,
+                                'supports_vision': m.supports_vision,
+                            }
+                            for m in models
+                        ],
+                    })
+                except Exception as e:
+                    logger.warning(f"Failed to get provider {provider_type}: {e}")
+                    providers_data.append({
+                        'type': provider_type.value,
+                        'display_name': provider_type.value.title(),
+                        'enabled': False,
+                        'error': str(e),
+                        'models': [],
+                    })
+            
+            return jsonify({'providers': providers_data}), 200
+        except ImportError as e:
+            logger.error(f"Providers module not available: {e}")
+            return jsonify({'error': 'Providers module not available', 'providers': []}), 200
+        except Exception as e:
+            logger.error(f"Error getting providers: {e}")
+            return jsonify({'error': str(e)}), 500
+
+    def get_pipeline_default_model(self):
+        """
+        Get the default model configured for the active chat pipeline.
+
+        Returns:
+            JSON with pipeline name, model class name, and model_name (if available).
+        """
+        try:
+            pipeline_name = self.config.get("services", {}).get("chat_app", {}).get("pipeline")
+            a2rchi_config = self.config.get("a2rchi", {})
+            pipeline_map = a2rchi_config.get("pipeline_map", {})
+            model_class_map = a2rchi_config.get("model_class_map", {})
+
+            pipeline_cfg = pipeline_map.get(pipeline_name, {})
+            models_cfg = pipeline_cfg.get("models", {})
+            required_models = models_cfg.get("required", {})
+
+            model_key = None
+            model_class_name = None
+            if "agent_model" in required_models:
+                model_key = "agent_model"
+                model_class_name = required_models["agent_model"]
+            elif "chat_model" in required_models:
+                model_key = "chat_model"
+                model_class_name = required_models["chat_model"]
+            elif required_models:
+                model_key, model_class_name = next(iter(required_models.items()))
+
+            model_entry = model_class_map.get(model_class_name, {}) if model_class_name else {}
+            model_kwargs = model_entry.get("kwargs", {}) if isinstance(model_entry, dict) else {}
+            model_name = model_kwargs.get("model_name") or model_kwargs.get("model")
+
+            return jsonify({
+                "pipeline": pipeline_name,
+                "model_key": model_key,
+                "model_class": model_class_name,
+                "model_name": model_name,
+                "model_kwargs": model_kwargs,
+            }), 200
+        except Exception as e:
+            logger.error(f"Error getting pipeline default model: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    def get_provider_models(self):
+        """
+        Get models for a specific provider.
+        
+        Query params:
+            provider: Provider type (openai, anthropic, gemini, openrouter, local)
+        
+        Returns:
+            JSON with models list
+        """
+        provider_type = request.args.get('provider')
+        if not provider_type:
+            return jsonify({'error': 'provider parameter required'}), 400
+        
+        try:
+            from src.a2rchi.providers import get_provider
+            
+            provider = get_provider(provider_type)
+            models = provider.list_models()
+            
+            return jsonify({
+                'provider': provider_type,
+                'display_name': provider.display_name,
+                'enabled': provider.is_enabled,
+                'default_model': provider.config.default_model,
+                'models': [
+                    {
+                        'id': m.id,
+                        'name': m.name,
+                        'display_name': m.display_name,
+                        'context_window': m.context_window,
+                        'supports_tools': m.supports_tools,
+                        'supports_streaming': m.supports_streaming,
+                        'supports_vision': m.supports_vision,
+                        'max_output_tokens': m.max_output_tokens,
+                    }
+                    for m in models
+                ],
+            }), 200
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        except ImportError:
+            return jsonify({'error': 'Providers module not available'}), 500
+        except Exception as e:
+            logger.error(f"Error getting provider models: {e}")
+            return jsonify({'error': str(e)}), 500
+
+    def validate_provider(self):
+        """
+        Validate a provider connection.
+        
+        Request body:
+            provider: Provider type (openai, anthropic, etc.)
+        
+        Returns:
+            JSON with validation result
+        """
+        payload = request.get_json(silent=True) or {}
+        provider_type = payload.get('provider')
+        
+        if not provider_type:
+            return jsonify({'error': 'provider field required'}), 400
+        
+        try:
+            from src.a2rchi.providers import get_provider
+            
+            provider = get_provider(provider_type)
+            is_valid = provider.validate_connection()
+            
+            return jsonify({
+                'provider': provider_type,
+                'display_name': provider.display_name,
+                'valid': is_valid,
+                'enabled': provider.is_enabled,
+            }), 200
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        except ImportError:
+            return jsonify({'error': 'Providers module not available'}), 500
+        except Exception as e:
+            logger.error(f"Error validating provider: {e}")
+            return jsonify({'error': str(e)}), 500
+
+    def set_provider_api_key(self):
+        """
+        Set an API key for a specific provider.
+        
+        The API key is stored in the user's session, not in environment variables
+        or persistent storage. This provides security (keys are not logged or stored)
+        while allowing runtime configuration.
+        
+        Request body:
+            provider: Provider type (openai, anthropic, gemini, openrouter)
+            api_key: The API key to set
+        
+        Returns:
+            JSON with success status and provider validation result
+        """
+        payload = request.get_json(silent=True) or {}
+        provider_type = payload.get('provider')
+        api_key = payload.get('api_key')
+        
+        if not provider_type:
+            return jsonify({'error': 'provider field required'}), 400
+        if not api_key:
+            return jsonify({'error': 'api_key field required'}), 400
+        
+        # Validate the provider type
+        try:
+            from src.a2rchi.providers import ProviderType
+            ptype = ProviderType(provider_type.lower())
+        except ValueError:
+            return jsonify({'error': f'Unknown provider type: {provider_type}'}), 400
+        
+        # Store the API key in session
+        if 'provider_api_keys' not in session:
+            session['provider_api_keys'] = {}
+        session['provider_api_keys'][provider_type.lower()] = api_key
+        session.modified = True
+        
+        # Validate the API key by testing the provider
+        try:
+            from src.a2rchi.providers import get_provider_with_api_key
+            
+            provider = get_provider_with_api_key(provider_type, api_key)
+            is_valid = provider.validate_connection()
+            
+            return jsonify({
+                'success': True,
+                'provider': provider_type,
+                'display_name': provider.display_name,
+                'valid': is_valid,
+                'message': 'API key saved to session' + (' and validated' if is_valid else ' but validation failed'),
+            }), 200
+        except Exception as e:
+            # Still save the key even if validation fails
+            logger.warning(f"API key validation failed for {provider_type}: {e}")
+            return jsonify({
+                'success': True,
+                'provider': provider_type,
+                'valid': False,
+                'message': f'API key saved but validation failed: {e}',
+            }), 200
+
+    def get_provider_api_keys(self):
+        """
+        Get a list of which providers have API keys configured.
+        
+        For security, this does NOT return the actual API keys, only which
+        providers have keys set and whether they are valid.
+        
+        Returns:
+            JSON with list of configured providers
+        """
+        session_keys = session.get('provider_api_keys', {})
+        
+        try:
+            from src.a2rchi.providers import (
+                list_provider_types,
+                get_provider,
+                get_provider_with_api_key,
+                ProviderType,
+            )
+            
+            providers_status = []
+            for provider_type in list_provider_types():
+                # Skip local provider - no API key needed
+                if provider_type == ProviderType.LOCAL:
+                    continue
+                    
+                ptype_str = provider_type.value
+                has_session_key = ptype_str in session_keys
+                has_env_key = False
+                is_valid = False
+                display_name = ptype_str.title()  # fallback
+                
+                try:
+                    # Check if there's an env-based key
+                    env_provider = get_provider(provider_type)
+                    has_env_key = env_provider.is_configured
+                    display_name = env_provider.display_name  # use proper display name
+                    
+                    # If we have a session key, test that one
+                    if has_session_key:
+                        test_provider = get_provider_with_api_key(
+                            provider_type,
+                            session_keys[ptype_str]
+                        )
+                        is_valid = test_provider.is_configured
+                    else:
+                        is_valid = has_env_key
+                except Exception as e:
+                    logger.debug(f"Error checking provider {ptype_str}: {e}")
+                
+                providers_status.append({
+                    'provider': ptype_str,
+                    'display_name': display_name,
+                    'has_session_key': has_session_key,
+                    'has_env_key': has_env_key,
+                    'configured': has_session_key or has_env_key,
+                    'valid': is_valid,
+                    'masked_key': ('*' * 8 + session_keys[ptype_str][-4:]) if has_session_key else None,
+                })
+            
+            return jsonify({
+                'providers': providers_status,
+            }), 200
+        except ImportError as e:
+            logger.error(f"Providers module not available: {e}")
+            return jsonify({'error': 'Providers module not available'}), 500
+        except Exception as e:
+            logger.error(f"Error getting provider API keys status: {e}")
+            return jsonify({'error': str(e)}), 500
+
+    def clear_provider_api_key(self):
+        """
+        Clear the API key for a specific provider from the session.
+        
+        Request body:
+            provider: Provider type to clear
+        
+        Returns:
+            JSON with success status
+        """
+        payload = request.get_json(silent=True) or {}
+        provider_type = payload.get('provider')
+        
+        if not provider_type:
+            return jsonify({'error': 'provider field required'}), 400
+        
+        ptype_str = provider_type.lower()
+        
+        if 'provider_api_keys' in session:
+            if ptype_str in session['provider_api_keys']:
+                del session['provider_api_keys'][ptype_str]
+                session.modified = True
+                return jsonify({
+                    'success': True,
+                    'message': f'API key for {provider_type} cleared from session',
+                }), 200
+        
+        return jsonify({
+            'success': True,
+            'message': f'No API key found for {provider_type}',
+        }), 200
+
+    def validate_provider_api_key(self):
+        """
+        Validate an API key for a provider without storing it.
+        
+        This endpoint allows testing a key before committing to save it.
+        The key is NOT stored in the session.
+        
+        Request body:
+            provider: Provider type (openai, anthropic, gemini, openrouter)
+            api_key: The API key to validate
+        
+        Returns:
+            JSON with validation result and available models
+        """
+        payload = request.get_json(silent=True) or {}
+        provider_type = payload.get('provider')
+        api_key = payload.get('api_key')
+        
+        if not provider_type:
+            return jsonify({'error': 'provider field required'}), 400
+        if not api_key:
+            return jsonify({'error': 'api_key field required'}), 400
+        
+        # Validate the provider type
+        try:
+            from src.a2rchi.providers import ProviderType, get_provider_with_api_key
+            ptype = ProviderType(provider_type.lower())
+        except ValueError:
+            return jsonify({'error': f'Unknown provider type: {provider_type}'}), 400
+        
+        try:
+            # Create provider with the test key (not cached, not stored)
+            provider = get_provider_with_api_key(provider_type, api_key)
+            is_valid = provider.validate_connection()
+            
+            # If valid, also get available models
+            models = []
+            if is_valid:
+                try:
+                    models = [m.to_dict() for m in provider.list_models()]
+                except Exception:
+                    pass  # Models list is optional
+            
+            return jsonify({
+                'valid': is_valid,
+                'provider': provider_type,
+                'display_name': provider.display_name,
+                'models_available': models,
+            }), 200
+        except Exception as e:
+            logger.warning(f"API key validation failed for {provider_type}: {e}")
+            return jsonify({
+                'valid': False,
+                'provider': provider_type,
+                'error': str(e),
+            }), 200
+
     def _parse_chat_request(self) -> Dict[str, Any]:
         payload = request.get_json(silent=True) or {}
 
@@ -2023,6 +2504,9 @@ class FlaskAppWrapper(object):
             "client_id": payload.get("client_id"),
             "include_agent_steps": include_agent_steps,
             "include_tool_steps": include_tool_steps,
+            # Provider-based model selection
+            "provider": payload.get("provider"),
+            "model": payload.get("model"),
         }
 
 
@@ -2117,9 +2601,16 @@ class FlaskAppWrapper(object):
         client_id = request_data["client_id"]
         include_agent_steps = request_data["include_agent_steps"]
         include_tool_steps = request_data["include_tool_steps"]
+        provider = request_data["provider"]
+        model = request_data["model"]
 
         if not client_id:
             return jsonify({"error": "client_id missing"}), 400
+
+        # Get API key from session if available
+        session_api_key = None
+        if provider and 'provider_api_keys' in session:
+            session_api_key = session.get('provider_api_keys', {}).get(provider.lower())
 
         def _event_stream() -> Iterator[str]:
             padding = " " * 2048
@@ -2135,6 +2626,9 @@ class FlaskAppWrapper(object):
                 config_name,
                 include_agent_steps=include_agent_steps,
                 include_tool_steps=include_tool_steps,
+                provider=provider,
+                model=model,
+                provider_api_key=session_api_key,
             ):
                 logger.debug(f"\n\n\nStreaming event\n\n\n")
                 yield json.dumps(event, default=str) + "\n"
@@ -2888,6 +3382,216 @@ class FlaskAppWrapper(object):
 
         except Exception as e:
             logger.error(f"Error cancelling stream for conversation {conversation_id}: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    # =========================================================================
+    # Data Viewer Endpoints
+    # =========================================================================
+
+    def data_viewer_page(self):
+        """Render the data viewer page."""
+        return render_template('data.html')
+
+    def list_data_documents(self):
+        """
+        List documents with per-chat enabled state.
+
+        Query params:
+        - conversation_id: Required. The conversation ID for per-chat state.
+        - source_type: Optional. Filter by "local", "web", "ticket", or "all".
+        - search: Optional. Search query for display_name and url.
+        - enabled: Optional. Filter by "all", "enabled", or "disabled".
+        - limit: Optional. Max results (default 100).
+        - offset: Optional. Pagination offset (default 0).
+
+        Returns:
+            JSON with documents list, total, enabled_count, limit, offset
+        """
+        try:
+            conversation_id = request.args.get('conversation_id')
+            if not conversation_id:
+                return jsonify({'error': 'conversation_id is required'}), 400
+
+            source_type = request.args.get('source_type', 'all')
+            search = request.args.get('search', '')
+            enabled_filter = request.args.get('enabled', 'all')
+            limit = request.args.get('limit', 100, type=int)
+            offset = request.args.get('offset', 0, type=int)
+
+            # Clamp limit
+            limit = max(1, min(limit, 500))
+
+            result = self.chat.data_viewer.list_documents(
+                conversation_id=conversation_id,
+                source_type=source_type if source_type != 'all' else None,
+                search=search if search else None,
+                enabled_filter=enabled_filter if enabled_filter != 'all' else None,
+                limit=limit,
+                offset=offset,
+            )
+
+            return jsonify(result), 200
+
+        except Exception as e:
+            logger.error(f"Error listing data documents: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    def get_data_document_content(self, document_hash: str):
+        """
+        Get document content for preview.
+
+        URL params:
+        - document_hash: The document's SHA-256 hash
+
+        Query params:
+        - max_size: Optional. Max content size (default 100000).
+
+        Returns:
+            JSON with hash, display_name, content, content_type, size_bytes, truncated
+        """
+        try:
+            max_size = request.args.get('max_size', 100000, type=int)
+            max_size = max(1000, min(max_size, 1000000))  # Clamp between 1KB and 1MB
+
+            result = self.chat.data_viewer.get_document_content(document_hash, max_size)
+            if result is None:
+                return jsonify({'error': 'Document not found'}), 404
+
+            return jsonify(result), 200
+
+        except Exception as e:
+            logger.error(f"Error getting document content for {document_hash}: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    def enable_data_document(self, document_hash: str):
+        """
+        Enable a document for the current chat.
+
+        URL params:
+        - document_hash: The document's SHA-256 hash
+
+        POST body:
+        - conversation_id: The conversation ID
+
+        Returns:
+            JSON with success, hash, enabled
+        """
+        try:
+            data = request.json or {}
+            conversation_id = data.get('conversation_id')
+            if not conversation_id:
+                return jsonify({'error': 'conversation_id is required'}), 400
+
+            result = self.chat.data_viewer.enable_document(conversation_id, document_hash)
+            return jsonify(result), 200
+
+        except Exception as e:
+            logger.error(f"Error enabling document {document_hash}: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    def disable_data_document(self, document_hash: str):
+        """
+        Disable a document for the current chat.
+
+        URL params:
+        - document_hash: The document's SHA-256 hash
+
+        POST body:
+        - conversation_id: The conversation ID
+
+        Returns:
+            JSON with success, hash, enabled
+        """
+        try:
+            data = request.json or {}
+            conversation_id = data.get('conversation_id')
+            if not conversation_id:
+                return jsonify({'error': 'conversation_id is required'}), 400
+
+            result = self.chat.data_viewer.disable_document(conversation_id, document_hash)
+            return jsonify(result), 200
+
+        except Exception as e:
+            logger.error(f"Error disabling document {document_hash}: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    def bulk_enable_documents(self):
+        """
+        Enable multiple documents for the current chat.
+
+        POST body:
+        - conversation_id: The conversation ID
+        - hashes: List of document hashes to enable
+
+        Returns:
+            JSON with success, enabled_count
+        """
+        try:
+            data = request.json or {}
+            conversation_id = data.get('conversation_id')
+            hashes = data.get('hashes', [])
+
+            if not conversation_id:
+                return jsonify({'error': 'conversation_id is required'}), 400
+            if not isinstance(hashes, list):
+                return jsonify({'error': 'hashes must be a list'}), 400
+
+            result = self.chat.data_viewer.bulk_enable(conversation_id, hashes)
+            return jsonify(result), 200
+
+        except Exception as e:
+            logger.error(f"Error bulk enabling documents: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    def bulk_disable_documents(self):
+        """
+        Disable multiple documents for the current chat.
+
+        POST body:
+        - conversation_id: The conversation ID
+        - hashes: List of document hashes to disable
+
+        Returns:
+            JSON with success, disabled_count
+        """
+        try:
+            data = request.json or {}
+            conversation_id = data.get('conversation_id')
+            hashes = data.get('hashes', [])
+
+            if not conversation_id:
+                return jsonify({'error': 'conversation_id is required'}), 400
+            if not isinstance(hashes, list):
+                return jsonify({'error': 'hashes must be a list'}), 400
+
+            result = self.chat.data_viewer.bulk_disable(conversation_id, hashes)
+            return jsonify(result), 200
+
+        except Exception as e:
+            logger.error(f"Error bulk disabling documents: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    def get_data_stats(self):
+        """
+        Get statistics for the data viewer.
+
+        Query params:
+        - conversation_id: Required. The conversation ID for per-chat stats.
+
+        Returns:
+            JSON with total_documents, enabled_documents, disabled_documents,
+            total_size_bytes, by_source_type, last_sync
+        """
+        try:
+            conversation_id = request.args.get('conversation_id')
+            if not conversation_id:
+                return jsonify({'error': 'conversation_id is required'}), 400
+
+            result = self.chat.data_viewer.get_stats(conversation_id)
+            return jsonify(result), 200
+
+        except Exception as e:
+            logger.error(f"Error getting data stats: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
     def is_authenticated(self):

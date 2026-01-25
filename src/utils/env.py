@@ -9,7 +9,11 @@ def read_secret(secret_name):
         # read secret from file and return
         with open(secret_filepath, 'r') as f:
             secret = f.read()
-    else:
-        return ""
+        return secret.strip()
 
-    return secret.strip()
+    # fallback to direct environment variable if no *_FILE is set
+    env_value = os.getenv(secret_name)
+    if env_value:
+        return env_value.strip()
+
+    return ""

@@ -16,6 +16,11 @@ const CONFIG = {
     ACTIVE_CONVERSATION: 'a2rchi_active_conversation_id',
     AB_WARNING_DISMISSED: 'a2rchi_ab_warning_dismissed',
     TRACE_VERBOSE_MODE: 'a2rchi_trace_verbose_mode',
+    SELECTED_PROVIDER: 'a2rchi_selected_provider',
+    SELECTED_MODEL: 'a2rchi_selected_model',
+    SELECTED_MODEL_CUSTOM: 'a2rchi_selected_model_custom',
+    SELECTED_PROVIDER_B: 'a2rchi_selected_provider_b',
+    SELECTED_MODEL_B: 'a2rchi_selected_model_b',
   },
   ENDPOINTS: {
     STREAM: '/api/get_chat_response_stream',
@@ -29,6 +34,13 @@ const CONFIG = {
     AB_PENDING: '/api/ab/pending',
     TRACE_GET: '/api/trace',
     CANCEL_STREAM: '/api/cancel_stream',
+    PROVIDERS: '/api/providers',
+    PROVIDER_MODELS: '/api/providers/models',
+    VALIDATE_PROVIDER: '/api/providers/validate',
+    PROVIDER_KEYS: '/api/providers/keys',
+    SET_PROVIDER_KEY: '/api/providers/keys/set',
+    CLEAR_PROVIDER_KEY: '/api/providers/keys/clear',
+    PIPELINE_DEFAULT_MODEL: '/api/pipeline/default_model',
   },
   STREAMING: {
     TIMEOUT: 300000, // 5 minutes
@@ -207,7 +219,7 @@ const API = {
     });
   },
 
-  async *streamResponse(history, conversationId, configName, signal = null) {
+  async *streamResponse(history, conversationId, configName, signal = null, provider = null, model = null) {
     const response = await fetch(CONFIG.ENDPOINTS.STREAM, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -220,6 +232,8 @@ const API = {
         client_id: this.clientId,
         include_agent_steps: true,  // Required for streaming chunks
         include_tool_steps: true,   // Enable tool step events for trace
+        provider: provider,  // Provider-based model selection
+        model: model,        // Model ID/name for the provider
       }),
       signal: signal,
     });
@@ -290,6 +304,49 @@ const API = {
   async getPendingABComparison(conversationId) {
     const url = `${CONFIG.ENDPOINTS.AB_PENDING}?conversation_id=${conversationId}&client_id=${encodeURIComponent(this.clientId)}`;
     return this.fetchJson(url);
+  },
+
+  // Provider API methods
+  async getProviders() {
+    return this.fetchJson(CONFIG.ENDPOINTS.PROVIDERS);
+  },
+
+  async getPipelineDefaultModel() {
+    return this.fetchJson(CONFIG.ENDPOINTS.PIPELINE_DEFAULT_MODEL);
+  },
+
+  async getProviderModels(providerType) {
+    const url = `${CONFIG.ENDPOINTS.PROVIDER_MODELS}?provider=${encodeURIComponent(providerType)}`;
+    return this.fetchJson(url);
+  },
+
+  async validateProvider(providerType) {
+    return this.fetchJson(CONFIG.ENDPOINTS.VALIDATE_PROVIDER, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: providerType }),
+    });
+  },
+
+  // API Key management methods
+  async getProviderKeys() {
+    return this.fetchJson(CONFIG.ENDPOINTS.PROVIDER_KEYS);
+  },
+
+  async setProviderKey(providerType, apiKey) {
+    return this.fetchJson(CONFIG.ENDPOINTS.SET_PROVIDER_KEY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: providerType, api_key: apiKey }),
+    });
+  },
+
+  async clearProviderKey(providerType) {
+    return this.fetchJson(CONFIG.ENDPOINTS.CLEAR_PROVIDER_KEY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: providerType }),
+    });
   },
 };
 
@@ -399,6 +456,7 @@ window.Markdown = Markdown;
 
 const UI = {
   elements: {},
+  sendBtnDefaultHtml: null,
 
   init() {
     this.elements = {
@@ -415,13 +473,24 @@ const UI = {
       modelSelectA: document.querySelector('.model-select-a'),
       modelSelectB: document.querySelector('.model-select-b'),
       settingsBtn: document.querySelector('.settings-btn'),
+      dataBtn: document.querySelector('.data-btn'),
       settingsModal: document.querySelector('.settings-modal'),
       settingsBackdrop: document.querySelector('.settings-backdrop'),
       settingsClose: document.querySelector('.settings-close'),
       abCheckbox: document.querySelector('.ab-checkbox'),
       abModelGroup: document.querySelector('.ab-model-group'),
       traceVerboseOptions: document.querySelector('.trace-verbose-options'),
+      // Provider selection elements
+      providerSelect: document.getElementById('provider-select'),
+      modelSelectPrimary: document.getElementById('model-select-primary'),
+      providerSelectB: document.getElementById('provider-select-b'),
+      providerStatus: document.getElementById('provider-status'),
+      customModelInput: document.getElementById('custom-model-input'),
+      customModelRow: document.getElementById('custom-model-row'),
+      activeModelLabel: document.getElementById('active-model-label'),
     };
+
+    this.sendBtnDefaultHtml = this.elements.sendBtn?.innerHTML || '';
 
     this.bindEvents();
     this.initTraceVerboseMode();
@@ -447,11 +516,11 @@ const UI = {
     this.elements.newChatBtn?.addEventListener('click', () => Chat.newConversation());
     
     // Send message
-    this.elements.sendBtn?.addEventListener('click', () => Chat.sendMessage());
+    this.elements.sendBtn?.addEventListener('click', () => Chat.handleSendOrStop());
     this.elements.inputField?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        Chat.sendMessage();
+        Chat.handleSendOrStop();
       }
     });
     
@@ -462,6 +531,19 @@ const UI = {
     this.elements.settingsBtn?.addEventListener('click', () => this.openSettings());
     this.elements.settingsBackdrop?.addEventListener('click', () => this.closeSettings());
     this.elements.settingsClose?.addEventListener('click', () => this.closeSettings());
+    
+    // Data viewer navigation
+    this.elements.dataBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      const conversationId = Chat.state.conversationId;
+      if (conversationId) {
+        // Store conversation ID for the data viewer
+        localStorage.setItem('currentConversationId', conversationId);
+        window.location.href = `/data?conversation_id=${encodeURIComponent(conversationId)}`;
+      } else {
+        alert('Please select or start a conversation first to manage its data.');
+      }
+    });
     
     // A/B toggle in settings
     this.elements.abCheckbox?.addEventListener('change', (e) => {
@@ -503,6 +585,23 @@ const UI = {
         Chat.setTraceVerboseMode(e.target.value);
       }
     });
+
+    // Provider selection
+    this.elements.providerSelect?.addEventListener('change', (e) => {
+      Chat.handleProviderChange(e.target.value);
+    });
+
+    this.elements.modelSelectPrimary?.addEventListener('change', (e) => {
+      Chat.handleModelChange(e.target.value);
+    });
+
+    this.elements.customModelInput?.addEventListener('input', (e) => {
+      Chat.handleCustomModelChange(e.target.value);
+    });
+
+    this.elements.providerSelectB?.addEventListener('change', (e) => {
+      Chat.handleProviderBChange(e.target.value);
+    });
     
     // Close modal on Escape
     document.addEventListener('keydown', (e) => {
@@ -510,11 +609,47 @@ const UI = {
         this.closeSettings();
       }
     });
+    
+    // Settings navigation
+    document.querySelectorAll('.settings-nav-item').forEach(btn => {
+      btn.addEventListener('click', (e) => this.switchSettingsSection(e.target.closest('.settings-nav-item')));
+    });
   },
 
   openSettings() {
     if (this.elements.settingsModal) {
       this.elements.settingsModal.style.display = 'flex';
+      // Reset to first section when opening
+      const firstNavItem = document.querySelector('.settings-nav-item');
+      if (firstNavItem) {
+        this.switchSettingsSection(firstNavItem);
+      }
+    }
+  },
+  
+  switchSettingsSection(navItem) {
+    if (!navItem) return;
+    
+    const sectionId = navItem.dataset.section;
+    
+    // Update nav items
+    document.querySelectorAll('.settings-nav-item').forEach(item => {
+      item.classList.remove('active');
+      item.setAttribute('aria-selected', 'false');
+    });
+    navItem.classList.add('active');
+    navItem.setAttribute('aria-selected', 'true');
+    
+    // Update sections
+    document.querySelectorAll('.settings-section').forEach(section => {
+      section.classList.remove('active');
+      section.hidden = true;
+    });
+    
+    const targetSection = document.getElementById(`settings-${sectionId}`);
+    if (targetSection) {
+      targetSection.classList.add('active');
+      targetSection.hidden = false;
     }
   },
 
@@ -574,9 +709,37 @@ const UI = {
     }
   },
 
-  setInputDisabled(disabled) {
+  setInputDisabled(disabled, options = {}) {
+    const { disableSend = disabled } = options;
     if (this.elements.inputField) this.elements.inputField.disabled = disabled;
-    if (this.elements.sendBtn) this.elements.sendBtn.disabled = disabled;
+    if (this.elements.sendBtn) this.elements.sendBtn.disabled = disableSend;
+  },
+
+  setStreamingState(isStreaming) {
+    const sendBtn = this.elements.sendBtn;
+    if (!sendBtn) return;
+
+    if (isStreaming) {
+      sendBtn.classList.add('stop-mode');
+      sendBtn.title = 'Stop streaming';
+      sendBtn.setAttribute('aria-label', 'Stop streaming');
+      sendBtn.innerHTML = '⏹';
+    } else {
+      sendBtn.classList.remove('stop-mode');
+      sendBtn.title = 'Send message';
+      sendBtn.setAttribute('aria-label', 'Send message');
+      sendBtn.innerHTML = this.sendBtnDefaultHtml;
+    }
+  },
+
+  showCustomModelInput(show) {
+    if (!this.elements.customModelRow) return;
+    this.elements.customModelRow.style.display = show ? 'flex' : 'none';
+  },
+
+  updateActiveModelLabel(text) {
+    if (!this.elements.activeModelLabel) return;
+    this.elements.activeModelLabel.textContent = text || '';
   },
 
   getSelectedConfig(which = 'A') {
@@ -590,6 +753,219 @@ const UI = {
       select.innerHTML = configs
         .map((c) => `<option value="${Utils.escapeHtml(c.name)}">${Utils.escapeHtml(c.name)}</option>`)
         .join('');
+    });
+  },
+
+  renderProviders(providers, selectedProvider = null) {
+    const select = this.elements.providerSelect;
+    if (!select) return;
+
+    // Filter to only enabled providers
+    const enabledProviders = providers.filter(p => p.enabled);
+    
+    if (enabledProviders.length === 0) {
+      select.innerHTML = '<option value="">No providers available</option>';
+      select.disabled = true;
+      return;
+    }
+
+    select.disabled = false;
+    select.innerHTML = '<option value="">Use pipeline default</option>' +
+      enabledProviders
+        .map(p => `<option value="${Utils.escapeHtml(p.type)}">${Utils.escapeHtml(p.display_name)}</option>`)
+        .join('');
+
+    // Restore selection if provided, otherwise default to pipeline config
+    if (selectedProvider && enabledProviders.some(p => p.type === selectedProvider)) {
+      select.value = selectedProvider;
+    } else {
+      select.value = '';
+    }
+
+    // Also populate provider B select for A/B testing
+    const selectB = this.elements.providerSelectB;
+    if (selectB) {
+      selectB.innerHTML = '<option value="">Same as primary</option>' +
+        enabledProviders
+          .map(p => `<option value="${Utils.escapeHtml(p.type)}">${Utils.escapeHtml(p.display_name)}</option>`)
+          .join('');
+    }
+  },
+
+  renderProviderModels(models, selectedModel = null, providerType = null) {
+    const select = this.elements.modelSelectPrimary;
+    if (!select) return;
+
+    if (!models || models.length === 0) {
+      select.innerHTML = '<option value="">Using pipeline default</option>';
+      select.disabled = true;
+      this.showCustomModelInput(false);
+      return;
+    }
+
+    select.disabled = false;
+    const options = models
+      .map(m => `<option value="${Utils.escapeHtml(m.id)}">${Utils.escapeHtml(m.display_name || m.name)}</option>`)
+      .join('');
+    const customOption = providerType === 'openrouter'
+      ? '<option value="__custom__">Custom model…</option>'
+      : '';
+    select.innerHTML = options + customOption;
+
+    // Restore selection if provided
+    if (selectedModel === '__custom__' && providerType === 'openrouter') {
+      select.value = '__custom__';
+      this.showCustomModelInput(true);
+    } else if (selectedModel && models.some(m => m.id === selectedModel)) {
+      select.value = selectedModel;
+      this.showCustomModelInput(false);
+    } else {
+      this.showCustomModelInput(false);
+    }
+  },
+
+  renderModelBOptions(models, selectedModel = null, providerType = null) {
+    const select = this.elements.modelSelectB;
+    if (!select) return;
+
+    if (!models || models.length === 0) {
+      select.innerHTML = '<option value="">No models available</option>';
+      return;
+    }
+
+    const options = models
+      .map(m => `<option value="${Utils.escapeHtml(m.id)}">${Utils.escapeHtml(m.display_name || m.name)}</option>`)
+      .join('');
+    const customOption = providerType === 'openrouter'
+      ? '<option value="__custom__">Custom model…</option>'
+      : '';
+    select.innerHTML = options + customOption;
+
+    if (selectedModel === '__custom__' && providerType === 'openrouter') {
+      select.value = '__custom__';
+    } else if (selectedModel && models.some(m => m.id === selectedModel)) {
+      select.value = selectedModel;
+    }
+  },
+
+  updateProviderStatus(status, message) {
+    const statusEl = this.elements.providerStatus;
+    if (!statusEl) return;
+
+    statusEl.className = `provider-status ${status}`;
+    statusEl.style.display = 'flex';
+    statusEl.querySelector('.status-text').textContent = message;
+  },
+
+  hideProviderStatus() {
+    const statusEl = this.elements.providerStatus;
+    if (statusEl) {
+      statusEl.style.display = 'none';
+    }
+  },
+
+  renderApiKeyStatus(providers) {
+    const container = document.getElementById('api-keys-container');
+    if (!container) return;
+
+    if (!providers || providers.length === 0) {
+      container.innerHTML = '<div class="api-key-loading">No providers requiring API keys</div>';
+      return;
+    }
+
+    container.innerHTML = providers.map(p => {
+      const statusClass = p.configured ? 'configured' : 'not-configured';
+      const statusIcon = p.configured ? '✓' : '○';
+      const statusText = p.configured 
+        ? (p.has_session_key ? 'Session' : 'Env')
+        : '';
+      
+      return `
+        <div class="api-key-row" data-provider="${Utils.escapeHtml(p.provider)}">
+          <div class="api-key-provider">${Utils.escapeHtml(p.display_name)}</div>
+          <div class="api-key-status ${statusClass}" title="${p.configured ? (p.has_session_key ? 'Session key configured' : 'Environment key configured') : 'Not configured'}">
+            <span class="status-dot">${statusIcon}</span>
+            ${statusText ? `<span class="status-label">${statusText}</span>` : ''}
+          </div>
+          <input type="password" 
+                 class="api-key-input" 
+                 placeholder="${p.configured ? '••••••••' : 'sk-...'}" 
+                 data-provider="${Utils.escapeHtml(p.provider)}"
+                 autocomplete="off">
+          <div class="api-key-actions">
+            <button class="api-key-btn save-btn" 
+                    data-provider="${Utils.escapeHtml(p.provider)}"
+                    data-action="save"
+                    title="Save API key">
+              Save
+            </button>
+            ${p.has_session_key ? `
+              <button class="api-key-btn clear-btn" 
+                      data-provider="${Utils.escapeHtml(p.provider)}"
+                      data-action="clear"
+                      title="Clear session key">
+                ✕
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Add event listeners for save/clear buttons
+    container.querySelectorAll('.api-key-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const provider = btn.dataset.provider;
+        const action = btn.dataset.action;
+        const row = btn.closest('.api-key-row');
+        const input = row.querySelector('.api-key-input');
+
+        if (action === 'save') {
+          const apiKey = input.value.trim();
+          if (!apiKey) {
+            input.focus();
+            return;
+          }
+          
+          btn.disabled = true;
+          btn.textContent = 'Saving...';
+          
+          try {
+            await Chat.setApiKey(provider, apiKey);
+            input.value = '';
+          } catch (err) {
+            alert(`Failed to save API key: ${err.message}`);
+          } finally {
+            btn.disabled = false;
+            btn.textContent = 'Save';
+          }
+        } else if (action === 'clear') {
+          if (confirm(`Clear API key for ${provider}?`)) {
+            btn.disabled = true;
+            btn.textContent = 'Clearing...';
+            
+            try {
+              await Chat.clearApiKey(provider);
+            } catch (err) {
+              alert(`Failed to clear API key: ${err.message}`);
+            } finally {
+              btn.disabled = false;
+              btn.textContent = 'Clear';
+            }
+          }
+        }
+      });
+    });
+
+    // Allow Enter key to save
+    container.querySelectorAll('.api-key-input').forEach(input => {
+      input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          const row = input.closest('.api-key-row');
+          const saveBtn = row.querySelector('.api-key-btn.save-btn');
+          if (saveBtn) saveBtn.click();
+        }
+      });
     });
   },
 
@@ -1191,6 +1567,14 @@ const Chat = {
     activeTrace: null,         // { traceId, events: [], toolCalls: Map<toolCallId, toolData> }
     traceVerboseMode: localStorage.getItem(CONFIG.STORAGE_KEYS.TRACE_VERBOSE_MODE) || 'normal', // 'minimal' | 'normal' | 'verbose'
     abortController: null,     // AbortController for cancellation
+    // Provider state
+    providers: [],
+    pipelineDefaultModel: null,
+    selectedProvider: localStorage.getItem(CONFIG.STORAGE_KEYS.SELECTED_PROVIDER) || null,
+    selectedModel: localStorage.getItem(CONFIG.STORAGE_KEYS.SELECTED_MODEL) || null,
+    selectedCustomModel: localStorage.getItem(CONFIG.STORAGE_KEYS.SELECTED_MODEL_CUSTOM) || null,
+    selectedProviderB: localStorage.getItem(CONFIG.STORAGE_KEYS.SELECTED_PROVIDER_B) || null,
+    selectedModelB: localStorage.getItem(CONFIG.STORAGE_KEYS.SELECTED_MODEL_B) || null,
   },
 
   async init() {
@@ -1201,6 +1585,9 @@ const Chat = {
     await Promise.all([
       this.loadConfigs(),
       this.loadConversations(),
+      this.loadProviders(),
+      this.loadPipelineDefaultModel(),
+      this.loadApiKeyStatus(),
     ]);
 
     // Load active conversation if any
@@ -1217,6 +1604,285 @@ const Chat = {
       UI.renderConfigs(this.state.configs);
     } catch (e) {
       console.error('Failed to load configs:', e);
+    }
+  },
+
+  async loadProviders() {
+    try {
+      const data = await API.getProviders();
+      this.state.providers = data?.providers || [];
+      
+      // Render providers dropdown
+      UI.renderProviders(this.state.providers, this.state.selectedProvider);
+      
+      // If we have a selected provider, load its models; otherwise use pipeline default
+      const currentProvider = this.state.selectedProvider;
+      if (currentProvider) {
+        await this.loadProviderModels(currentProvider);
+      } else {
+        UI.renderProviderModels([], null);
+        this.showPipelineDefaultStatus();
+      }
+      this.updateActiveModelLabel();
+    } catch (e) {
+      console.error('Failed to load providers:', e);
+      // Show error status
+      UI.updateProviderStatus('disconnected', 'Failed to load providers');
+    }
+  },
+
+  async loadPipelineDefaultModel() {
+    try {
+      const data = await API.getPipelineDefaultModel();
+      this.state.pipelineDefaultModel = data || null;
+      if (!this.state.selectedProvider) {
+        this.showPipelineDefaultStatus();
+      }
+      this.updateActiveModelLabel();
+    } catch (e) {
+      console.error('Failed to load pipeline default model:', e);
+    }
+  },
+
+  showPipelineDefaultStatus() {
+    const info = this.state.pipelineDefaultModel;
+    const labelParts = [];
+    if (info?.model_class) {
+      labelParts.push(info.model_class);
+    }
+    if (info?.model_name) {
+      labelParts.push(`(${info.model_name})`);
+    }
+    const label = labelParts.length ? labelParts.join(' ') : 'Pipeline default model';
+    UI.updateProviderStatus('connected', `Using pipeline default: ${label}`);
+  },
+
+  updateActiveModelLabel() {
+    const provider = this.state.selectedProvider;
+    if (!provider) {
+      const info = this.state.pipelineDefaultModel;
+      const labelParts = [];
+      if (info?.model_class) {
+        labelParts.push(info.model_class);
+      }
+      if (info?.model_name) {
+        labelParts.push(`(${info.model_name})`);
+      }
+      const label = labelParts.length ? labelParts.join(' ') : 'Pipeline default model';
+      UI.updateActiveModelLabel(`Using pipeline default: ${label}`);
+      return;
+    }
+
+    const providerInfo = this.state.providers.find(p => p.type === provider);
+    const providerName = providerInfo?.display_name || provider;
+    const model = this.getSelectedProviderAndModel().model;
+    const modelLabel = model ? model : 'Select model';
+    UI.updateActiveModelLabel(`${providerName}: ${modelLabel}`);
+  },
+
+  async loadProviderModels(providerType) {
+    try {
+      const provider = this.state.providers.find(p => p.type === providerType);
+      if (!provider) return;
+
+      // Use models from the provider data (already loaded)
+      const models = provider.models || [];
+      UI.renderProviderModels(models, this.state.selectedModel, providerType);
+      if (providerType === 'openrouter' && this.state.selectedModel === '__custom__') {
+        if (UI.elements.customModelInput) {
+          UI.elements.customModelInput.value = this.state.selectedCustomModel || '';
+        }
+      }
+
+      // Set default model if none selected
+      if (!this.state.selectedModel || !models.some(m => m.id === this.state.selectedModel)) {
+        if (providerType === 'openrouter' && this.state.selectedCustomModel) {
+          this.state.selectedModel = '__custom__';
+          localStorage.setItem(CONFIG.STORAGE_KEYS.SELECTED_MODEL, '__custom__');
+          if (UI.elements.modelSelectPrimary) {
+            UI.elements.modelSelectPrimary.value = '__custom__';
+          }
+          UI.showCustomModelInput(true);
+        } else {
+        const defaultModel = provider.default_model || models[0]?.id;
+        if (defaultModel) {
+          this.state.selectedModel = defaultModel;
+          localStorage.setItem(CONFIG.STORAGE_KEYS.SELECTED_MODEL, defaultModel);
+          if (UI.elements.modelSelectPrimary) {
+            UI.elements.modelSelectPrimary.value = defaultModel;
+          }
+          UI.showCustomModelInput(false);
+        }
+        }
+      }
+
+      // Also update Model B options if provider B is same as primary
+      if (!this.state.selectedProviderB || this.state.selectedProviderB === providerType) {
+        UI.renderModelBOptions(models, this.state.selectedModelB, providerType);
+      }
+
+      // Show connected status
+      if (provider.enabled) {
+        UI.updateProviderStatus('connected', `Connected to ${provider.display_name}`);
+        setTimeout(() => UI.hideProviderStatus(), 2000);
+      }
+      this.updateActiveModelLabel();
+    } catch (e) {
+      console.error('Failed to load provider models:', e);
+      UI.updateProviderStatus('disconnected', 'Failed to load models');
+    }
+  },
+
+  async handleProviderChange(providerType) {
+    if (!providerType) {
+      this.state.selectedProvider = null;
+      this.state.selectedModel = null;
+      this.state.selectedCustomModel = null;
+      localStorage.removeItem(CONFIG.STORAGE_KEYS.SELECTED_PROVIDER);
+      localStorage.removeItem(CONFIG.STORAGE_KEYS.SELECTED_MODEL);
+      localStorage.removeItem(CONFIG.STORAGE_KEYS.SELECTED_MODEL_CUSTOM);
+      UI.renderProviderModels([], null);
+      this.showPipelineDefaultStatus();
+      this.updateActiveModelLabel();
+      return;
+    }
+
+    this.state.selectedProvider = providerType;
+    localStorage.setItem(CONFIG.STORAGE_KEYS.SELECTED_PROVIDER, providerType);
+    
+    // Clear model selection until new models load
+    this.state.selectedModel = null;
+    localStorage.removeItem(CONFIG.STORAGE_KEYS.SELECTED_MODEL);
+    this.state.selectedCustomModel = null;
+    localStorage.removeItem(CONFIG.STORAGE_KEYS.SELECTED_MODEL_CUSTOM);
+    
+    UI.updateProviderStatus('loading', 'Loading models...');
+    await this.loadProviderModels(providerType);
+    this.updateActiveModelLabel();
+  },
+
+  handleSendOrStop() {
+    if (this.state.isStreaming) {
+      this.cancelStream();
+      return;
+    }
+    this.sendMessage();
+  },
+
+  handleModelChange(modelId) {
+    if (!modelId) return;
+
+    this.state.selectedModel = modelId;
+    localStorage.setItem(CONFIG.STORAGE_KEYS.SELECTED_MODEL, modelId);
+    if (modelId === '__custom__' && this.state.selectedProvider === 'openrouter') {
+      UI.showCustomModelInput(true);
+    } else {
+      UI.showCustomModelInput(false);
+    }
+    this.updateActiveModelLabel();
+  },
+
+  handleCustomModelChange(value) {
+    const trimmed = value.trim();
+    this.state.selectedCustomModel = trimmed || null;
+    if (trimmed) {
+      localStorage.setItem(CONFIG.STORAGE_KEYS.SELECTED_MODEL_CUSTOM, trimmed);
+    } else {
+      localStorage.removeItem(CONFIG.STORAGE_KEYS.SELECTED_MODEL_CUSTOM);
+    }
+    this.updateActiveModelLabel();
+  },
+
+  async handleProviderBChange(providerType) {
+    this.state.selectedProviderB = providerType || null;
+    
+    if (providerType) {
+      localStorage.setItem(CONFIG.STORAGE_KEYS.SELECTED_PROVIDER_B, providerType);
+      
+      // Load models for provider B
+      const provider = this.state.providers.find(p => p.type === providerType);
+      if (provider) {
+        UI.renderModelBOptions(provider.models || [], this.state.selectedModelB, providerType);
+      }
+    } else {
+      localStorage.removeItem(CONFIG.STORAGE_KEYS.SELECTED_PROVIDER_B);
+      // Use primary provider's models
+      const primaryProvider = this.state.providers.find(p => p.type === this.state.selectedProvider);
+      if (primaryProvider) {
+        UI.renderModelBOptions(primaryProvider.models || [], this.state.selectedModelB, this.state.selectedProvider);
+      }
+    }
+  },
+
+  getSelectedProviderAndModel() {
+    const provider = this.state.selectedProvider || null;
+    if (!provider) {
+      return { provider: null, model: null };
+    }
+    if (provider === 'openrouter' && this.state.selectedModel === '__custom__') {
+      return { provider, model: this.state.selectedCustomModel || null };
+    }
+    return { provider, model: this.state.selectedModel };
+  },
+
+  getSelectedProviderAndModelB() {
+    const providerB = this.state.selectedProviderB || this.state.selectedProvider;
+    const modelB = UI.elements.modelSelectB?.value || this.state.selectedModelB;
+    if (!providerB) {
+      return { provider: null, model: null };
+    }
+    if (providerB === 'openrouter' && modelB === '__custom__') {
+      return { provider: providerB, model: this.state.selectedCustomModel || null };
+    }
+    return {
+      provider: providerB,
+      model: modelB,
+    };
+  },
+
+  // API Key Management
+  async loadApiKeyStatus() {
+    try {
+      const data = await API.getProviderKeys();
+      this.state.apiKeyStatus = data?.providers || [];
+      UI.renderApiKeyStatus(this.state.apiKeyStatus);
+    } catch (e) {
+      console.error('Failed to load API key status:', e);
+      UI.renderApiKeyStatus([]);
+    }
+  },
+
+  async setApiKey(providerType, apiKey) {
+    try {
+      const result = await API.setProviderKey(providerType, apiKey);
+      
+      // Reload status and providers to reflect changes
+      await Promise.all([
+        this.loadApiKeyStatus(),
+        this.loadProviders(),
+      ]);
+      
+      return result;
+    } catch (e) {
+      console.error('Failed to set API key:', e);
+      throw e;
+    }
+  },
+
+  async clearApiKey(providerType) {
+    try {
+      const result = await API.clearProviderKey(providerType);
+      
+      // Reload status and providers to reflect changes
+      await Promise.all([
+        this.loadApiKeyStatus(),
+        this.loadProviders(),
+      ]);
+      
+      return result;
+    } catch (e) {
+      console.error('Failed to clear API key:', e);
+      throw e;
     }
   },
 
@@ -1296,6 +1962,12 @@ const Chat = {
     const text = UI.getInputValue();
     if (!text || this.state.isStreaming) return;
 
+    const selected = this.getSelectedProviderAndModel();
+    if (selected.provider && !selected.model) {
+      UI.showToast('Please select a model for the chosen provider.');
+      return;
+    }
+
     // Block if A/B vote is pending
     if (this.state.abVotePending) {
       UI.showToast('Please vote on the current comparison first, or disable A/B mode');
@@ -1313,7 +1985,8 @@ const Chat = {
     UI.addMessage(userMsg);
 
     UI.clearInput();
-    UI.setInputDisabled(true);
+    UI.setInputDisabled(true, { disableSend: false });
+    UI.setStreamingState(true);
     this.state.isStreaming = true;
 
     // Determine which configs to use
@@ -1347,12 +2020,29 @@ const Chat = {
       UI.hideCancelButton(msgId);
       this.state.isStreaming = false;
       UI.setInputDisabled(false);
+      UI.setStreamingState(false);
       UI.elements.inputField?.focus();
       await this.loadConversations();
     }
   },
 
   async sendABMessage(userText, configA, configB) {
+        const selectedA = this.getSelectedProviderAndModel();
+        const selectedB = this.getSelectedProviderAndModelB();
+        if (selectedA.provider && !selectedA.model) {
+          UI.showToast('Please select a model for Provider A.');
+          this.state.isStreaming = false;
+          UI.setInputDisabled(false);
+          UI.setStreamingState(false);
+          return;
+        }
+        if (selectedB.provider && !selectedB.model) {
+          UI.showToast('Please select a model for Provider B.');
+          this.state.isStreaming = false;
+          UI.setInputDisabled(false);
+          UI.setStreamingState(false);
+          return;
+        }
     // Randomize which config gets A vs B
     const shuffled = Math.random() < 0.5;
     const [actualConfigA, actualConfigB] = shuffled ? [configB, configA] : [configA, configB];
@@ -1370,10 +2060,11 @@ const Chat = {
     };
 
     try {
+      this.state.abortController = new AbortController();
       // Stream both responses in parallel
       await Promise.all([
-        this.streamABResponse(msgIdA, actualConfigA, results.a),
-        this.streamABResponse(msgIdB, actualConfigB, results.b),
+        this.streamABResponse(msgIdA, actualConfigA, results.a, selectedA.provider, selectedA.model),
+        this.streamABResponse(msgIdB, actualConfigB, results.b, selectedB.provider, selectedB.model),
       ]);
 
       // Check for errors
@@ -1382,6 +2073,7 @@ const Chat = {
         UI.showABError(errorMsg);
         this.state.isStreaming = false;
         UI.setInputDisabled(false);
+        UI.setStreamingState(false);
         await this.loadConversations();
         return;
       }
@@ -1422,22 +2114,33 @@ const Chat = {
       UI.showABError(e.message || 'Failed to create comparison');
       this.state.isStreaming = false;
       UI.setInputDisabled(false);
+      UI.setStreamingState(false);
+      this.state.abortController = null;
       await this.loadConversations();
       return;
     }
 
     this.state.isStreaming = false;
+    UI.setStreamingState(false);
+    this.state.abortController = null;
     // Keep input disabled until vote
     await this.loadConversations();
   },
 
-  async streamABResponse(elementId, configName, result) {
+  async streamABResponse(elementId, configName, result, provider = null, model = null) {
     let streamedText = '';
     const showTrace = this.state.traceVerboseMode !== 'minimal';
     const toolCalls = new Map(); // Track tool calls for this response
 
     try {
-      for await (const event of API.streamResponse(this.state.history, this.state.conversationId, configName)) {
+      for await (const event of API.streamResponse(
+        this.state.history,
+        this.state.conversationId,
+        configName,
+        this.state.abortController?.signal || null,
+        provider,
+        model
+      )) {
         // Handle trace events
         if (event.type === 'tool_start') {
           toolCalls.set(event.tool_call_id, {
@@ -1594,11 +2297,16 @@ const Chat = {
     }
 
     try {
+      // Get selected provider and model
+      const { provider, model } = this.getSelectedProviderAndModel();
+      
       for await (const event of API.streamResponse(
         this.state.history,
         this.state.conversationId,
         configName,
-        this.state.abortController.signal
+        this.state.abortController.signal,
+        provider,
+        model
       )) {
         // Handle trace events
         if (event.type === 'tool_start') {
@@ -1719,6 +2427,10 @@ const Chat = {
   async cancelStream() {
     if (this.state.abortController) {
       this.state.abortController.abort();
+      this.state.isStreaming = false;
+      UI.setInputDisabled(false);
+      UI.setStreamingState(false);
+      this.state.abortController = null;
       
       // Also notify server
       if (this.state.conversationId) {

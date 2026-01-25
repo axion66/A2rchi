@@ -56,6 +56,7 @@
           </svg>
         </button>
         <span class="header-title">Chat</span>
+        <div class="active-model" id="active-model-label" aria-live="polite"></div>
       </div>
     </header>
 
@@ -74,6 +75,11 @@
           <div class="toolbar-left">
             <label for="model-select-a" class="visually-hidden">Select model</label>
             <select id="model-select-a" class="model-select model-select-a" title="Select model"></select>
+            <a href="#" class="data-btn" title="Manage Data" aria-label="Manage Data">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M4 7V4h16v3M9 20h6M12 4v16"></path>
+              </svg>
+            </a>
             <button class="settings-btn" title="Settings" aria-label="Settings">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <circle cx="12" cy="12" r="3"></circle>
@@ -103,40 +109,139 @@
             </svg>
           </button>
         </div>
-        <div class="settings-body">
-          <div class="settings-group">
-            <span class="settings-label" id="ab-testing-label">A/B Testing</span>
-            <p class="settings-description">Compare responses from two different models side by side.</p>
-            <label class="settings-toggle">
-              <input type="checkbox" class="ab-checkbox" id="ab-checkbox" aria-describedby="ab-testing-label">
-              <span class="toggle-slider"></span>
-              <span class="toggle-label">Enable A/B comparison</span>
-            </label>
-          </div>
-          <div class="settings-group ab-model-group" style="display: none;">
-            <label class="settings-label" for="model-select-b">Model B</label>
-            <select id="model-select-b" class="model-select model-select-b"></select>
-          </div>
-          <div class="settings-group">
-            <span class="settings-label" id="transparency-label">Agent Transparency</span>
-            <p class="settings-description">Control how much detail to show about agent tool calls and reasoning.</p>
-            <div class="settings-radio-group trace-verbose-options" role="radiogroup" aria-labelledby="transparency-label">
-              <label class="settings-radio">
-                <input type="radio" name="trace-verbose" value="minimal" id="trace-minimal">
-                <span class="radio-label">Minimal</span>
-                <span class="radio-description">Final answer only</span>
-              </label>
-              <label class="settings-radio">
-                <input type="radio" name="trace-verbose" value="normal" id="trace-normal" checked>
-                <span class="radio-label">Normal</span>
-                <span class="radio-description">Show tool calls (collapsed)</span>
-              </label>
-              <label class="settings-radio">
-                <input type="radio" name="trace-verbose" value="verbose" id="trace-verbose">
-                <span class="radio-label">Verbose</span>
-                <span class="radio-description">Show everything expanded</span>
-              </label>
-            </div>
+        <div class="settings-content">
+          <!-- Settings Navigation Sidebar -->
+          <nav class="settings-nav" aria-label="Settings categories">
+            <button class="settings-nav-item active" data-section="models" aria-selected="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+              </svg>
+              <span>Models</span>
+            </button>
+            <button class="settings-nav-item" data-section="api-keys" aria-selected="false">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>
+              </svg>
+              <span>API Keys</span>
+            </button>
+            <button class="settings-nav-item" data-section="advanced" aria-selected="false">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+              <span>Advanced</span>
+            </button>
+          </nav>
+          
+          <!-- Settings Body -->
+          <div class="settings-body">
+            <!-- Models Section -->
+            <section class="settings-section active" id="settings-models" aria-labelledby="models-heading">
+              <h4 class="settings-section-title" id="models-heading">Model Provider</h4>
+              <p class="settings-description">Select which AI provider and model to use for responses.</p>
+              
+              <div class="settings-group">
+                <div class="provider-selection">
+                  <div class="provider-row">
+                    <label class="settings-field-label" for="provider-select">Provider</label>
+                    <select id="provider-select" class="model-select provider-select" aria-describedby="provider-label">
+                      <option value="">Loading providers...</option>
+                    </select>
+                  </div>
+                  <div class="provider-row">
+                    <label class="settings-field-label" for="model-select-primary">Model</label>
+                    <select id="model-select-primary" class="model-select" disabled>
+                      <option value="">Select a provider first</option>
+                    </select>
+                  </div>
+                    <div class="provider-row custom-model-row" id="custom-model-row" style="display: none;">
+                      <label class="settings-field-label" for="custom-model-input">Custom model</label>
+                      <input id="custom-model-input" class="model-select" type="text" placeholder="e.g. openai/gpt-5-nano" autocomplete="off" />
+                    </div>
+                  <div class="provider-status" id="provider-status" style="display: none;">
+                    <span class="status-icon">●</span>
+                    <span class="status-text"></span>
+                  </div>
+                </div>
+              </div>
+            </section>
+            
+            <!-- API Keys Section -->
+            <section class="settings-section" id="settings-api-keys" aria-labelledby="api-keys-heading" hidden>
+              <h4 class="settings-section-title" id="api-keys-heading">API Keys</h4>
+              <p class="settings-description">Configure API keys for providers. Keys are stored securely in your browser session and are never logged or sent to our servers.</p>
+              
+              <div class="settings-group">
+                <div id="api-keys-container" class="api-keys-container">
+                  <div class="api-key-loading">Loading...</div>
+                </div>
+              </div>
+            </section>
+            
+            <!-- Advanced Section -->
+            <section class="settings-section" id="settings-advanced" aria-labelledby="advanced-heading" hidden>
+              <h4 class="settings-section-title" id="advanced-heading">Advanced Settings</h4>
+              
+              <!-- A/B Testing -->
+              <div class="settings-group">
+                <div class="settings-group-header">
+                  <span class="settings-label" id="ab-testing-label">A/B Testing</span>
+                  <label class="settings-toggle-compact">
+                    <input type="checkbox" class="ab-checkbox" id="ab-checkbox" aria-describedby="ab-testing-label">
+                    <span class="toggle-slider-compact"></span>
+                  </label>
+                </div>
+                <p class="settings-description">Compare responses from two different models side by side.</p>
+              </div>
+              
+              <div class="settings-group ab-model-group" style="display: none;">
+                <label class="settings-label" for="model-select-b">Model B (for comparison)</label>
+                <div class="provider-row">
+                  <label class="settings-field-label" for="provider-select-b">Provider</label>
+                  <select id="provider-select-b" class="model-select provider-select-b">
+                    <option value="">Same as primary</option>
+                  </select>
+                </div>
+                <div class="provider-row">
+                  <label class="settings-field-label" for="model-select-b">Model</label>
+                  <select id="model-select-b" class="model-select model-select-b"></select>
+                </div>
+              </div>
+              
+              <!-- Agent Transparency -->
+              <div class="settings-group settings-group-bordered">
+                <span class="settings-label" id="transparency-label">Agent Transparency</span>
+                <p class="settings-description">Control how much detail to show about agent tool calls and reasoning.</p>
+                <div class="settings-radio-group trace-verbose-options" role="radiogroup" aria-labelledby="transparency-label">
+                  <label class="settings-radio">
+                    <input type="radio" name="trace-verbose" value="minimal" id="trace-minimal">
+                    <span class="radio-check"></span>
+                    <div class="radio-content">
+                      <span class="radio-label">Minimal</span>
+                      <span class="radio-description">Final answer only</span>
+                    </div>
+                  </label>
+                  <label class="settings-radio">
+                    <input type="radio" name="trace-verbose" value="normal" id="trace-normal" checked>
+                    <span class="radio-check"></span>
+                    <div class="radio-content">
+                      <span class="radio-label">Normal</span>
+                      <span class="radio-description">Show tool calls (collapsed)</span>
+                    </div>
+                  </label>
+                  <label class="settings-radio">
+                    <input type="radio" name="trace-verbose" value="verbose" id="trace-verbose">
+                    <span class="radio-check"></span>
+                    <div class="radio-content">
+                      <span class="radio-label">Verbose</span>
+                      <span class="radio-description">Show everything expanded</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
       </div>
