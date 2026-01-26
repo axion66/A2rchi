@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional, Set
 
 from src.data_manager.collectors.utils.index_utils import CatalogService
 from src.utils.logging import get_logger
-from src.utils.yaml_config import load_services_config
 
 logger = get_logger(__name__)
 
@@ -20,19 +19,15 @@ class DataViewerService:
     Service for managing document viewing and per-chat document selection.
     """
 
-    def __init__(self, data_path: str | Path, pg_config: Optional[Dict[str, Any]] = None):
+    def __init__(self, data_path: str | Path):
         """
         Initialize the DataViewerService.
 
         Args:
             data_path: Path to the data directory containing the catalog.
-            pg_config: PostgreSQL configuration. If not provided, loads from YAML config.
         """
         self.data_path = Path(data_path)
-        if pg_config is None:
-            services_config = load_services_config()
-            pg_config = services_config.get("postgres", {})
-        self.catalog = CatalogService(data_path=self.data_path, pg_config=pg_config)
+        self.catalog = CatalogService(data_path=self.data_path)
         logger.info(f"DataViewerService initialized with data_path: {self.data_path}")
 
     def list_documents(
