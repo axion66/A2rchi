@@ -41,6 +41,7 @@ const CONFIG = {
     SET_PROVIDER_KEY: '/api/providers/keys/set',
     CLEAR_PROVIDER_KEY: '/api/providers/keys/clear',
     PIPELINE_DEFAULT_MODEL: '/api/pipeline/default_model',
+    AGENT_INFO: '/api/agent/info',
   },
   STREAMING: {
     TIMEOUT: 300000, // 5 minutes
@@ -315,6 +316,13 @@ const API = {
     return this.fetchJson(CONFIG.ENDPOINTS.PIPELINE_DEFAULT_MODEL);
   },
 
+  async getAgentInfo(configName = null) {
+    const url = configName
+      ? `${CONFIG.ENDPOINTS.AGENT_INFO}?config_name=${encodeURIComponent(configName)}`
+      : CONFIG.ENDPOINTS.AGENT_INFO;
+    return this.fetchJson(url);
+  },
+
   async getProviderModels(providerType) {
     const url = `${CONFIG.ENDPOINTS.PROVIDER_MODELS}?provider=${encodeURIComponent(providerType)}`;
     return this.fetchJson(url);
@@ -473,13 +481,18 @@ const UI = {
       modelSelectA: document.querySelector('.model-select-a'),
       modelSelectB: document.querySelector('.model-select-b'),
       settingsBtn: document.querySelector('.settings-btn'),
-      dataBtn: document.querySelector('.data-btn'),
+      dataTab: document.getElementById('data-tab'),
       settingsModal: document.querySelector('.settings-modal'),
       settingsBackdrop: document.querySelector('.settings-backdrop'),
       settingsClose: document.querySelector('.settings-close'),
       abCheckbox: document.querySelector('.ab-checkbox'),
       abModelGroup: document.querySelector('.ab-model-group'),
       traceVerboseOptions: document.querySelector('.trace-verbose-options'),
+      agentInfoBtn: document.querySelector('.agent-info-btn'),
+      agentInfoModal: document.querySelector('.agent-info-modal'),
+      agentInfoBackdrop: document.querySelector('.agent-info-backdrop'),
+      agentInfoClose: document.querySelector('.agent-info-close'),
+      agentInfoContent: document.getElementById('agent-info-content'),
       // Provider selection elements
       providerSelect: document.getElementById('provider-select'),
       modelSelectPrimary: document.getElementById('model-select-primary'),
@@ -533,7 +546,7 @@ const UI = {
     this.elements.settingsClose?.addEventListener('click', () => this.closeSettings());
     
     // Data viewer navigation
-    this.elements.dataBtn?.addEventListener('click', (e) => {
+    this.elements.dataTab?.addEventListener('click', (e) => {
       e.preventDefault();
       const conversationId = Chat.state.conversationId;
       if (conversationId) {
@@ -543,6 +556,17 @@ const UI = {
       } else {
         alert('Please select or start a conversation first to manage its data.');
       }
+    });
+
+    // Agent info modal
+    this.elements.agentInfoBtn?.addEventListener('click', () => {
+      this.openAgentInfo();
+    });
+    this.elements.agentInfoBackdrop?.addEventListener('click', () => {
+      this.closeAgentInfo();
+    });
+    this.elements.agentInfoClose?.addEventListener('click', () => {
+      this.closeAgentInfo();
     });
     
     // A/B toggle in settings
@@ -608,6 +632,9 @@ const UI = {
       if (e.key === 'Escape' && this.elements.settingsModal?.style.display !== 'none') {
         this.closeSettings();
       }
+      if (e.key === 'Escape' && this.elements.agentInfoModal?.style.display !== 'none') {
+        this.closeAgentInfo();
+      }
     });
     
     // Settings navigation
@@ -656,6 +683,64 @@ const UI = {
   closeSettings() {
     if (this.elements.settingsModal) {
       this.elements.settingsModal.style.display = 'none';
+    }
+  },
+
+  async openAgentInfo() {
+    if (!this.elements.agentInfoModal) return;
+    this.elements.agentInfoModal.style.display = 'flex';
+    if (this.elements.agentInfoContent) {
+      this.elements.agentInfoContent.innerHTML = '<p class="agent-info-loading">Loading agent info…</p>';
+    }
+    await this.loadAgentInfo();
+  },
+
+  closeAgentInfo() {
+    if (this.elements.agentInfoModal) {
+      this.elements.agentInfoModal.style.display = 'none';
+    }
+  },
+
+  async loadAgentInfo() {
+    if (!this.elements.agentInfoContent) return;
+    try {
+      const configName = this.getSelectedConfig('A');
+      const info = await API.getAgentInfo(configName);
+      const agentLabel = Chat.getAgentLabel();
+      const modelLabel = Chat.getCurrentModelLabel();
+      const pipelineLabel = info?.pipeline || 'Unknown';
+      const embeddingLabel = info?.embedding_name || 'Not specified';
+      const sources = Array.isArray(info?.data_sources) ? info.data_sources : [];
+
+      const sourcesHtml = sources.length
+        ? `<ul class="agent-info-list">${sources.map(source => `<li>${Utils.escapeHtml(source)}</li>`).join('')}</ul>`
+        : '<p>No data sources configured.</p>';
+
+      this.elements.agentInfoContent.innerHTML = `
+        <div class="agent-info-section">
+          <h4>Active agent</h4>
+          <p>${Utils.escapeHtml(agentLabel)}</p>
+        </div>
+        <div class="agent-info-section">
+          <h4>Model</h4>
+          <p>${Utils.escapeHtml(modelLabel)}</p>
+        </div>
+        <div class="agent-info-section">
+          <h4>Pipeline</h4>
+          <p>${Utils.escapeHtml(pipelineLabel)}</p>
+        </div>
+        <div class="agent-info-section">
+          <h4>Embedding</h4>
+          <p>${Utils.escapeHtml(embeddingLabel)}</p>
+        </div>
+        <div class="agent-info-section">
+          <h4>Data sources</h4>
+          ${sourcesHtml}
+        </div>`;
+    } catch (e) {
+      console.error('Failed to load agent info:', e);
+      this.elements.agentInfoContent.innerHTML = `
+        <p class="agent-info-loading">Unable to load agent info. Please try again.</p>`;
     }
   },
 
@@ -743,7 +828,7 @@ const UI = {
   },
 
   getSelectedConfig(which = 'A') {
-    const select = which === 'A' ? this.elements.modelSelectA : this.elements.modelSelectB;
+    const select = this.elements.modelSelectA;
     return select?.value ?? '';
   },
 
@@ -1065,6 +1150,10 @@ const UI = {
       labelHtml = `<span class="message-label">${Utils.escapeHtml(msg.label)}</span>`;
     }
 
+    const metaHtml = !isUser && msg.meta
+      ? `<div class="message-meta">${Utils.escapeHtml(msg.meta)}</div>`
+      : '';
+
     return `
       <div class="message ${roleClass}" data-id="${msg.id || ''}">
         <div class="message-inner">
@@ -1074,6 +1163,7 @@ const UI = {
             ${labelHtml}
           </div>
           <div class="message-content">${msg.html || ''}</div>
+          ${metaHtml}
         </div>
       </div>`;
   },
@@ -1319,6 +1409,11 @@ const UI = {
 
     // Replace the entire comparison with a normal A2rchi message (matching createMessageHTML format)
     // Include the trace container from the winning response
+    const metaLabel = Chat.getEntryMetaLabel();
+    const metaHtml = metaLabel
+      ? `<div class="message-meta">${Utils.escapeHtml(metaLabel)}</div>`
+      : '';
+
     const normalMessage = `
       <div class="message assistant" data-id="ab-winner-${Date.now()}">
         <div class="message-inner">
@@ -1328,6 +1423,7 @@ const UI = {
           </div>
           ${winnerTrace}
           <div class="message-content">${winnerContent}</div>
+          ${metaHtml}
         </div>
       </div>`;
 
@@ -1590,6 +1686,9 @@ const Chat = {
       this.loadApiKeyStatus(),
     ]);
 
+    // Update model label after all data is loaded (configs, providers, pipeline default)
+    this.updateActiveModelLabel();
+
     // Load active conversation if any
     const activeId = Storage.getActiveConversationId();
     if (activeId) {
@@ -1623,7 +1722,6 @@ const Chat = {
         UI.renderProviderModels([], null);
         this.showPipelineDefaultStatus();
       }
-      this.updateActiveModelLabel();
     } catch (e) {
       console.error('Failed to load providers:', e);
       // Show error status
@@ -1638,7 +1736,6 @@ const Chat = {
       if (!this.state.selectedProvider) {
         this.showPipelineDefaultStatus();
       }
-      this.updateActiveModelLabel();
     } catch (e) {
       console.error('Failed to load pipeline default model:', e);
     }
@@ -1657,27 +1754,39 @@ const Chat = {
     UI.updateProviderStatus('connected', `Using pipeline default: ${label}`);
   },
 
-  updateActiveModelLabel() {
+  formatPipelineDefaultLabel() {
+    const info = this.state.pipelineDefaultModel;
+    // Just show the model name (e.g., "openai/gpt-5-nano")
+    if (info?.model_name) {
+      return info.model_name;
+    }
+    return 'Default model';
+  },
+
+  getAgentLabel() {
+    const selectedConfig = UI.getSelectedConfig('A');
+    if (selectedConfig) return selectedConfig;
+    return this.state.configs[0]?.name || 'Default agent';
+  },
+
+  getCurrentModelLabel() {
     const provider = this.state.selectedProvider;
     if (!provider) {
-      const info = this.state.pipelineDefaultModel;
-      const labelParts = [];
-      if (info?.model_class) {
-        labelParts.push(info.model_class);
-      }
-      if (info?.model_name) {
-        labelParts.push(`(${info.model_name})`);
-      }
-      const label = labelParts.length ? labelParts.join(' ') : 'Pipeline default model';
-      UI.updateActiveModelLabel(`Using pipeline default: ${label}`);
-      return;
+      return this.formatPipelineDefaultLabel();
     }
 
-    const providerInfo = this.state.providers.find(p => p.type === provider);
-    const providerName = providerInfo?.display_name || provider;
     const model = this.getSelectedProviderAndModel().model;
-    const modelLabel = model ? model : 'Select model';
-    UI.updateActiveModelLabel(`${providerName}: ${modelLabel}`);
+    return model || 'Select model';
+  },
+
+  getEntryMetaLabel() {
+    const agentLabel = this.getAgentLabel();
+    const modelLabel = this.getCurrentModelLabel();
+    return `${agentLabel} · ${modelLabel}`;
+  },
+
+  updateActiveModelLabel() {
+    UI.updateActiveModelLabel(this.getEntryMetaLabel());
   },
 
   async loadProviderModels(providerType) {
@@ -1910,6 +2019,7 @@ const Chat = {
           id: `${msg.message_id || idx}-${isUser ? 'u' : 'a'}`,
           sender: msg.sender,
           html: isUser ? Utils.escapeHtml(msg.content) : Markdown.render(msg.content),
+          meta: isUser ? null : this.getEntryMetaLabel(),
         };
       });
 
@@ -1991,8 +2101,8 @@ const Chat = {
 
     // Determine which configs to use
     const configA = UI.getSelectedConfig('A');
-    const configB = UI.getSelectedConfig('B');
-    const isAB = UI.isABEnabled() && configB;
+    const configB = UI.getSelectedConfig('B') || configA;
+    const isAB = UI.isABEnabled();
 
     if (isAB) {
       await this.sendABMessage(text, configA, configB);
@@ -2007,17 +2117,16 @@ const Chat = {
       id: msgId,
       sender: 'A2rchi',
       html: '',
+      meta: this.getEntryMetaLabel(),
     };
     this.state.messages.push(assistantMsg);
     UI.addMessage(assistantMsg);
 
     try {
-      UI.showCancelButton(msgId);
       await this.streamResponse(msgId, configName);
     } catch (e) {
       console.error('Streaming error:', e);
     } finally {
-      UI.hideCancelButton(msgId);
       this.state.isStreaming = false;
       UI.setInputDisabled(false);
       UI.setStreamingState(false);
