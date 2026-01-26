@@ -1793,6 +1793,7 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/providers/keys/set', 'set_provider_api_key', self.require_auth(self.set_provider_api_key), methods=["POST"])
         self.add_endpoint('/api/providers/keys/clear', 'clear_provider_api_key', self.require_auth(self.clear_provider_api_key), methods=["POST"])
         self.add_endpoint('/api/pipeline/default_model', 'get_pipeline_default_model', self.require_auth(self.get_pipeline_default_model), methods=["GET"])
+        self.add_endpoint('/api/agent/info', 'get_agent_info', self.require_auth(self.get_agent_info), methods=["GET"])
 
         # Data viewer endpoints
         logger.info("Adding data viewer API endpoints")
@@ -2175,6 +2176,36 @@ class FlaskAppWrapper(object):
         except Exception as e:
             logger.error(f"Error getting pipeline default model: {e}")
             return jsonify({"error": str(e)}), 500
+
+    def get_agent_info(self):
+        """
+        Get high-level information about the active agent configuration.
+
+        Query params:
+            config_name: Optional config name to describe (defaults to active config).
+
+        Returns:
+            JSON with config name, pipeline name, embedding name, and data sources.
+        """
+        config_name = request.args.get("config_name") or self.chat.current_config_name or self.config.get("name")
+
+        try:
+            config_payload = self.chat._get_config_payload(config_name) if config_name else self.config
+        except Exception as exc:
+            logger.error(f"Error loading config '{config_name}': {exc}")
+            config_payload = self.config
+
+        pipeline_name = config_payload.get("services", {}).get("chat_app", {}).get("pipeline")
+        embedding_name = config_payload.get("data_manager", {}).get("embedding_name")
+        sources = config_payload.get("data_manager", {}).get("sources", {})
+        source_names = list(sources.keys()) if isinstance(sources, dict) else []
+
+        return jsonify({
+            "config_name": config_name,
+            "pipeline": pipeline_name,
+            "embedding_name": embedding_name,
+            "data_sources": source_names,
+        }), 200
 
     def get_provider_models(self):
         """
@@ -3397,7 +3428,8 @@ class FlaskAppWrapper(object):
         List documents with per-chat enabled state.
 
         Query params:
-        - conversation_id: Required. The conversation ID for per-chat state.
+        - conversation_id: Optional. The conversation ID for per-chat state.
+                          If omitted, shows all documents as enabled.
         - source_type: Optional. Filter by "local", "web", "ticket", or "all".
         - search: Optional. Search query for display_name and url.
         - enabled: Optional. Filter by "all", "enabled", or "disabled".
@@ -3408,9 +3440,7 @@ class FlaskAppWrapper(object):
             JSON with documents list, total, enabled_count, limit, offset
         """
         try:
-            conversation_id = request.args.get('conversation_id')
-            if not conversation_id:
-                return jsonify({'error': 'conversation_id is required'}), 400
+            conversation_id = request.args.get('conversation_id')  # Optional now
 
             source_type = request.args.get('source_type', 'all')
             search = request.args.get('search', '')
@@ -3576,16 +3606,15 @@ class FlaskAppWrapper(object):
         Get statistics for the data viewer.
 
         Query params:
-        - conversation_id: Required. The conversation ID for per-chat stats.
+        - conversation_id: Optional. The conversation ID for per-chat stats.
+                          If omitted, shows stats for all documents as enabled.
 
         Returns:
             JSON with total_documents, enabled_documents, disabled_documents,
             total_size_bytes, by_source_type, last_sync
         """
         try:
-            conversation_id = request.args.get('conversation_id')
-            if not conversation_id:
-                return jsonify({'error': 'conversation_id is required'}), 400
+            conversation_id = request.args.get('conversation_id')  # Optional now
 
             result = self.chat.data_viewer.get_stats(conversation_id)
             return jsonify(result), 200
