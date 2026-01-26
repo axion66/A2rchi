@@ -107,3 +107,70 @@ To see what volumes are currently present, run:
 ```bash
 docker/podman volume ls
 ```
+
+### HTTPS Configuration for Production
+
+For production deployments, especially when using BYOK (Bring Your Own Key), HTTPS is strongly recommended to protect API keys in transit.
+
+#### Using a Reverse Proxy
+
+The recommended approach is to terminate TLS at a reverse proxy (nginx, Caddy, Traefik):
+
+**Example nginx configuration:**
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name your-domain.com;
+
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    location / {
+        proxy_pass http://localhost:7861;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # SSE streaming support
+        proxy_buffering off;
+        proxy_cache off;
+    }
+}
+```
+
+**Example Caddy configuration (automatic HTTPS):**
+
+```caddyfile
+your-domain.com {
+    reverse_proxy localhost:7861
+}
+```
+
+#### Session Cookie Security
+
+When running behind HTTPS, enable secure cookies by setting the environment variable:
+
+```bash
+FLASK_SESSION_COOKIE_SECURE=true
+```
+
+Or configure in your deployment's environment file:
+
+```env
+FLASK_SESSION_COOKIE_SECURE=true
+```
+
+This ensures session cookies (which may contain API keys) are only sent over encrypted connections.
+
+#### Security Checklist
+
+- [ ] TLS termination at reverse proxy or load balancer
+- [ ] `FLASK_SESSION_COOKIE_SECURE=true` in production
+- [ ] Strong `FLASK_UPLOADER_APP_SECRET_KEY` configured (not auto-generated)
+- [ ] Firewall rules limiting direct access to internal ports
+- [ ] Regular certificate renewal (use Let's Encrypt/certbot)

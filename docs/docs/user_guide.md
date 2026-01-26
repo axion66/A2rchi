@@ -633,6 +633,69 @@ a2rchi:
 
 In this case, the `gemma3` model is hosted on the Ollama server at `url-for-server`. You can check which models are hosted on your server by going to `url-for-server/models`.
 
+### Bring Your Own Key (BYOK)
+
+A2RCHI supports Bring Your Own Key (BYOK), allowing users to provide their own API keys for LLM providers at runtime. This enables:
+
+- **Cost attribution**: Users pay for their own API usage
+- **Provider flexibility**: Switch between providers without admin intervention
+- **Privacy**: Use personal accounts for sensitive queries
+
+#### Key Hierarchy
+
+API keys are resolved in the following order (highest priority first):
+
+1. **Environment Variables**: Admin-configured keys (e.g., `OPENAI_API_KEY`)
+2. **Docker Secrets**: Keys mounted at `/run/secrets/`
+3. **Session Storage**: User-provided keys via the Settings UI
+
+!!! note
+    Environment variable keys always take precedence. If an admin configures a key via environment variable, users cannot override it with their own key.
+
+#### Using BYOK in the Chat Interface
+
+1. Open the **Settings** modal (gear icon)
+2. Expand the **API Keys** section
+3. For each provider you want to use:
+   - Enter your API key in the input field
+   - Click **Save** to store it in your session
+4. Select your preferred **Provider** and **Model** from the dropdowns
+5. Start chatting!
+
+**Status Indicators:**
+
+| Icon | Meaning |
+|------|---------|
+| ✓ Env | Key configured via environment variable (cannot be changed) |
+| ✓ Session | Key configured via your session |
+| ○ | No key configured |
+
+#### Supported Providers
+
+| Provider | Environment Variable | API Key Format |
+|----------|---------------------|----------------|
+| OpenAI | `OPENAI_API_KEY` | `sk-...` |
+| Anthropic | `ANTHROPIC_API_KEY` | `sk-ant-...` |
+| Google Gemini | `GOOGLE_API_KEY` | `AIza...` |
+| OpenRouter | `OPENROUTER_API_KEY` | `sk-or-...` |
+
+#### Security Considerations
+
+- **Keys are never logged** - API keys are redacted from all log output
+- **Keys are never echoed** - The UI only shows masked placeholders
+- **Session-scoped** - Keys are cleared when you log out or your session expires
+- **HTTPS recommended** - For production deployments, always use HTTPS to protect keys in transit
+
+#### API Endpoints
+
+For programmatic access, the following endpoints are available:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/providers/keys` | GET | Get status of all provider keys |
+| `/api/providers/keys/set` | POST | Set a session API key (validates before storing) |
+| `/api/providers/keys/clear` | POST | Clear a session API key |
+
 ---
 
 ## Vector Store
