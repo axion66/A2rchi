@@ -4,7 +4,7 @@ import os
 from flask import Flask
 
 from src.interfaces.grader_app.app import FlaskAppWrapper
-from src.utils.config_loader import load_config
+from src.utils.yaml_config import load_yaml_config
 from src.utils.env import read_secret
 from src.utils.logging import setup_logging
 
@@ -14,7 +14,7 @@ setup_logging()
 os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
 os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
-grader_config = load_config()["services"]["grader_app"]
+grader_config = load_yaml_config()["services"]["grader_app"]
 
 app = FlaskAppWrapper(Flask(
     __name__,

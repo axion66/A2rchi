@@ -6,7 +6,7 @@ from langchain_core.language_models.base import BaseLanguageModel
 from langchain_core.prompts.base import BasePromptTemplate
 
 from src.a2rchi.pipelines.classic_pipelines.utils.token_limiter import TokenLimiter
-from src.utils.config_loader import load_global_config
+from src.utils.yaml_config import load_global_config
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)

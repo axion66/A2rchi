@@ -6,7 +6,7 @@ from src.data_manager.collectors.tickets.integrations.jira import JiraClient
 from src.data_manager.collectors.tickets.integrations.redmine_tickets import \
     RedmineClient
 from src.data_manager.collectors.tickets.ticket_resource import TicketResource
-from src.utils.config_loader import load_global_config
+from src.utils.yaml_config import load_global_config
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)

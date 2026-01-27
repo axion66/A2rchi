@@ -2,7 +2,7 @@ import logging
 
 import yaml
 
-from src.utils.config_loader import load_global_config
+from src.utils.yaml_config import load_global_config
 
 # ignore debug logs from these modules, too verbose :)
 ignore_debug_modules = ["urllib3.connectionpool", "filelock", "httpcore", "openai._base_client"]

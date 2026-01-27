@@ -103,6 +103,10 @@ class QAPipeline(BasePipeline):
             'retriever_output': documents if documents else "",
         })
 
+        # Extract model identifier for tracking
+        chat_model = self.llms.get('chat_model')
+        model_used = getattr(chat_model, 'model_name', None) or getattr(chat_model, 'model', 'unknown')
+
         return PipelineOutput(
             answer=answer_output['answer'],
             source_documents=documents,
@@ -111,5 +115,7 @@ class QAPipeline(BasePipeline):
                 "retriever_scores": scores,
                 "condensed_output": condense_output['answer'],
                 "question": inputs.get("question", ""),
+                "model_used": model_used,
+                "pipeline_used": self.__class__.__name__,
             },
         )

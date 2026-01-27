@@ -5,7 +5,8 @@ torch==2.6.0
 torchvision==0.21.0
 backoff==2.2.1
 beautifulsoup4==4.12.3 
-chromadb==1.2.1
+# chromadb is optional - uncomment if using chromadb backend
+# chromadb==1.2.1
 clickhouse-connect==0.6.6
 coloredlogs==15.0.1
 duckdb==0.8.1
@@ -45,7 +46,8 @@ uvloop==0.19.0
 watchfiles==0.21.0
 zstandard==0.25.0
 langchain-openai==1.0.1
-langchain-chroma==1.0.0
+# langchain-chroma is optional - uncomment if using chromadb backend
+# langchain-chroma==1.0.0
 langchain-community==0.4
 langchain-core==1.0.2
 langchain-text-splitters==1.0.0

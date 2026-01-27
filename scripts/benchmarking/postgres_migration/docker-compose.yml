@@ -1,0 +1,22 @@
+services:
+  postgres-benchmark:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    container_name: a2rchi-postgres-benchmark
+    environment:
+      POSTGRES_USER: benchmark
+      POSTGRES_PASSWORD: benchmark
+      POSTGRES_DB: benchmark
+    ports:
+      - "5433:5432"  # Different port to avoid conflicts
+    volumes:
+      - pgdata-benchmark:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U benchmark -d benchmark"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata-benchmark:

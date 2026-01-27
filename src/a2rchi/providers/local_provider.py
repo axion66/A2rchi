@@ -108,15 +108,24 @@ class LocalProvider(BaseProvider):
     DEFAULT_OPENAI_COMPAT_BASE_URL = "http://localhost:8000/v1"
     
     def __init__(self, config: Optional[ProviderConfig] = None):
+        import os
+        
+        # Check for OLLAMA_HOST environment variable (supports Docker deployments)
+        ollama_host = os.environ.get("OLLAMA_HOST", self.DEFAULT_OLLAMA_BASE_URL)
+        
         if config is None:
             config = ProviderConfig(
                 provider_type=ProviderType.LOCAL,
-                base_url=self.DEFAULT_OLLAMA_BASE_URL,
-                models=DEFAULT_LOCAL_MODELS,
-                default_model="llama3.2",
+                base_url=ollama_host,
+                models=[],  # Empty list triggers dynamic fetch
+                default_model="",  # Will be set from first available model
                 # Default to Ollama mode
                 extra_kwargs={"local_mode": "ollama"},
             )
+        else:
+            # If config provided but no base_url, use env var
+            if not config.base_url:
+                config.base_url = ollama_host
         super().__init__(config)
     
     @property
@@ -180,12 +189,70 @@ class LocalProvider(BaseProvider):
         """
         List available local models.
         
-        For Ollama, this could potentially query the Ollama API to get installed models.
-        For now, returns the configured models list.
+        For Ollama, dynamically queries the Ollama API to get installed models.
+        Falls back to configured models if the query fails.
         """
+        if self.local_mode == "ollama":
+            # Try to get installed models dynamically
+            installed = self._fetch_ollama_models()
+            if installed:
+                return installed
+        
+        # Fall back to configured models
         if self.config.models:
             return self.config.models
         return DEFAULT_LOCAL_MODELS
+    
+    def _fetch_ollama_models(self) -> List[ModelInfo]:
+        """
+        Fetch installed models from Ollama API and convert to ModelInfo objects.
+        
+        Returns empty list if fetch fails.
+        """
+        import json
+        import urllib.request
+        import urllib.error
+        
+        try:
+            base_url = self.config.base_url or self.DEFAULT_OLLAMA_BASE_URL
+            url = f"{base_url}/api/tags"
+            
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=10) as response:
+                if response.status == 200:
+                    data = json.loads(response.read().decode())
+                    models = []
+                    for model_data in data.get("models", []):
+                        name = model_data.get("name", "")
+                        # Extract parameter size if available
+                        details = model_data.get("details", {})
+                        param_size = details.get("parameter_size", "")
+                        family = details.get("family", "")
+                        
+                        # Create a user-friendly display name
+                        display_name = name
+                        if param_size:
+                            display_name = f"{name} ({param_size})"
+                        
+                        # Infer capabilities from model family
+                        supports_tools = family.lower() in ["qwen2", "llama", "mistral"]
+                        supports_vision = "vision" in name.lower() or "vl" in name.lower()
+                        
+                        models.append(ModelInfo(
+                            id=name,
+                            name=name,
+                            display_name=display_name,
+                            context_window=32768,  # Default, actual varies by model
+                            supports_tools=supports_tools,
+                            supports_streaming=True,
+                            supports_vision=supports_vision,
+                            max_output_tokens=8192,
+                        ))
+                    return models
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError) as e:
+            logger.debug(f"Failed to fetch Ollama models: {e}")
+        
+        return []
     
     def validate_connection(self) -> bool:
         """
@@ -217,25 +284,8 @@ class LocalProvider(BaseProvider):
         Query Ollama for installed models (Ollama mode only).
         
         Returns a list of model names that are currently installed locally.
+        
+        Deprecated: Use list_models() instead which returns full ModelInfo objects.
         """
-        if self.local_mode != "ollama":
-            logger.warning("list_installed_models is only available in Ollama mode")
-            return []
-        
-        import json
-        import urllib.request
-        import urllib.error
-        
-        try:
-            base_url = self.config.base_url or self.DEFAULT_OLLAMA_BASE_URL
-            url = f"{base_url}/api/tags"
-            
-            req = urllib.request.Request(url, method="GET")
-            with urllib.request.urlopen(req, timeout=10) as response:
-                if response.status == 200:
-                    data = json.loads(response.read().decode())
-                    return [model["name"] for model in data.get("models", [])]
-        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError) as e:
-            logger.warning(f"Failed to list installed Ollama models: {e}")
-        
-        return []
+        models = self.list_models()
+        return [m.id for m in models]

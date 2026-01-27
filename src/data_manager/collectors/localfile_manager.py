@@ -8,7 +8,7 @@ from werkzeug.utils import secure_filename
 
 from src.data_manager.collectors.localfile_resource import LocalFileResource
 from src.data_manager.collectors.persistence import PersistenceService
-from src.utils.config_loader import load_global_config
+from src.utils.yaml_config import load_global_config
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)

@@ -26,6 +26,12 @@ dependencies = [
     "pre-commit>=4"
 ]
 
+[project.optional-dependencies]
+chromadb = [
+    "chromadb>=1.0.0",
+    "langchain-chroma>=1.0.0"
+]
+
 [project.scripts]
 a2rchi = "src.cli.cli_main:main"
 

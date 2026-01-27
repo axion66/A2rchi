@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 # Template file constants
 BASE_CONFIG_TEMPLATE = "base-config.yaml"
 BASE_COMPOSE_TEMPLATE = "base-compose.yaml"
-BASE_INIT_SQL_TEMPLATE = "base-init.sql"
+BASE_INIT_SQL_V2_TEMPLATE = "init-v2.sql"  # PostgreSQL + pgvector consolidated schema
 BASE_GRAFANA_DATASOURCES_TEMPLATE = "grafana/datasources.yaml"
 BASE_GRAFANA_DASHBOARDS_TEMPLATE = "grafana/dashboards.yaml"
 BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE = "grafana/a2rchi-default-dashboard.json"
@@ -148,7 +148,32 @@ class TemplateManager:
 
     # individual stages
     def _stage_prompts(self, context: TemplateContext) -> None:
+        # Copy default prompt templates (condense/, chat/, system/ structure)
+        self._copy_default_prompts(context)
+        # Collect pipeline-specific prompt mappings
         context.prompt_mappings = self._collect_prompt_mappings(context)
+
+    def _copy_default_prompts(self, context: TemplateContext) -> None:
+        """Copy default prompt templates to deployment for PromptService."""
+        templates_prompts_dir = Path(__file__).parent.parent / "templates" / "prompts"
+        deployment_prompts_dir = context.base_dir / "prompts"
+        
+        if not templates_prompts_dir.exists():
+            logger.warning(f"Default prompts template directory not found: {templates_prompts_dir}")
+            return
+        
+        # Copy the entire prompts directory structure (condense/, chat/, system/)
+        for prompt_type in ["condense", "chat", "system"]:
+            src_dir = templates_prompts_dir / prompt_type
+            dst_dir = deployment_prompts_dir / prompt_type
+            
+            if src_dir.exists():
+                dst_dir.mkdir(parents=True, exist_ok=True)
+                for prompt_file in src_dir.glob("*.prompt"):
+                    dst_file = dst_dir / prompt_file.name
+                    if not dst_file.exists():  # Don't overwrite existing prompts
+                        shutil.copyfile(prompt_file, dst_file)
+                        logger.debug(f"Copied default prompt: {prompt_type}/{prompt_file.name}")
 
     def _stage_configs(self, context: TemplateContext) -> None:
         self._render_config_files(context)
@@ -350,17 +375,45 @@ class TemplateManager:
         grafana_pg_password = (
             context.secrets_manager.get_secret("GRAFANA_PG_PASSWORD") if grafana_enabled else ""
         )
-
-        init_sql_template = self.env.get_template(BASE_INIT_SQL_TEMPLATE)
+        
+        # Always use init-v2.sql for PostgreSQL + pgvector consolidated storage
+        init_sql_template = self.env.get_template(BASE_INIT_SQL_V2_TEMPLATE)
+        
+        # Get embedding dimensions from data_manager config
+        data_manager_config = context.config_manager.config.get("data_manager", {})
+        embedding_class_map = data_manager_config.get("embedding_class_map", {})
+        embedding_name = data_manager_config.get("embedding_name", "all-MiniLM-L6-v2")
+        
+        # Default dimensions based on common embedding models
+        default_dimensions = {
+            "all-MiniLM-L6-v2": 384,
+            "text-embedding-ada-002": 1536,
+            "text-embedding-3-small": 1536,
+            "text-embedding-3-large": 3072,
+        }
+        embedding_dimensions = default_dimensions.get(embedding_name, 384)
+        
+        # Allow override from config
+        if embedding_name in embedding_class_map:
+            embedding_dimensions = embedding_class_map[embedding_name].get(
+                "dimensions", embedding_dimensions
+            )
+        
         init_sql = init_sql_template.render(
             use_grafana=grafana_enabled,
             grafana_pg_password=grafana_pg_password,
+            embedding_dimensions=embedding_dimensions,
+            # Vector index settings (optional overrides)
+            vector_index_type=data_manager_config.get("vector_index_type", "hnsw"),
+            vector_index_hnsw_m=data_manager_config.get("vector_index_hnsw_m", 16),
+            vector_index_hnsw_ef=data_manager_config.get("vector_index_hnsw_ef", 64),
         )
+        dest = context.base_dir / "init-v2.sql"
 
-        dest = context.base_dir / "init.sql"
         with open(dest, "w") as f:
             f.write(init_sql)
         logger.debug(f"Wrote PostgreSQL init script to {dest}")
+
 
     def _render_compose_file(self, context: TemplateContext) -> None:
         template_vars = context.plan.to_template_vars()

@@ -11,7 +11,7 @@ from flask import Flask, jsonify
 from src.data_manager.data_manager import DataManager
 from src.data_manager.scheduler import CronScheduler
 from src.interfaces.uploader_app.app import FlaskAppWrapper
-from src.utils.config_loader import load_config
+from src.utils.yaml_config import load_yaml_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger, setup_logging
 
@@ -25,7 +25,7 @@ def main() -> None:
     os.environ["OPENAI_API_KEY"] = read_secret("OPENAI_API_KEY")
     os.environ["HUGGING_FACE_HUB_TOKEN"] = read_secret("HUGGING_FACE_HUB_TOKEN")
 
-    config = load_config()
+    config = load_yaml_config()
     services_config = config["services"]
     data_manager_cfg = services_config.get("data_manager", {})
     status_file = Path(config["global"]["DATA_PATH"]) / "ingestion_status.json"

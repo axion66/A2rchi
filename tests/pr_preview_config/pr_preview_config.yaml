@@ -7,10 +7,7 @@ services:
     port: 2786
     external_port: 2786
     trained_on: "Dummy data for preview"
-  chromadb:
-    host: chromadb
-    port: 8123
-    external_port: 8123
+  # Vector storage uses PostgreSQL with pgvector (only supported backend)
   data_manager:
     port: 4242
     external_port: 4242
@@ -27,7 +24,7 @@ data_manager:
         encode_kwargs:
           normalize_embeddings: true
       similarity_score_reference: 10
-  chromadb_host: localhost  
+  # PostgreSQL with pgvector is the only supported vector backend
   use_hybrid_search: true
   sources:
     links:

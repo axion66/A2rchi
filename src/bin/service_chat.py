@@ -5,9 +5,27 @@ import os
 from flask import Flask
 
 from src.interfaces.chat_app.app import FlaskAppWrapper
-from src.utils.config_loader import load_config
+from src.utils.yaml_config import load_yaml_config
 from src.utils.env import read_secret
 from src.utils.logging import setup_logging
+
+
+def initialize_config_from_yaml(config):
+    """Initialize ConfigService from YAML config on startup."""
+    try:
+        from src.utils.config_service import ConfigService
+        
+        pg_config = {
+            "password": read_secret("PG_PASSWORD"),
+            **config["services"]["postgres"],
+        }
+        
+        config_service = ConfigService(pg_config)
+        config_service.initialize_from_yaml(config)
+        print("Synced configuration to PostgreSQL")
+    except Exception as e:
+        print(f"Warning: Could not sync config to PostgreSQL: {e}")
+        # Non-fatal - service can still start without ConfigService sync
 
 
 def main():
@@ -19,7 +37,11 @@ def main():
     os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
     os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
     
-    config = load_config()
+    config = load_yaml_config()
+    
+    # Initialize ConfigService from YAML (syncs static config to DB)
+    initialize_config_from_yaml(config)
+    
     chat_config = config["services"]["chat_app"]
     a2rchi_config = config["a2rchi"]
     print(f"Starting Chat Service with (host, port): ({chat_config['host']}, {chat_config['port']})")

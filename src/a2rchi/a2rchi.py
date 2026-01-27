@@ -1,5 +1,5 @@
 import src.a2rchi.pipelines as A2rchiPipelines 
-from src.utils.config_loader import load_config
+from src.utils.yaml_config import load_config_with_class_mapping
 from src.utils.logging import get_logger
 from src.a2rchi.utils.output_dataclass import PipelineOutput
 from src.a2rchi.utils.vectorstore_connector import VectorstoreConnector
@@ -29,7 +29,7 @@ class A2rchi():
         Initialize the Pipeline: either passed as argument or from config file.
         """
         logger.debug("Loading config")
-        self.config = load_config(map=True, name=config_name)
+        self.config = load_config_with_class_mapping(name=config_name)
         if pipeline:
             self.pipeline_name=pipeline
         self.pipeline = self._create_pipeline_instance(

@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 TEMPLATE_COMPARISON_PATHS = (
     "base-config.yaml",
     "base-compose.yaml",
-    "base-init.sql",
+    "init-v2.sql",  # PostgreSQL + pgvector consolidated schema
     "grafana/datasources.yaml",
     "grafana/dashboards.yaml",
     "grafana/a2rchi-default-dashboard.json",
@@ -246,7 +246,6 @@ def _validate_non_chatbot_sections(
     restricted_paths = (
         ("data_manager",),
         ("services", "data_manager"),
-        ("services", "chromadb"),
         ("services", "postgres"),
     )
     differences: List[str] = []

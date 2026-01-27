@@ -4,7 +4,7 @@ from redminelib import Redmine
 
 from src.data_manager.collectors.tickets.ticket_resource import TicketResource
 from src.data_manager.collectors.utils.anonymizer import Anonymizer
-from src.utils.config_loader import load_services_config
+from src.utils.yaml_config import load_services_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 

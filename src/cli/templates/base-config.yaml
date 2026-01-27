@@ -76,7 +76,6 @@ services:
     static_folder: "{{ services.chat_app.static_folder | default('/root/A2rchi/src/interfaces/chat_app/static', true) }}"
     num_responses_until_feedback: {{ services.chat_app.num_responses_until_feedback | default(3, true) }}
     include_copy_button: {{ services.chat_app.include_copy_button | default(false, true) }}
-    enable_debug_chroma_endpoints: {{ services.chat_app.enable_debug_chroma_endpoints | default(false, true) }}
     flask_debug_mode: {{ services.chat_app.flask_debug_mode | default(true, false) }}
     auth:
       enabled: {{ services.chat_app.auth.enabled | default(false, true) }}
@@ -110,12 +109,11 @@ services:
     local_rubric_dir: "{{ services.grader_app.local_rubric_dir }}"
     local_users_csv_dir: "{{ services.grader_app.local_users_csv_dir }}"
     flask_debug_mode: {{ services.grader_app.flask_debug_mode | default(true, false) }}
-  chromadb:
-    use_HTTP_chromadb_client: {{ services.chromadb.use_HTTP_chromadb_client | default(true, true) }}
-    host: {{ 'localhost' if host_mode else (services.chromadb.host | default('chromadb', true)) }}
-    port: {{ services.chromadb.port | default(8000, true) }}
-    external_port: {{ services.chromadb.external_port | default(8000, true) }}
-    local_vstore_path: "{{ services.chromadb.local_vstore_path | default('/root/data/vstore/', true) }}"
+  vectorstore:
+    # PostgreSQL with pgvector is the storage backend
+    backend: postgres
+    # Distance metric for similarity search: "cosine", "l2", "inner_product"
+    distance_metric: {{ services.vectorstore.distance_metric | default('cosine', true) }}
   grafana:
     port: {{ services.grafana.port | default(3000, true) }}
     external_port: {{ services.grafana.external_port | default(3000, true) }}

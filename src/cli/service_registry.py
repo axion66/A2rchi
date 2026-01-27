@@ -74,18 +74,6 @@ class ServiceRegistry:
             port_config_path='services.data_manager',
             volume_name_pattern="a2rchi-data-{name}"
         ))
-
-        self.register(ServiceDefinition(
-            name='chromadb',
-            description='Vector database for document storage and retrieval',
-            category='infrastructure',
-            requires_volume=True,
-            auto_enable=True,
-            default_host_port=8000,
-            default_container_port=8000,
-            port_config_path='services.chromadb',
-            volume_name_pattern="a2rchi-chroma-{name}",
-        ))
         
         self.register(ServiceDefinition(
             name='postgres',
@@ -102,7 +90,7 @@ class ServiceRegistry:
             description='Interactive chat interface for users to communicate with the AI agent',
             category='application',
             requires_volume=True,
-            depends_on=['chromadb', 'postgres'],
+            depends_on=['postgres'],
             required_secrets=[],
             default_host_port=7861,
             default_container_port=7861,
@@ -140,7 +128,7 @@ class ServiceRegistry:
             description='Integration service for Piazza posts and Slack notifications',
             category='integration',
             requires_volume=True,
-            depends_on=['chromadb', 'postgres'],
+            depends_on=['postgres'],
             required_secrets=['PIAZZA_EMAIL', 'PIAZZA_PASSWORD', 'SLACK_WEBHOOK']
         ))
         
@@ -165,7 +153,7 @@ class ServiceRegistry:
 
         self.register(ServiceDefinition(
             name='benchmarking',
-            depends_on=['chromadb', 'postgres'],
+            depends_on=['postgres'],
             requires_volume=True, 
             description='Benchmarking runtime, its not really a service but under the hood it will be',
             category='benchmarking runtime', # not technically a service

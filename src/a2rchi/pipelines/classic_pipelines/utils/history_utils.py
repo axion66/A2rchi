@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional, Tuple
 
-from src.utils.config_loader import load_global_config
+from src.utils.yaml_config import load_global_config
 
 global_config = load_global_config()
 

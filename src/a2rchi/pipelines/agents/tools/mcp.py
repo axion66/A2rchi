@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Any
 from src.utils.logging import get_logger
-from src.utils.config_loader import load_config
+from src.utils.yaml_config import load_yaml_config
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
@@ -18,7 +18,7 @@ async def initialize_mcp_client() -> Tuple[MultiServerMCPClient, List[BaseTool]]
         tools: The list of LangChain-compatible tools.
     """
 
-    config = load_config()
+    config = load_yaml_config()
     mcp_servers = config["a2rchi"]["mcp_servers"] or {}
     client = MultiServerMCPClient(mcp_servers)
 

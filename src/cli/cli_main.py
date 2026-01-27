@@ -331,6 +331,7 @@ def restart(
         existing_secrets = set((compose_data.get("secrets") or {}).keys())
 
         config_manager = ConfigurationManager(list(config_files), env)
+        
         enabled_sources = config_manager.get_enabled_sources()
         config_disabled_sources = config_manager.get_disabled_sources()
         enabled_sources = [src for src in enabled_sources if src not in config_disabled_sources]
@@ -497,7 +498,6 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_m
         base_dir = Path(A2RCHI_DIR) / f"a2rchi-{name}"
         handle_existing_deployment(base_dir, name, force, False, other_flags.get('podman', False))
 
-        enabled_services = ["chromadb", "postgres", "benchmarking"] 
         requested_sources = ['links']
         requested_sources.extend([src for src in sources if src != 'links'])
         requested_sources = list(dict.fromkeys(requested_sources))
@@ -509,6 +509,9 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_m
 
         config_manager = ConfigurationManager(config_files,env)
         secrets_manager = SecretsManager(env_file, config_manager)
+
+        # Services for benchmarking: PostgreSQL is required
+        enabled_services = ["postgres", "benchmarking"]
 
         # Reconcile CLI-enabled and config-enabled/disabled sources
         config_defined_sources = config_manager.get_enabled_sources()
@@ -561,6 +564,167 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_m
         else: 
             raise click.ClickException(f"Failed due to the following exception: {e}")
 
+
+@click.command()
+@click.option('--name', '-n', type=str, required=True, help="Name of the a2rchi deployment to migrate")
+@click.option('--source', '-s', type=click.Choice(['chromadb', 'sqlite', 'configs', 'all']), default='all',
+              help="Data source to migrate from (configs drops the old configs table)")
+@click.option('--dry-run', is_flag=True, help="Show what would be migrated without making changes")
+@click.option('--batch-size', type=int, default=1000, help="Number of records per batch")
+@click.option('--verbosity', '-v', type=int, default=3, help="Logging verbosity level (0-4)")
+def migrate(name: str, source: str, dry_run: bool, batch_size: int, verbosity: int):
+    """
+    Migrate data from ChromaDB/SQLite to PostgreSQL.
+    
+    This command migrates existing data from the legacy storage backends
+    (ChromaDB for vectors, SQLite for catalog) to the consolidated PostgreSQL
+    database with pgvector. Use --source configs to drop the old configs table.
+    
+    Examples:
+        # Migrate all data for deployment 'mybot'
+        a2rchi migrate --name mybot
+        
+        # Dry run to see what would be migrated
+        a2rchi migrate --name mybot --dry-run
+        
+        # Migrate only ChromaDB vectors
+        a2rchi migrate --name mybot --source chromadb
+    """
+    setup_cli_logging(verbosity=verbosity)
+    logger = get_logger(__name__)
+    
+    base_dir = Path(A2RCHI_DIR) / f"a2rchi-{name}"
+    if not base_dir.exists():
+        raise click.ClickException(f"Deployment '{name}' not found at {base_dir}")
+    
+    click.echo(f"Starting migration for deployment: {name}")
+    click.echo(f"  Source: {source}")
+    click.echo(f"  Batch size: {batch_size}")
+    if dry_run:
+        click.echo("  Mode: DRY RUN (no changes will be made)")
+    
+    try:
+        from src.utils.migration_manager import MigrationManager, MigrationStatus
+        
+        # Load deployment config to get database settings
+        config_path = base_dir / "configs"
+        if not config_path.exists():
+            raise click.ClickException(f"Config directory not found: {config_path}")
+        
+        # Find config.yaml
+        config_file = config_path / "config.yaml"
+        if not config_file.exists():
+            config_files = list(config_path.glob("*.yaml"))
+            if config_files:
+                config_file = config_files[0]
+            else:
+                raise click.ClickException("No config files found in deployment")
+        
+        with open(config_file) as f:
+            config = yaml.safe_load(f)
+        
+        # Get PostgreSQL config
+        pg_config = {
+            "host": config.get("services", {}).get("postgres", {}).get("host", "localhost"),
+            "port": config.get("services", {}).get("postgres", {}).get("port", 5432),
+            "database": config.get("services", {}).get("postgres", {}).get("database", "a2rchi"),
+            "user": config.get("services", {}).get("postgres", {}).get("user", "a2rchi"),
+        }
+        
+        # Get password from secrets
+        secrets_dir = base_dir / "secrets"
+        pg_pass_file = secrets_dir / "PG_PASSWORD"
+        if pg_pass_file.exists():
+            pg_config["password"] = pg_pass_file.read_text().strip()
+        else:
+            raise click.ClickException("PostgreSQL password not found in secrets")
+        
+        # Get ChromaDB path
+        data_path = config.get("global", {}).get("DATA_PATH", str(base_dir / "data"))
+        chromadb_path = Path(data_path) / "chroma"
+        
+        # Get SQLite catalog path
+        sqlite_path = Path(data_path) / "catalog.sqlite"
+        
+        # Initialize migration manager
+        migration_manager = MigrationManager(
+            pg_config=pg_config,
+            chromadb_path=str(chromadb_path) if chromadb_path.exists() else None,
+            sqlite_path=str(sqlite_path) if sqlite_path.exists() else None,
+        )
+        
+        if dry_run:
+            click.echo("\n=== DRY RUN - Analyzing migration ===")
+            status = migration_manager.analyze_migration()
+            
+            click.echo(f"\nChromaDB vectors: {status.get('chromadb_count', 0)} documents to migrate")
+            click.echo(f"SQLite catalog: {status.get('sqlite_count', 0)} records to migrate")
+            click.echo(f"Conversations: {status.get('conversations_count', 0)} messages to update")
+            
+            if status.get('chromadb_count', 0) == 0 and status.get('sqlite_count', 0) == 0:
+                click.echo("\nNothing to migrate!")
+            else:
+                click.echo(f"\nEstimated time: {status.get('estimated_minutes', 'unknown')} minutes")
+            return
+        
+        # Run migration
+        click.echo("\n=== Starting Migration ===")
+        
+        if source in ('chromadb', 'all'):
+            if chromadb_path.exists():
+                click.echo("\nMigrating ChromaDB vectors to PostgreSQL pgvector...")
+                result = migration_manager.migrate_chromadb(batch_size=batch_size)
+                click.echo(f"  ✓ Migrated {result.get('migrated', 0)} document chunks")
+                if result.get('errors'):
+                    click.echo(f"  ⚠ {len(result['errors'])} errors (see logs)")
+            else:
+                click.echo("  ChromaDB not found, skipping")
+        
+        if source in ('sqlite', 'all'):
+            if sqlite_path.exists():
+                click.echo("\nMigrating SQLite catalog to PostgreSQL resources table...")
+                result = migration_manager.migrate_sqlite_catalog(batch_size=batch_size)
+                click.echo(f"  ✓ Migrated {result.get('migrated', 0)} catalog records")
+                if result.get('errors'):
+                    click.echo(f"  ⚠ {len(result['errors'])} errors (see logs)")
+            else:
+                click.echo("  SQLite catalog not found, skipping")
+        
+        if source == 'all':
+            click.echo("\nUpdating conversation schema for model tracking...")
+            result = migration_manager.update_conversation_schema()
+            click.echo(f"  ✓ Updated {result.get('updated', 0)} conversation records")
+        
+        if source == 'configs':
+            click.echo("\nAnalyzing and cleaning up configs table...")
+            analysis = migration_manager.analyze_configs_table()
+            if not analysis.get('exists'):
+                click.echo("  configs table does not exist, nothing to clean up")
+            else:
+                click.echo(f"  Total rows: {analysis.get('total_rows', 0)}")
+                click.echo(f"  Unique configs: {analysis.get('unique_configs', 0)}")
+                click.echo(f"  Duplication ratio: {analysis.get('duplication_ratio', 0)}x")
+                click.echo(f"  Referenced by conversations: {analysis.get('referenced_by_conversations', 0)}")
+                
+                if not dry_run:
+                    result = migration_manager.drop_configs_table(backup=True)
+                    if result.get('status') == 'completed':
+                        click.echo(f"  ✓ Dropped configs table (backed up {result.get('rows_backed_up', 0)} rows)")
+                    elif result.get('status') == 'blocked':
+                        click.echo(f"  ⚠ {result.get('message')}")
+                    else:
+                        click.echo(f"  ✗ {result.get('message', result.get('error', 'Unknown error'))}")
+        
+        click.echo("\n=== Migration Complete ===")
+        
+    except ImportError as e:
+        raise click.ClickException(f"Migration module not available: {e}")
+    except Exception as e:
+        if verbosity >= 4:
+            traceback.print_exc()
+        raise click.ClickException(f"Migration failed: {e}")
+
+
 def main():
     """
     Entrypoint for a2rchi cli tool implemented using Click.
@@ -572,4 +736,5 @@ def main():
     cli.add_command(list_services)
     cli.add_command(list_deployments)
     cli.add_command(evaluate)
+    cli.add_command(migrate)
     cli()
