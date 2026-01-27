@@ -466,8 +466,7 @@ a2rchi create [...] --services=chatbot,grafana
 and you should see something like this
 ```
 CONTAINER ID  IMAGE                                     COMMAND               CREATED        STATUS                  PORTS                             NAMES
-d27482864238  localhost/chromadb-gtesting2:2000         uvicorn chromadb....  9 minutes ago  Up 9 minutes (healthy)  0.0.0.0:8000->8000/tcp, 8000/tcp  chromadb-gtesting2
-87f1c7289d29  docker.io/library/postgres:16             postgres              9 minutes ago  Up 9 minutes (healthy)  5432/tcp                          postgres-gtesting2
+87f1c7289d29  docker.io/library/postgres:17             postgres              9 minutes ago  Up 9 minutes (healthy)  5432/tcp                          postgres-gtesting2
 40130e8e23de  docker.io/library/grafana-gtesting2:2000                        9 minutes ago  Up 9 minutes            0.0.0.0:3000->3000/tcp, 3000/tcp  grafana-gtesting2
 d6ce8a149439  localhost/chat-gtesting2:2000             python -u a2rchi/...  9 minutes ago  Up 9 minutes            0.0.0.0:7861->7861/tcp            chat-gtesting2
 ```
@@ -622,7 +621,19 @@ In this case, the `gemma3` model is hosted on the Ollama server at `url-for-serv
 
 ## Vector Store
 
-The vector store is a database that stores document embeddings, enabling semantic and/or lexical search over your knowledge base. A2RCHI uses ChromaDB as the vector store backend to index and retrieve relevant documents based on similarity to user queries.
+The vector store is a database that stores document embeddings, enabling semantic and/or lexical search over your knowledge base. A2RCHI uses PostgreSQL with pgvector as the default vector store backend to index and retrieve relevant documents based on similarity to user queries.
+
+### Backend Selection
+
+A2RCHI uses PostgreSQL with the pgvector extension as its vector store backend. This provides production-grade vector similarity search integrated with your existing PostgreSQL database.
+
+Configure vector store settings in your configuration file:
+
+```yaml
+services:
+  vectorstore:
+    backend: postgres  # PostgreSQL with pgvector (only supported backend)
+```
 
 ### Configuration
 
@@ -641,7 +652,7 @@ data_manager:
 
 #### Core Settings
 
-- **`collection_name`**: Name of the ChromaDB collection. Default: `default_collection`
+- **`collection_name`**: Name of the vector store collection. Default: `default_collection`
 - **`chunk_size`**: Maximum size of text chunks (in characters) when splitting documents. Default: `1000`
 - **`chunk_overlap`**: Number of overlapping characters between consecutive chunks. Default: `0`
 - **`reset_collection`**: If `true`, deletes and recreates the collection on startup. Default: `true`
@@ -747,27 +758,40 @@ data_manager:
 
 When enabled, both documents and queries are processed using the Porter Stemmer algorithm to reduce words to their root forms (e.g., "running" → "run"), improving matching accuracy.
 
-### ChromaDB Backend
+### PostgreSQL Backend (Default)
 
-A2RCHI supports both local and remote ChromaDB instances:
-
-#### Local (Persistent)
+A2RCHI uses PostgreSQL with pgvector for vector storage by default. The PostgreSQL service is automatically started when you deploy with the chatbot service.
 
 ```yaml
 services:
-  chromadb:
-    local_vstore_path: /path/to/vectorstore
+  postgres:
+    host: postgres
+    port: 5432
+    database: a2rchi
+  vectorstore:
+    backend: postgres
 ```
 
-#### Remote (HTTP Client)
-
-```yaml
-services:
-  chromadb:
-    use_HTTP_chromadb_client: true
-    chromadb_host: localhost
-    chromadb_port: 8000
+Required secrets for PostgreSQL:
+```bash
+PG_PASSWORD=your_secure_password
 ```
+
+### Migrating from Legacy Backends
+
+If you have an existing deployment using ChromaDB (from older A2rchi versions), you can migrate your data to PostgreSQL:
+
+```bash
+a2rchi migrate --name your-deployment --source chromadb
+```
+
+This command:
+1. Analyzes your existing ChromaDB data
+2. Exports embeddings and metadata
+3. Imports into the PostgreSQL vector store with pgvector
+4. Verifies the migration
+
+> **Note:** ChromaDB support has been removed in current versions. The migration command is retained for users upgrading from older deployments.
 
 ---
 
@@ -895,70 +919,185 @@ To later examine your data, check out `scripts/benchmarking/`, which contains so
 
 Some useful additional features supported by the framework.
 
-### Add ChromaDB Document Management API Endpoints
+---
+## Configuration Management
 
-##### Debugging ChromaDB endpoints
+A2RCHI uses a three-tier configuration system that allows flexibility at different levels:
 
-Debugging REST API endpoints to the A2RCHI chat application for programmatic access to the ChromaDB vector database can be exposed with the following configuration change.
-To enable the ChromaDB endpoints, add the following to your config file under `services.chat_app`:
+### Configuration Hierarchy
 
-```yaml
-services:
-  chat_app:
-    # ... other config options ...
-    enable_debug_chroma_endpoints: true  # Default: false
+1. **Static Configuration** (deploy-time, immutable)
+   - Set during deployment from config.yaml
+   - Includes: deployment name, embedding model, available pipelines/models
+   - Cannot be changed at runtime
+
+2. **Dynamic Configuration** (admin-controlled)
+   - Runtime-modifiable settings
+   - Includes: default model, temperature, retrieval parameters, active prompts
+   - Only admins can modify via API
+
+3. **User Preferences** (per-user overrides)
+   - Individual users can override certain settings
+   - Includes: preferred model, temperature, prompt selections
+   - Takes precedence over dynamic config for that user
+
+### Effective Configuration
+
+When a request is made, A2RCHI resolves the effective value for each setting:
+
+```
+User Preference (if set) → Dynamic Config (admin default) → Static Default
 ```
 
-###### ChromaDB  Endpoints Info
+For example, if an admin sets `temperature: 0.7` but a user prefers `0.5`, 
+that user's requests will use `0.5`.
 
-####### `/api/list_docs` (GET)
+### Admin-Only Settings
 
-Lists all documents indexed in ChromaDB with pagination support.
+The following settings require admin privileges to modify:
 
-**Query Parameters:**
-- `page`: Page number (1-based, default: 1)
-- `per_page`: Documents per page (default: 50, max: 500)
-- `content_length`: Content preview length (default: -1 for full content)
+- `active_pipeline` - Default pipeline
+- `active_model` - Default model
+- `temperature`, `max_tokens`, `top_p`, `top_k` - Generation parameters
+- `num_documents_to_retrieve` - Retrieval settings
+- `active_condense_prompt`, `active_chat_prompt`, `active_system_prompt` - Default prompts
+- `verbosity` - Logging level
 
-**Response:**
-```json
-{
-  "pagination": {
-    "page": 1,
-    "per_page": 50,
-    "total_documents": 1250,
-    "total_pages": 25,
-    "has_next": true,
-    "has_prev": false
-  },
-  "documents": [...]
-}
+### User-Overridable Settings
+
+Users can personalize these settings via the preferences API:
+
+- `preferred_model` - Model selection
+- `preferred_temperature` - Generation temperature
+- `preferred_max_tokens` - Max response length
+- `preferred_num_documents` - Number of documents to retrieve
+- `preferred_condense_prompt`, `preferred_chat_prompt`, `preferred_system_prompt` - Prompt selections
+- `theme` - UI theme
+
+---
+
+## Prompt Customization
+
+A2RCHI supports customizable prompts organized by type:
+
+### Prompt Types
+
+- **condense**: Prompts for condensing conversation history
+- **chat**: Main response generation prompts
+- **system**: System-level instructions
+
+### Prompt Directory Structure
+
+```
+prompts/
+├── condense/
+│   ├── default.prompt
+│   └── concise.prompt
+├── chat/
+│   ├── default.prompt
+│   ├── formal.prompt
+│   └── technical.prompt
+└── system/
+    ├── default.prompt
+    └── helpful.prompt
 ```
 
-####### `/api/search_docs` (POST)
+### Creating Custom Prompts
 
-Performs semantic search on the document collection using vector similarity.
+1. Create a `.prompt` file in the appropriate directory
+2. Use standard prompt template syntax with placeholders:
+   - `{context}` - Retrieved documents
+   - `{question}` - User question
+   - `{chat_history}` - Conversation history
 
-**Request Body:**
-- `query`: Search query string (required)
-- `n_results`: Number of results (default: 5, max: 100)
-- `content_length`: Max content length (default: -1, max: 5000)
-- `include_full_content`: Include complete document content (default: false)
+Example `chat/technical.prompt`:
+```
+You are a technical assistant specializing in software development.
+Use precise technical terminology and provide code examples when appropriate.
 
-**Response:**
+Context: {context}
+
+Question: {question}
+```
+
+### Activating Prompts
+
+**Admin (deployment-wide default):**
+```
+PATCH /api/v2/config/dynamic
+{"active_chat_prompt": "technical"}
+```
+
+**User (personal preference):**
+```
+PATCH /api/v2/users/me/preferences
+{"preferred_chat_prompt": "formal"}
+```
+
+### Reloading Prompts
+
+After adding or modifying prompt files, reload the cache:
+```
+POST /api/v2/prompts/reload
+```
+
+This is admin-only and updates the in-memory prompt cache without restarting services.
+
+---
+
+## Admin Guide
+
+### Becoming an Admin
+
+Admin status is set in the PostgreSQL `users` table:
+
+```sql
+UPDATE users SET is_admin = true WHERE email = 'admin@example.com';
+```
+
+### Admin Responsibilities
+
+1. **Configuration Management**
+   - Set deployment-wide defaults via `/api/v2/config/dynamic`
+   - Monitor configuration changes via `/api/v2/config/audit`
+
+2. **Prompt Management**
+   - Add/edit prompt files in `prompts/` directory
+   - Reload prompts via API after changes
+
+3. **User Management**
+   - Grant admin privileges as needed
+   - Review user activity and preferences
+
+### Audit Logging
+
+All admin configuration changes are logged:
+
+```
+GET /api/v2/config/audit?limit=50
+```
+
+Returns:
 ```json
 {
-  "query": "machine learning",
-  "search_params": {...},
-  "documents": [
+  "entries": [
     {
-      "content": "Document content...",
-      "content_length": 1200,
-      "metadata": {...},
-      "similarity_score": 0.85
+      "user_id": "admin_user",
+      "changed_at": "2025-01-20T15:30:00Z",
+      "config_type": "dynamic",
+      "field_name": "temperature",
+      "old_value": "0.7",
+      "new_value": "0.8"
     }
   ]
 }
 ```
+
+### Best Practices
+
+1. **Test configuration changes** in a staging environment first
+2. **Document changes** - use meaningful commit messages for prompt file updates
+3. **Monitor audit log** - review for unexpected changes
+4. **Backup prompts** - version control your custom prompts
 
 ---

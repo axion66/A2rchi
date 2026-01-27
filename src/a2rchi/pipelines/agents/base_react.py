@@ -1,7 +1,7 @@
 from typing import Any, Callable, Dict, List, Optional, Sequence, Iterator, AsyncIterator
 
 from langchain.agents import create_agent
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, BaseMessageChunk, HumanMessage, SystemMessage
 from langgraph.errors import GraphRecursionError
 from langgraph.graph.state import CompiledStateGraph
 
@@ -121,30 +121,54 @@ class BaseReActAgent:
             )
 
     def stream(self, **kwargs) -> Iterator[PipelineOutput]:
-        """Stream agent updates synchronously."""
+        """Stream agent updates synchronously with structured trace events and token-level streaming."""
         logger.debug("Streaming %s", self.__class__.__name__)
         agent_inputs = self._prepare_agent_inputs(**kwargs)
         if self.agent is None:
             self.refresh_agent(force=True)
 
         latest_messages: List[BaseMessage] = []
+        accumulated_content = ""
         recursion_limit = self._recursion_limit()
         try:
-            for event in self.agent.stream(agent_inputs, stream_mode="updates", config={"recursion_limit": recursion_limit}):
-                logger.debug("Received stream event: %s", event)
-                messages = self._extract_messages(event)
-                if messages:
-                    latest_messages = messages
-                    content = self._message_content(messages[-1])
-                    tool_calls = self._extract_tool_calls(messages)
-                    yield self.finalize_output(
-                        answer=content,
-                        memory=self.active_memory,
-                        messages=messages,
-                        metadata={},
-                        tool_calls=tool_calls,
-                        final=False,
-                    )
+            # Use both "messages" (token-level) and "updates" (node-level) streaming
+            for mode, event in self.agent.stream(
+                agent_inputs, 
+                stream_mode=["messages", "updates"], 
+                config={"recursion_limit": recursion_limit}
+            ):
+                logger.debug("Received stream event (mode=%s): %s", mode, event)
+                
+                if mode == "messages":
+                    # Token-level streaming from LLM
+                    token_chunk, metadata = event
+                    if hasattr(token_chunk, 'content') and token_chunk.content:
+                        accumulated_content += token_chunk.content
+                        yield self.finalize_output(
+                            answer=accumulated_content,
+                            memory=self.active_memory,
+                            messages=[],
+                            metadata={"streaming": True},
+                            tool_calls=[],
+                            final=False,
+                        )
+                elif mode == "updates":
+                    # Node-level updates (tool calls, final messages)
+                    messages = self._extract_messages(event)
+                    if messages:
+                        latest_messages = messages
+                        content = self._message_content(messages[-1])
+                        tool_calls = self._extract_tool_calls(messages)
+                        # Reset accumulated content when we get a full message
+                        accumulated_content = content
+                        yield self.finalize_output(
+                            answer=content,
+                            memory=self.active_memory,
+                            messages=messages,
+                            metadata={},
+                            tool_calls=tool_calls,
+                            final=False,
+                        )
         except GraphRecursionError as exc:
             logger.warning(
                 "Recursion limit hit during stream for %s (limit=%s): %s",
@@ -162,7 +186,7 @@ class BaseReActAgent:
         yield self._build_output_from_messages(latest_messages)
 
     async def astream(self, **kwargs) -> AsyncIterator[PipelineOutput]:
-        """Stream agent updates asynchronously."""
+        """Stream agent updates asynchronously with structured trace events."""
         logger.debug("Streaming %s asynchronously", self.__class__.__name__)
         agent_inputs = self._prepare_agent_inputs(**kwargs)
         if self.agent is None:
@@ -339,10 +363,25 @@ class BaseReActAgent:
 
     def _metadata_from_agent_output(self, answer_output: Dict[str, Any]) -> Dict[str, Any]:
         """Hook for subclasses to enrich metadata returned to callers."""
-        return {}
+        # Include model/pipeline tracking info
+        model_used = getattr(self.agent_llm, 'model_name', None) or getattr(self.agent_llm, 'model', 'unknown')
+        return {
+            "model_used": model_used,
+            "pipeline_used": self.__class__.__name__,
+        }
 
     def _extract_messages(self, payload: Any) -> List[BaseMessage]:
         """Pull LangChain messages from a stream/update payload."""
+        message_types = (BaseMessage,)
+        if BaseMessageChunk is not None:
+            message_types = (BaseMessage, BaseMessageChunk)
+
+        if isinstance(payload, message_types):
+            return [payload]
+        if isinstance(payload, list) and all(isinstance(msg, message_types) for msg in payload):
+            return list(payload)
+        if isinstance(payload, tuple) and payload and isinstance(payload[0], message_types):
+            return [payload[0]]
         def _messages_from_container(container: Any) -> List[BaseMessage]:
             if isinstance(container, dict):
                 messages = container.get("messages")

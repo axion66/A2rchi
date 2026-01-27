@@ -1,6 +1,6 @@
 # Basic configuration file for a A2RCHI deployment
 # with a chat app interface, a QA pipeline, and
-# a ChromaDB instance for document storage.
+# PostgreSQL with pgvector for document storage.
 # The LLM is a locally hosted VLLM instance on GPUs.
 #
 # run with:
@@ -11,6 +11,8 @@ name: my_a2rchi
 services:
   chat_app:
     trained_on: "My data"
+  vectorstore:
+    backend: postgres  # PostgreSQL with pgvector (only supported backend)
 
 data_manager:
   sources:

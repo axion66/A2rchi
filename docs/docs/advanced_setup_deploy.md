@@ -90,8 +90,8 @@ services:
     external_port: 5004  # default is 5003
   grafana:
     external_port: 3001  # default is 3000
-  chromadb:
-    chromadb_external_port: 8001  # default is 8000
+  postgres:
+    port: 5432  # default is 5432
 ```
 
 ### Persisting data between deployments

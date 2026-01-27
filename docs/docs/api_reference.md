@@ -210,8 +210,7 @@ Key services:
 - **uploader_app:** Document uploader settings (`verify_urls`, ports).
 - **grader_app:** Grader-specific knobs (`num_problems`, rubric paths).
 - **grafana:** Port configuration for the monitoring dashboard.
-- **chromadb:** Connection details for the vector store container (`chromadb_host`, `chromadb_port`, `chromadb_external_port`).
-- **postgres:** Database credentials (`user`, `database`, `port`, `host`).
+- **postgres:** Database credentials (`user`, `database`, `port`, `host`). Also used for vector storage via pgvector.
 - **piazza**, **mattermost**, **redmine_mailbox**, **benchmarking**, ...: Service-specific options (see user guide sections above).
 
 ---
@@ -321,8 +320,9 @@ services:
   chat_app:
     trained_on: "Course documentation"
     hostname: "example.mit.edu"
-  chromadb:
-    chromadb_host: "chromadb"
+  postgres:
+    port: 5432
+    database: "a2rchi"
 ```
 
 ---
@@ -330,3 +330,359 @@ services:
 **Tip:**
 For a full template, see `src/cli/templates/base-config.yaml` in
 the repository.
+
+---
+
+## V2 API (PostgreSQL-Consolidated)
+
+The V2 API provides REST endpoints for the PostgreSQL-consolidated architecture, 
+using PostgreSQL with pgvector for unified vector storage and metadata.
+
+### Base URL
+
+All V2 endpoints are prefixed with `/api/v2/`.
+
+---
+
+### Authentication
+
+#### `POST /api/v2/auth/login`
+
+Authenticate with email and password.
+
+**Request:**
+```json
+{
+  "email": "user@example.com",
+  "password": "secret123"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "user": {
+    "id": "user_abc123",
+    "email": "user@example.com",
+    "display_name": "John Doe",
+    "is_admin": false
+  },
+  "session_token": "sess_..."
+}
+```
+
+#### `POST /api/v2/auth/logout`
+
+End the current session.
+
+**Response:**
+```json
+{
+  "success": true
+}
+```
+
+#### `GET /api/v2/auth/me`
+
+Get the current authenticated user.
+
+**Response (authenticated):**
+```json
+{
+  "authenticated": true,
+  "user": {
+    "id": "user_abc123",
+    "email": "user@example.com",
+    "display_name": "John Doe",
+    "is_admin": false
+  }
+}
+```
+
+**Response (anonymous):**
+```json
+{
+  "authenticated": false,
+  "user": null
+}
+```
+
+---
+
+### User Management
+
+#### `GET /api/v2/users/me`
+
+Get or create the current user.
+
+**Response:**
+```json
+{
+  "id": "user_abc123",
+  "display_name": "John Doe",
+  "email": "john@example.com",
+  "auth_provider": "basic",
+  "theme": "dark",
+  "preferred_model": "gpt-4o",
+  "preferred_temperature": 0.7,
+  "has_openrouter_key": true,
+  "has_openai_key": false,
+  "has_anthropic_key": false,
+  "created_at": "2025-01-15T10:30:00Z"
+}
+```
+
+#### `PATCH /api/v2/users/me/preferences`
+
+Update user preferences.
+
+**Request:**
+```json
+{
+  "theme": "light",
+  "preferred_model": "claude-3-opus",
+  "preferred_temperature": 0.5
+}
+```
+
+#### `PUT /api/v2/users/me/api-keys/{provider}`
+
+Set BYOK API key (provider: `openrouter`, `openai`, `anthropic`).
+
+**Request:**
+```json
+{
+  "api_key": "sk-..."
+}
+```
+
+#### `DELETE /api/v2/users/me/api-keys/{provider}`
+
+Delete BYOK API key.
+
+---
+
+### Configuration
+
+#### `GET /api/v2/config/static`
+
+Get static (deploy-time) configuration.
+
+**Response:**
+```json
+{
+  "deployment_name": "my-a2rchi",
+  "embedding_model": "text-embedding-ada-002",
+  "embedding_dimensions": 1536,
+  "available_pipelines": ["QAPipeline", "AgentPipeline"],
+  "available_models": ["gpt-4o", "claude-3-opus"],
+  "auth_enabled": true,
+  "prompts_path": "/root/A2rchi/prompts/"
+}
+```
+
+#### `GET /api/v2/config/dynamic`
+
+Get dynamic (runtime) configuration.
+
+**Response:**
+```json
+{
+  "active_pipeline": "QAPipeline",
+  "active_model": "gpt-4o",
+  "temperature": 0.7,
+  "max_tokens": 4096,
+  "top_p": 0.9,
+  "top_k": 50,
+  "active_condense_prompt": "default",
+  "active_chat_prompt": "default",
+  "active_system_prompt": "default",
+  "num_documents_to_retrieve": 10,
+  "verbosity": 3
+}
+```
+
+#### `PATCH /api/v2/config/dynamic`
+
+Update dynamic configuration. **Admin only.**
+
+**Request:**
+```json
+{
+  "active_model": "gpt-4o",
+  "temperature": 0.8,
+  "num_documents_to_retrieve": 5
+}
+```
+
+**Response:** `403 Forbidden` if not admin.
+
+#### `GET /api/v2/config/effective`
+
+Get effective configuration for the current user, with user preferences applied.
+
+**Response:**
+```json
+{
+  "active_model": "claude-3-opus",
+  "temperature": 0.5,
+  "max_tokens": 4096,
+  "num_documents_to_retrieve": 10,
+  "active_condense_prompt": "concise",
+  "active_chat_prompt": "technical"
+}
+```
+
+#### `GET /api/v2/config/audit`
+
+Get configuration change audit log. **Admin only.**
+
+**Query params:**
+- `limit`: Max entries to return (default: 100)
+
+**Response:**
+```json
+{
+  "entries": [
+    {
+      "id": 1,
+      "user_id": "admin_user",
+      "changed_at": "2025-01-20T15:30:00Z",
+      "config_type": "dynamic",
+      "field_name": "temperature",
+      "old_value": "0.7",
+      "new_value": "0.8"
+    }
+  ]
+}
+```
+
+---
+
+### Prompts
+
+#### `GET /api/v2/prompts`
+
+List all available prompts by type.
+
+**Response:**
+```json
+{
+  "condense": ["default", "concise"],
+  "chat": ["default", "formal", "technical"],
+  "system": ["default", "helpful"]
+}
+```
+
+#### `GET /api/v2/prompts/{type}`
+
+List prompts for a specific type.
+
+**Response:**
+```json
+["default", "formal", "technical"]
+```
+
+#### `GET /api/v2/prompts/{type}/{name}`
+
+Get prompt content.
+
+**Response:**
+```json
+{
+  "type": "chat",
+  "name": "default",
+  "content": "You are a helpful AI assistant..."
+}
+```
+
+#### `POST /api/v2/prompts/reload`
+
+Reload prompt cache from disk. **Admin only.**
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Reloaded 7 prompts"
+}
+```
+
+---
+
+### Document Selection (3-Tier)
+
+The document selection system uses a 3-tier precedence:
+1. **Conversation override** (highest priority)
+2. **User default**
+3. **System default** (all documents enabled)
+
+#### `GET /api/v2/documents/selection?conversation_id={id}`
+
+Get enabled documents for a conversation.
+
+#### `PUT /api/v2/documents/user-defaults`
+
+Set user's default for a document.
+
+**Request:**
+```json
+{
+  "document_id": 42,
+  "enabled": false
+}
+```
+
+#### `PUT /api/v2/documents/conversation-override`
+
+Set conversation-specific override.
+
+**Request:**
+```json
+{
+  "conversation_id": 123,
+  "document_id": 42,
+  "enabled": true
+}
+```
+
+#### `DELETE /api/v2/documents/conversation-override`
+
+Clear conversation override (fall back to user default).
+
+---
+
+### Analytics
+
+#### `GET /api/v2/analytics/model-usage`
+
+Get model usage statistics.
+
+**Query params:**
+- `start_date`: ISO date (optional)
+- `end_date`: ISO date (optional)
+- `service`: Filter by service (optional)
+
+#### `GET /api/v2/analytics/ab-comparisons`
+
+Get A/B comparison statistics with win rates.
+
+**Query params:**
+- `model_a`: Filter by model A (optional)
+- `model_b`: Filter by model B (optional)
+- `start_date`: ISO date (optional)
+- `end_date`: ISO date (optional)
+
+---
+
+### Health & Info
+
+#### `GET /api/v2/health`
+
+Health check with database connectivity status.
+
+#### `GET /api/v2/info`
+
+Get API version and available features.
+

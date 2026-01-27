@@ -6,8 +6,7 @@ global:
 data_manager:
   input_lists:  
     - configs/benchmarking/ppc.list
-  chromadb_port: 8000
-  chromadb_external_port: 8001
+  # Vector storage uses PostgreSQL with pgvector (only supported backend)
   embedding_name: OpenAIEmbeddings
 
 a2rchi:

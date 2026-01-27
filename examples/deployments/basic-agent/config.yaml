@@ -1,6 +1,6 @@
 # Basic configuration file for a A2RCHI deployment
 # with a chat app interface, agent, and
-# a ChromaDB instance for document storage.
+# PostgreSQL with pgvector for document storage.
 # The LLM is used through an existing Ollama server.
 #
 # run with:
@@ -14,10 +14,8 @@ services:
     trained_on: "My data"
     port: 7868
     external_port: 7868
-  chromadb:
-    # running in hostmode, want to avoid taking the default chromadb port (8000) since it's usually taken by host already
-    chromadb_port: 8003
-    chromadb_external_port: 8003
+  vectorstore:
+    backend: postgres  # PostgreSQL with pgvector (only supported backend)
 
 data_manager:
   sources:

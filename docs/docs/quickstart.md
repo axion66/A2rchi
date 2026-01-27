@@ -90,8 +90,8 @@ services:
   chat_app:
     trained_on: "My data"
     hostname: "<your-hostname>"
-  chromadb:
-    chromadb_host: localhost
+  vectorstore:
+    backend: postgres  # Uses PostgreSQL with pgvector (default)
 ```
 
 <details>
@@ -109,7 +109,7 @@ services:
   - `model_class_map`: Mapping of model names to their classes and parameters.
 - `services`: Settings for individual services/interfaces.
   - `chat_app`: Chat interface configuration, including hostname and descriptive metadata.
-  - `chromadb`: Connection details for the vector store container.
+  - `vectorstore.backend`: Vector store backend (`postgres` with pgvector).
 
 </details>
 
@@ -163,7 +163,7 @@ a2rchi create --name my-a2rchi --config examples/deployments/basic-gpu/config.ya
 ```
 Starting A2RCHI deployment process...
 [a2rchi] Creating deployment 'my-a2rchi' with services: chatbot
-[a2rchi] Auto-enabling dependencies: postgres, chromadb
+[a2rchi] Auto-enabling dependencies: postgres
 [a2rchi] Configuration validated successfully
 [a2rchi] You are using an embedding model from HuggingFace; make sure to include a HuggingFace token if required for usage, it won't be explicitly enforced
 [a2rchi] Required secrets validated: PG_PASSWORD
@@ -174,7 +174,7 @@ Starting A2RCHI deployment process...
 [a2rchi] (This might take a minute...)
 [a2rchi] Deployment started successfully
 A2RCHI deployment 'my-a2rchi' created successfully!
-Services running: chatbot, postgres, chromadb
+Services running: chatbot, postgres
 [a2rchi] Chatbot: http://localhost:7861
 ```
 
