@@ -78,7 +78,6 @@ def test_schema_creation():
         "timings",
         "configs",
         "conversation_metadata",
-        "tool_calls",
         "agent_traces",
         "migration_state",
     ]
