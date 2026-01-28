@@ -420,6 +420,34 @@ CREATE TABLE IF NOT EXISTS timing (
 -- 7. AGENT TRACES
 -- ============================================================================
 
+CREATE TABLE IF NOT EXISTS agent_traces (
+    trace_id UUID PRIMARY KEY,
+    conversation_id INTEGER NOT NULL REFERENCES conversation_metadata(conversation_id) ON DELETE CASCADE,
+    message_id INTEGER REFERENCES conversations(message_id) ON DELETE SET NULL,
+    user_message_id INTEGER REFERENCES conversations(message_id) ON DELETE SET NULL,
+    
+    config_id VARCHAR(100),
+    pipeline_name VARCHAR(100) NOT NULL,
+    events JSONB NOT NULL DEFAULT '[]',
+    
+    started_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMP,
+    status VARCHAR(20) NOT NULL DEFAULT 'running',  -- running, completed, cancelled, failed
+    
+    total_tool_calls INTEGER DEFAULT 0,
+    total_tokens_used INTEGER DEFAULT 0,
+    total_duration_ms INTEGER,
+    
+    cancelled_by VARCHAR(100),
+    cancellation_reason TEXT,
+    
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_traces_conv ON agent_traces(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_agent_traces_status ON agent_traces(status);
+CREATE INDEX IF NOT EXISTS idx_agent_traces_message ON agent_traces(message_id);
+
 CREATE TABLE IF NOT EXISTS agent_tool_calls (
     id SERIAL PRIMARY KEY,
     conversation_id INTEGER NOT NULL REFERENCES conversation_metadata(conversation_id) ON DELETE CASCADE,

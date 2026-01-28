@@ -1450,7 +1450,7 @@ class ChatWrapper:
             config_id = self._get_config_id(requested_config)
             trace_id = self.create_agent_trace(
                 conversation_id=context.conversation_id,
-                user_message_id=0,  # Will be updated at finalization
+                user_message_id=None,  # Will be updated at finalization
                 config_id=config_id,
                 pipeline_name=self.a2rchi.pipeline_name if hasattr(self.a2rchi, 'pipeline_name') else None,
             )
