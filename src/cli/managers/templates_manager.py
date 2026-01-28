@@ -155,16 +155,19 @@ class TemplateManager:
 
     def _copy_default_prompts(self, context: TemplateContext) -> None:
         """Copy default prompt templates to deployment for PromptService."""
-        templates_prompts_dir = Path(__file__).parent.parent / "templates" / "prompts"
-        deployment_prompts_dir = context.base_dir / "prompts"
+        # Source from examples/defaults/prompts/ (not source code)
+        repo_root = Path(__file__).parent.parent.parent.parent
+        defaults_prompts_dir = repo_root / "examples" / "defaults" / "prompts"
+        # Deploy to data/prompts/ (admin-editable location)
+        deployment_prompts_dir = context.base_dir / "data" / "prompts"
         
-        if not templates_prompts_dir.exists():
-            logger.warning(f"Default prompts template directory not found: {templates_prompts_dir}")
+        if not defaults_prompts_dir.exists():
+            logger.warning(f"Default prompts directory not found: {defaults_prompts_dir}")
             return
         
         # Copy the entire prompts directory structure (condense/, chat/, system/)
         for prompt_type in ["condense", "chat", "system"]:
-            src_dir = templates_prompts_dir / prompt_type
+            src_dir = defaults_prompts_dir / prompt_type
             dst_dir = deployment_prompts_dir / prompt_type
             
             if src_dir.exists():
@@ -214,8 +217,9 @@ class TemplateManager:
 
     # prompt preparation
     def _collect_prompt_mappings(self, context: TemplateContext) -> Dict[str, Dict[str, str]]:
-        prompts_path = context.base_dir / "prompts"
-        prompts_path.mkdir(exist_ok=True)
+        # Config-specified prompts go to data/prompts/ (same as default prompts)
+        prompts_path = context.base_dir / "data" / "prompts"
+        prompts_path.mkdir(parents=True, exist_ok=True)
 
         configs = context.config_manager.get_configs()
         prompt_mappings: Dict[str, Dict[str, str]] = {}
@@ -261,11 +265,11 @@ class TemplateManager:
                     logger.warning(f"Prompt file not found: {prompt_path}")
                     continue
 
-                target_path = base_dir / "prompts" / source_path.name
+                target_path = base_dir / "data" / "prompts" / source_path.name
                 target_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source_path, target_path)
 
-                prompt_mappings[prompt_key] = f"/root/A2rchi/prompts/{source_path.name}"
+                prompt_mappings[prompt_key] = f"/root/A2rchi/data/prompts/{source_path.name}"
                 logger.debug(f"Copied prompt {prompt_key} to {target_path}")
 
         return prompt_mappings

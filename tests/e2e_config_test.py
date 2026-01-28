@@ -222,7 +222,7 @@ def test_config_service_dataclasses():
         distance_metric='cosine',
     )
     assert static.deployment_name == 'test'
-    assert static.prompts_path == '/root/A2rchi/prompts/'  # default
+    assert static.prompts_path == '/root/A2rchi/data/prompts/'  # default
     print("   ✓ StaticConfig works with defaults")
     
     # Test DynamicConfig

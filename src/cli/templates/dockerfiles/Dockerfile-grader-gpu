@@ -65,7 +65,6 @@ RUN wget -q "https://github.com/mozilla/geckodriver/releases/download/v0.36.0/ge
     && rm "geckodriver-v0.36.0-linux64.tar.gz"
 
 COPY a2rchi_code src
-COPY prompts prompts
 COPY configs configs
 COPY pyproject.toml pyproject.toml
 #COPY weblists weblists

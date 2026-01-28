@@ -6,7 +6,6 @@ WORKDIR /root/A2rchi
 COPY LICENSE LICENSE
 
 COPY a2rchi_code src
-COPY prompts prompts
 COPY configs configs
 COPY pyproject.toml pyproject.toml
 COPY weblists weblists

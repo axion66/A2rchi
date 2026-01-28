@@ -1057,18 +1057,27 @@ Users can personalize these settings via the preferences API:
 
 ## Prompt Customization
 
-A2RCHI supports customizable prompts organized by type:
+A2RCHI supports customizable prompts organized by type. Prompts are stored as files in your deployment directory for easy editing and version control.
+
+### Prompt Location
+
+After deployment, prompts are located at:
+```
+~/.a2rchi/<deployment-name>/data/prompts/
+```
+
+Default prompt templates are provided in the repository at `examples/defaults/prompts/` for reference.
 
 ### Prompt Types
 
 - **condense**: Prompts for condensing conversation history
-- **chat**: Main response generation prompts
+- **chat**: Main response generation prompts  
 - **system**: System-level instructions
 
 ### Prompt Directory Structure
 
 ```
-prompts/
+data/prompts/
 ├── condense/
 │   ├── default.prompt
 │   └── concise.prompt
@@ -1083,13 +1092,14 @@ prompts/
 
 ### Creating Custom Prompts
 
-1. Create a `.prompt` file in the appropriate directory
-2. Use standard prompt template syntax with placeholders:
-   - `{context}` - Retrieved documents
+1. Navigate to your deployment's prompt directory: `~/.a2rchi/<deployment-name>/data/prompts/`
+2. Create or edit a `.prompt` file in the appropriate subdirectory
+3. Use standard prompt template syntax with placeholders:
+   - `{retriever_output}` - Retrieved documents
    - `{question}` - User question
-   - `{chat_history}` - Conversation history
+   - `{history}` - Conversation history
 
-Example `chat/technical.prompt`:
+Example `data/prompts/chat/technical.prompt`:
 ```
 You are a technical assistant specializing in software development.
 Use precise technical terminology and provide code examples when appropriate.

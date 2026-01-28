@@ -36,7 +36,7 @@ class PromptService:
     Service for managing prompt files.
     
     Directory structure:
-        /root/A2rchi/prompts/
+        /root/A2rchi/data/prompts/
         ├── condense/
         │   ├── default.prompt
         │   └── concise.prompt
@@ -48,7 +48,7 @@ class PromptService:
             └── custom.prompt
     
     Example:
-        >>> service = PromptService("/root/A2rchi/prompts")
+        >>> service = PromptService("/root/A2rchi/data/prompts")
         >>> service.get("chat", "default")
         "You are a helpful assistant..."
         

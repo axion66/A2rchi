@@ -478,7 +478,7 @@ Get static (deploy-time) configuration.
   "available_pipelines": ["QAPipeline", "AgentPipeline"],
   "available_models": ["gpt-4o", "claude-3-opus"],
   "auth_enabled": true,
-  "prompts_path": "/root/A2rchi/prompts/"
+  "prompts_path": "/root/A2rchi/data/prompts/"
 }
 ```
 

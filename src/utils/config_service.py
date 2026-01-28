@@ -38,7 +38,7 @@ class StaticConfig:
     distance_metric: str
     
     # Paths with defaults
-    prompts_path: str = "/root/A2rchi/prompts/"
+    prompts_path: str = "/root/A2rchi/data/prompts/"
     
     # Available options
     available_pipelines: List[str] = field(default_factory=list)
@@ -172,7 +172,7 @@ class ConfigService:
                     deployment_name=row["deployment_name"],
                     config_version=row["config_version"],
                     data_path=row["data_path"],
-                    prompts_path=row.get("prompts_path", "/root/A2rchi/prompts/"),
+                    prompts_path=row.get("prompts_path", "/root/A2rchi/data/prompts/"),
                     embedding_model=row["embedding_model"],
                     embedding_dimensions=row["embedding_dimensions"],
                     chunk_size=row["chunk_size"],

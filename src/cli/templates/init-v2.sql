@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS static_config (
     
     -- Paths
     data_path TEXT NOT NULL DEFAULT '/root/data/',
-    prompts_path TEXT NOT NULL DEFAULT '/root/A2rchi/prompts/',
+    prompts_path TEXT NOT NULL DEFAULT '/root/A2rchi/data/prompts/',
     
     -- Embedding configuration (affects vector dimensions - can't change at runtime)
     embedding_model VARCHAR(200) NOT NULL,
