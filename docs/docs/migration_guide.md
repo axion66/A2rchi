@@ -154,4 +154,4 @@ The new schema (init-v2.sql) includes:
 - `conversation_metadata` - Conversation headers
 - `conversations` - Message history with model/pipeline tracking
 
-See [init-v2.sql](../src/cli/templates/init-v2.sql) for the complete schema.
+See `src/cli/templates/init-v2.sql` in the repository for the complete schema.
