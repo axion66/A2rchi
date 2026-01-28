@@ -245,7 +245,7 @@ CREATE INDEX IF NOT EXISTS idx_documents_active ON documents(is_deleted) WHERE N
 -- Note: Vector dimension ({{ embedding_dimensions }}) must match static_config.embedding_dimensions
 CREATE TABLE IF NOT EXISTS document_chunks (
     id SERIAL PRIMARY KEY,
-    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
     chunk_index INTEGER NOT NULL,
     
     -- Chunk content

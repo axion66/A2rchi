@@ -10,17 +10,14 @@ from typing import Any, Dict, Iterator, List, Optional
 from urllib.parse import urlparse
 from functools import wraps
 
-import chromadb
 import mistune as mt
 import numpy as np
 import psycopg2
 import psycopg2.extras
 import yaml
 from authlib.integrations.flask_client import OAuth
-from chromadb.config import Settings
 from flask import jsonify, render_template, request, session, flash, redirect, url_for, Response, stream_with_context
 from flask_cors import CORS
-from langchain_chroma.vectorstores import Chroma
 from pygments import highlight
 from pygments.formatters import HtmlFormatter
 from pygments.lexers import (BashLexer, CLexer, CppLexer, FortranLexer,
