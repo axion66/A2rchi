@@ -20,8 +20,11 @@ logos/
 docs/site
 setup.sh
 .env
+configs/
 build/
 src/cli/utils/_repository_info.py
+openspec/specs/
+openspec/changes/
 # G5 Workflow - ignore local state, keep artifacts
 .g5/state.sqlite
 .g5/activity.json
