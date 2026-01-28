@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Preflight checks for Postgres, ChromaDB, data-manager, and Ollama."""
+"""Preflight checks for Postgres, data-manager, and Ollama."""
 import os
 import sys
 import time
@@ -92,37 +92,6 @@ def _wait_for_ingestion() -> None:
         if time.time() >= deadline:
             _fail("Ingestion did not complete before timeout")
         time.sleep(interval)
-
-
-def _check_chromadb() -> None:
-    chroma_url = os.getenv("CHROMA_URL", "http://localhost:8000").rstrip("/")
-    endpoints = [
-        f"{chroma_url}/api/v2/heartbeat",
-        f"{chroma_url}/api/v1/heartbeat",
-        f"{chroma_url}/api/v2/collections",
-        f"{chroma_url}/api/v1/collections",
-    ]
-    _info(f"Checking ChromaDB endpoints at {chroma_url} ...")
-    try:
-        for endpoint in endpoints:
-            resp = requests.get(endpoint, timeout=5)
-            if resp.status_code == 200:
-                _info(f"ChromaDB OK ({endpoint})")
-                return
-            if resp.status_code == 410:
-                continue
-        import socket
-
-        parsed = chroma_url.replace("http://", "").replace("https://", "")
-        host, _, port_str = parsed.partition(":")
-        port = int(port_str) if port_str else 8000
-        with socket.create_connection((host, port), timeout=5):
-            pass
-        _info("ChromaDB reachable (TCP check only)")
-        return
-    except Exception as exc:
-        _fail(f"ChromaDB check failed: {exc}")
-    _info("ChromaDB OK")
 
 
 def _build_dm_headers() -> Dict[str, str]:
@@ -241,7 +210,7 @@ def _check_config_ollama(config_path: str, pipeline_name: str, ollama_model: str
 def main() -> None:
     _wait_for_ingestion()
     _check_postgres()
-    _check_chromadb()
+    # ChromaDB removed - PostgreSQL with pgvector is the only supported backend
     _check_data_manager_catalog()
     _check_ollama_model()
 

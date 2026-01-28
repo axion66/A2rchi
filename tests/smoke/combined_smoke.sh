@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Env vars used by this runner:
-# BASE_URL, DM_BASE_URL, CHROMA_URL, OLLAMA_URL, OLLAMA_MODEL,
+# BASE_URL, DM_BASE_URL, OLLAMA_URL, OLLAMA_MODEL,
 # PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE, DM_API_TOKEN,
 # A2RCHI_CONFIG_PATH, A2RCHI_CONFIG_NAME, A2RCHI_PIPELINE_NAME, USE_PODMAN
 
@@ -17,12 +17,10 @@ info() { echo "[combined-smoke] $*"; }
 
 BASE_URL="${BASE_URL:-http://localhost:2786}"
 DM_BASE_URL="${DM_BASE_URL:-http://localhost:7871}"
-CHROMA_URL="${CHROMA_URL:-http://localhost:8000}"
 OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 
 export BASE_URL
 export DM_BASE_URL
-export CHROMA_URL
 export OLLAMA_URL
 
 info "Running preflight checks..."
@@ -52,7 +50,6 @@ fi
   -e A2RCHI_CONFIG_PATH="/root/A2rchi/configs/${config_name}.yaml" \
   -e DM_BASE_URL="${DM_BASE_URL}" \
   -e DM_API_TOKEN="${DM_API_TOKEN:-}" \
-  -e CHROMA_URL="${CHROMA_URL}" \
   -e OLLAMA_URL="${OLLAMA_URL}" \
   -e OLLAMA_MODEL="${OLLAMA_MODEL}" \
   "${container_name}" \
