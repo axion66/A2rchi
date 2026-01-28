@@ -74,6 +74,9 @@ class HybridRetriever(BaseRetriever):
         """
         Retrieve relevant documents using hybrid search (BM25 + semantic).
         Falls back to semantic search only if hybrid search is not available.
+        
+        Returns:
+            List of (Document, score) tuples. Score is -1.0 placeholder for hybrid/fallback.
         """
         logger.debug(f"Query: {query}")
         logger.debug(f"Using hybrid search (BM25 + semantic) to retrieve top-{self.k} docs")
@@ -81,7 +84,9 @@ class HybridRetriever(BaseRetriever):
             if self._dense_retriever is None:
                 raise RuntimeError("HybridRetriever not initialised; no retriever available.")
             logger.debug("Falling back to semantic-only retriever")
-            return self._dense_retriever.invoke(query)
+            # Return docs with placeholder scores to match expected format
+            fallback_docs = self._dense_retriever.invoke(query)
+            return [(doc, -1.0) for doc in fallback_docs]
 
         # Get combined results from ensemble
         ensemble_docs = self._ensemble_retriever._get_relevant_documents(query, run_manager=run_manager)

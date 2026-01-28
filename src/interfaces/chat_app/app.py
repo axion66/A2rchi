@@ -127,6 +127,12 @@ class ChatWrapper:
         self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
 
+        # store postgres connection info
+        self.pg_config = {
+            "password": read_secret("PG_PASSWORD"),
+            **self.services_config["postgres"],
+        }
+
         # initialize data manager (ingestion handled by data-manager service)
         # self.data_manager = DataManager(run_ingestion=False)
         embedding_name = self.config["data_manager"]["embedding_name"]
@@ -134,13 +140,8 @@ class ChatWrapper:
         self.sources_config = self.config["data_manager"]["sources"]
 
         # initialize data viewer service for per-chat document selection
-        self.data_viewer = DataViewerService(data_path=self.data_path)
+        self.data_viewer = DataViewerService(data_path=self.data_path, pg_config=self.pg_config)
 
-        # store postgres connection info
-        self.pg_config = {
-            "password": read_secret("PG_PASSWORD"),
-            **self.services_config["postgres"],
-        }
         self.conn = None
         self.cursor = None
 

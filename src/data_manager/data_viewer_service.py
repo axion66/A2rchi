@@ -8,7 +8,7 @@ coordinating between the CatalogService and the chat application.
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-from src.data_manager.collectors.utils.index_utils import CatalogService
+from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -19,15 +19,17 @@ class DataViewerService:
     Service for managing document viewing and per-chat document selection.
     """
 
-    def __init__(self, data_path: str | Path):
+    def __init__(self, data_path: str | Path, pg_config: Dict[str, Any]):
         """
         Initialize the DataViewerService.
 
         Args:
             data_path: Path to the data directory containing the catalog.
+            pg_config: PostgreSQL connection configuration.
         """
         self.data_path = Path(data_path)
-        self.catalog = CatalogService(data_path=self.data_path)
+        self.pg_config = pg_config
+        self.catalog = PostgresCatalogService(data_path=self.data_path, pg_config=self.pg_config)
         logger.info(f"DataViewerService initialized with data_path: {self.data_path}")
 
     def list_documents(

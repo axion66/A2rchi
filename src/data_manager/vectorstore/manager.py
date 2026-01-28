@@ -12,7 +12,7 @@ from .loader_utils import select_loader
 from .postgres_vectorstore import PostgresVectorStore
 from langchain_text_splitters.character import CharacterTextSplitter
 
-from src.data_manager.collectors.utils.index_utils import CatalogService
+from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 
@@ -48,7 +48,7 @@ class VectorStoreManager:
                 **self._services_config["postgres"],
             }
         self._pg_config = pg_config
-        self._catalog = CatalogService(self.data_path, pg_config=self._pg_config)
+        self._catalog = PostgresCatalogService(self.data_path, pg_config=self._pg_config)
 
         embedding_name = self._data_manager_config["embedding_name"]
         self.collection_name = (
@@ -146,7 +146,7 @@ class VectorStoreManager:
         """Synchronise filesystem documents with the vectorstore."""
         store = self.fetch_collection()
 
-        sources = CatalogService.load_sources_catalog(self.data_path, self._pg_config)
+        sources = PostgresCatalogService.load_sources_catalog(self.data_path, self._pg_config)
         logger.info(f"Loaded {len(sources)} sources from catalog")
         
         # Get hashes currently in vectorstore
@@ -316,11 +316,16 @@ class VectorStoreManager:
 
                     filename, chunks, metadatas = processed
                     embeddings = self.embedding_model.embed_documents(chunks)
+                    
+                    # Get document_id from the catalog (documents table)
+                    document_id = self._catalog.get_document_id(filehash)
+                    if document_id is None:
+                        logger.warning(f"No document record found for {filehash}, chunks will have NULL document_id")
 
                     insert_data = []
                     for idx, (chunk, embedding, metadata) in enumerate(zip(chunks, embeddings, metadatas)):
                         insert_data.append((
-                            None,  # document_id (not linked to documents table for now)
+                            document_id,  # Link to documents table
                             idx,   # chunk_index
                             chunk,
                             embedding,
@@ -336,7 +341,7 @@ class VectorStoreManager:
                         insert_data,
                         template="(%s, %s, %s, %s::vector, %s::jsonb)",
                     )
-                    logger.debug(f"Added {len(insert_data)} chunks for {filename}")
+                    logger.debug(f"Added {len(insert_data)} chunks for {filename} (document_id={document_id})")
 
                 conn.commit()
         finally:

@@ -15,7 +15,7 @@ from flask_cors import CORS
 from src.data_manager.collectors.persistence import PersistenceService
 from src.data_manager.collectors.localfile_manager import LocalFileManager
 from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
-from src.data_manager.collectors.utils.index_utils import CatalogService
+from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
 from src.data_manager.collectors.tickets.ticket_manager import TicketManager
 from src.data_manager.vectorstore.loader_utils import load_text_from_path
 from src.interfaces.chat_app.document_utils import check_credentials
@@ -47,7 +47,7 @@ class FlaskAppWrapper:
             **self.services_config["postgres"],
         }
         self.persistence = PersistenceService(self.data_path, pg_config=self.pg_config)
-        self.catalog = CatalogService(self.data_path, pg_config=self.pg_config)
+        self.catalog = PostgresCatalogService(self.data_path, pg_config=self.pg_config)
         self.status_file = status_file or (Path(self.data_path) / "ingestion_status.json")
 
         secret_key = read_secret("FLASK_UPLOADER_APP_SECRET_KEY") or secrets.token_hex(32)
