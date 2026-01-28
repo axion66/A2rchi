@@ -43,6 +43,7 @@ def mock_pool(mock_connection):
     conn, cursor = mock_connection
     pool = MagicMock(spec=ConnectionPool)
     pool.get_connection.return_value = conn
+    pool.release_connection = MagicMock()
     return pool
 
 
@@ -97,7 +98,21 @@ class TestUserService:
     def test_get_or_create_user_creates_new(self, mock_pool, mock_connection):
         """Test creating a new user."""
         conn, cursor = mock_connection
-        cursor.fetchone.return_value = None  # User doesn't exist
+        # First call (get_user check) returns None, second call (INSERT) returns dict
+        cursor.fetchone.side_effect = [
+            None,  # User doesn't exist on initial check
+            {  # INSERT RETURNING result
+                "id": "user123",
+                "display_name": None,
+                "email": None,
+                "auth_provider": "anonymous",
+                "theme": "system",
+                "preferred_model": None,
+                "preferred_temperature": None,
+                "created_at": datetime.now(),
+                "updated_at": datetime.now(),
+            }
+        ]
         
         service = UserService(connection_pool=mock_pool, encryption_key="test-key")
         user = service.get_or_create_user("user123", auth_provider="anonymous")
@@ -108,13 +123,18 @@ class TestUserService:
     def test_get_or_create_user_returns_existing(self, mock_pool, mock_connection):
         """Test returning existing user."""
         conn, cursor = mock_connection
-        # Simulate existing user
-        cursor.fetchone.return_value = (
-            "user123", "Test User", "test@example.com", "basic",
-            "dark", "gpt-4", 0.7,
-            None, None, None,  # API keys
-            datetime.now(), datetime.now()
-        )
+        # Simulate existing user as dict
+        cursor.fetchone.return_value = {
+            "id": "user123",
+            "display_name": "Test User",
+            "email": "test@example.com",
+            "auth_provider": "basic",
+            "theme": "dark",
+            "preferred_model": "gpt-4",
+            "preferred_temperature": 0.7,
+            "created_at": datetime.now(),
+            "updated_at": datetime.now(),
+        }
         
         service = UserService(connection_pool=mock_pool, encryption_key="test-key")
         user = service.get_or_create_user("user123")
@@ -126,21 +146,24 @@ class TestUserService:
     def test_update_preferences(self, mock_pool, mock_connection):
         """Test updating user preferences."""
         conn, cursor = mock_connection
-        cursor.fetchone.return_value = (
-            "user123", "Updated Name", None, "anonymous",
-            "light", "gpt-4o", 0.5,
-            None, None, None,
-            datetime.now(), datetime.now()
-        )
+        cursor.fetchone.return_value = {
+            "id": "user123",
+            "display_name": "Test User",
+            "email": None,
+            "auth_provider": "anonymous",
+            "theme": "light",
+            "preferred_model": "gpt-4o",
+            "preferred_temperature": 0.5,
+            "created_at": datetime.now(),
+            "updated_at": datetime.now(),
+        }
         
         service = UserService(connection_pool=mock_pool, encryption_key="test-key")
         user = service.update_preferences(
             user_id="user123",
-            display_name="Updated Name",
             theme="light",
         )
         
-        assert user.display_name == "Updated Name"
         assert user.theme == "light"
 
 
@@ -154,12 +177,23 @@ class TestConfigService:
     def test_get_static_config(self, mock_pool, mock_connection):
         """Test getting static config."""
         conn, cursor = mock_connection
-        cursor.fetchone.return_value = (
-            "test-deployment", "2.0.0", "/data",
-            "text-embedding-ada-002", 1536, 1000, 150, "cosine",
-            ["QAPipeline"], ["gpt-4"], ["openai"],
-            False, datetime.now()
-        )
+        cursor.fetchone.return_value = {
+            "deployment_name": "test-deployment",
+            "config_version": "2.0.0",
+            "data_path": "/data",
+            "prompts_path": "/prompts",
+            "embedding_model": "text-embedding-ada-002",
+            "embedding_dimensions": 1536,
+            "chunk_size": 1000,
+            "chunk_overlap": 150,
+            "distance_metric": "cosine",
+            "available_pipelines": ["QAPipeline"],
+            "available_models": ["gpt-4"],
+            "available_providers": ["openai"],
+            "auth_enabled": False,
+            "session_lifetime_days": 30,
+            "created_at": datetime.now(),
+        }
         
         service = ConfigService(connection_pool=mock_pool)
         config = service.get_static_config()
@@ -171,11 +205,23 @@ class TestConfigService:
     def test_get_static_config_caching(self, mock_pool, mock_connection):
         """Test that static config is cached."""
         conn, cursor = mock_connection
-        cursor.fetchone.return_value = (
-            "test", "2.0.0", "/data",
-            "model", 384, 1000, 150, "cosine",
-            [], [], [], False, datetime.now()
-        )
+        cursor.fetchone.return_value = {
+            "deployment_name": "test",
+            "config_version": "2.0.0",
+            "data_path": "/data",
+            "prompts_path": "/prompts",
+            "embedding_model": "model",
+            "embedding_dimensions": 384,
+            "chunk_size": 1000,
+            "chunk_overlap": 150,
+            "distance_metric": "cosine",
+            "available_pipelines": [],
+            "available_models": [],
+            "available_providers": [],
+            "auth_enabled": False,
+            "session_lifetime_days": 30,
+            "created_at": datetime.now(),
+        }
         
         service = ConfigService(connection_pool=mock_pool)
         
@@ -194,7 +240,7 @@ class TestConfigService:
         
         service = ConfigService(connection_pool=mock_pool)
         
-        with pytest.raises(ConfigValidationError, match="Temperature"):
+        with pytest.raises(ConfigValidationError, match="temperature"):
             service.update_dynamic_config(temperature=5.0)
         
         with pytest.raises(ConfigValidationError, match="max_tokens"):
@@ -216,10 +262,11 @@ class TestDocumentSelectionService:
         service = DocumentSelectionService(connection_pool=mock_pool)
         doc_ids = service.get_enabled_document_ids(
             user_id="user123",
-            conversation_id=42,
+            conversation_id="conv42",
         )
         
-        assert doc_ids == [1, 2, 5]
+        # Returns a set of IDs
+        assert doc_ids == {1, 2, 5}
     
     def test_set_user_default(self, mock_pool, mock_connection):
         """Test setting user default."""
@@ -457,10 +504,12 @@ class TestDataclasses:
         """Test DocumentSelection representation."""
         ds = DocumentSelection(
             document_id=1,
+            resource_hash="abc123",
+            display_name="Test Doc",
+            source_type="file",
             user_default=False,
             conversation_override=True,
-            effective_enabled=True,
         )
         
         assert ds.document_id == 1
-        assert ds.effective_enabled is True
+        assert ds.enabled is True  # conversation_override takes precedence

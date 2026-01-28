@@ -34,6 +34,10 @@ def mock_pg_connection():
     cursor_context.__exit__ = MagicMock(return_value=False)
     conn.cursor.return_value = cursor_context
     
+    # Required for psycopg2.extras.execute_values - cursor needs connection.encoding
+    conn.encoding = 'UTF8'
+    cursor.connection = conn  # Link cursor back to connection
+    
     return conn, cursor
 
 
@@ -383,12 +387,15 @@ class TestDocumentOperations:
         texts = ["First document", "Second document"]
         metadatas = [{"source": "test"}, {"source": "test"}]
         
-        with patch.object(vector_store, '_get_connection', return_value=conn):
+        with patch.object(vector_store, '_get_connection', return_value=conn), \
+             patch('psycopg2.extras.execute_values') as mock_execute_values:
             ids = vector_store.add_texts(texts, metadatas=metadatas)
         
         assert len(ids) == 2
         # Verify embeddings were created
         mock_embeddings.embed_documents.assert_called_once_with(texts)
+        # Verify execute_values was called for bulk insert
+        assert mock_execute_values.called
     
     def test_add_documents(self, vector_store, mock_pg_connection, mock_embeddings):
         """Test adding Document objects."""
@@ -400,10 +407,12 @@ class TestDocumentOperations:
             Document(page_content="Doc 2", metadata={"key": "value2"}),
         ]
         
-        with patch.object(vector_store, '_get_connection', return_value=conn):
+        with patch.object(vector_store, '_get_connection', return_value=conn), \
+             patch('psycopg2.extras.execute_values') as mock_execute_values:
             ids = vector_store.add_documents(docs)
         
         assert len(ids) == 2
+        assert mock_execute_values.called
     
     def test_delete_by_ids(self, vector_store, mock_pg_connection):
         """Test deleting documents by ID."""

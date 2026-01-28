@@ -65,18 +65,32 @@ class DocumentSelectionService:
         >>> enabled_ids = service.get_enabled_document_ids(user_id, conversation_id)
     """
     
-    def __init__(self, pg_config: Dict[str, Any]):
+    def __init__(self, pg_config: Optional[Dict[str, Any]] = None, *, connection_pool=None):
         """
         Initialize DocumentSelectionService.
         
         Args:
-            pg_config: PostgreSQL connection parameters
+            pg_config: PostgreSQL connection parameters (fallback)
+            connection_pool: ConnectionPool instance (preferred)
         """
+        self._pool = connection_pool
         self._pg_config = pg_config
     
     def _get_connection(self) -> psycopg2.extensions.connection:
         """Get a database connection."""
-        return psycopg2.connect(**self._pg_config)
+        if self._pool:
+            return self._pool.get_connection()
+        elif self._pg_config:
+            return psycopg2.connect(**self._pg_config)
+        else:
+            raise ValueError("No connection pool or pg_config provided")
+    
+    def _release_connection(self, conn) -> None:
+        """Release connection back to pool or close it."""
+        if self._pool:
+            self._pool.release_connection(conn)
+        else:
+            conn.close()
     
     # =========================================================================
     # User Document Defaults
@@ -154,7 +168,7 @@ class DocumentSelectionService:
                     for row in rows
                 ]
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     def set_user_default(
         self,
@@ -218,7 +232,7 @@ class DocumentSelectionService:
                     user_default=enabled,
                 )
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     def clear_user_default(
         self,
@@ -248,7 +262,7 @@ class DocumentSelectionService:
                 conn.commit()
                 return cursor.rowcount > 0
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     # =========================================================================
     # Conversation Document Overrides
@@ -302,7 +316,7 @@ class DocumentSelectionService:
                     for row in rows
                 ]
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     def set_conversation_override(
         self,
@@ -368,7 +382,7 @@ class DocumentSelectionService:
                     conversation_override=enabled,
                 )
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     def clear_conversation_override(
         self,
@@ -398,7 +412,7 @@ class DocumentSelectionService:
                 conn.commit()
                 return cursor.rowcount > 0
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     # =========================================================================
     # Effective Document Selection (for search queries)
@@ -444,7 +458,7 @@ class DocumentSelectionService:
                 
                 return {row[0] for row in cursor.fetchall()}
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     def get_enabled_resource_hashes(
         self,
@@ -485,7 +499,7 @@ class DocumentSelectionService:
                 
                 return {row[0] for row in cursor.fetchall()}
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     def get_full_selection_state(
         self,
@@ -541,7 +555,7 @@ class DocumentSelectionService:
                     for row in rows
                 ]
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     # =========================================================================
     # Bulk Operations
@@ -590,7 +604,7 @@ class DocumentSelectionService:
                 logger.info(f"Bulk set {len(selections)} user defaults for {user_id}")
                 return len(selections)
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     def set_conversation_overrides_bulk(
         self,
@@ -635,4 +649,4 @@ class DocumentSelectionService:
                 logger.info(f"Bulk set {len(selections)} conversation overrides for {conversation_id}")
                 return len(selections)
         finally:
-            conn.close()
+            self._release_connection(conn)

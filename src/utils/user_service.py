@@ -59,7 +59,7 @@ class UserService:
     Uses pgcrypto for symmetric encryption of API keys.
     
     Example:
-        >>> service = UserService(pg_config)
+        >>> service = UserService(pg_config={'host': 'localhost', ...})
         >>> user = service.get_or_create_user("client_123")
         >>> service.update_preferences("client_123", theme="dark", preferred_model="gpt-4")
         >>> service.set_api_key("client_123", "openai", "sk-...")
@@ -67,17 +67,20 @@ class UserService:
     
     def __init__(
         self,
-        pg_config: Dict[str, Any],
+        pg_config: Optional[Dict[str, Any]] = None,
         *,
+        connection_pool=None,
         encryption_key: Optional[str] = None,
     ):
         """
         Initialize UserService.
         
         Args:
-            pg_config: PostgreSQL connection parameters
+            pg_config: PostgreSQL connection parameters (fallback)
+            connection_pool: ConnectionPool instance (preferred)
             encryption_key: Key for encrypting BYOK API keys (from BYOK_ENCRYPTION_KEY env)
         """
+        self._pool = connection_pool
         self._pg_config = pg_config
         self._encryption_key = encryption_key or read_secret("BYOK_ENCRYPTION_KEY", default="")
         
@@ -88,7 +91,19 @@ class UserService:
     
     def _get_connection(self) -> psycopg2.extensions.connection:
         """Get a database connection."""
-        return psycopg2.connect(**self._pg_config)
+        if self._pool:
+            return self._pool.get_connection()
+        elif self._pg_config:
+            return psycopg2.connect(**self._pg_config)
+        else:
+            raise ValueError("No connection pool or pg_config provided")
+    
+    def _release_connection(self, conn) -> None:
+        """Release connection back to pool or close it."""
+        if self._pool:
+            self._pool.release_connection(conn)
+        else:
+            conn.close()
     
     def get_user(self, user_id: str) -> Optional[User]:
         """
@@ -130,7 +145,7 @@ class UserService:
                     updated_at=str(row["updated_at"]) if row["updated_at"] else None,
                 )
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     def get_or_create_user(
         self,
@@ -202,7 +217,7 @@ class UserService:
                     updated_at=str(row["updated_at"]) if row["updated_at"] else None,
                 )
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     def update_preferences(
         self,
@@ -287,7 +302,7 @@ class UserService:
                     updated_at=str(row["updated_at"]) if row["updated_at"] else None,
                 )
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     def set_api_key(
         self,
@@ -340,7 +355,7 @@ class UserService:
                 logger.info(f"Stored encrypted API key for user {user_id}, provider {provider}")
                 return True
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     def get_api_key(
         self,
@@ -391,7 +406,7 @@ class UserService:
                     return decrypted.decode("utf-8") if decrypted else None
                 return decrypted
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     def delete_api_key(
         self,
@@ -430,7 +445,7 @@ class UserService:
                 logger.info(f"Deleted API key for user {user_id}, provider {provider}")
                 return cursor.rowcount > 0
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     def link_anonymous_to_authenticated(
         self,
@@ -570,7 +585,7 @@ class UserService:
                     updated_at=str(row["updated_at"]) if row["updated_at"] else None,
                 )
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     def list_users(
         self,
@@ -636,4 +651,4 @@ class UserService:
                     for row in rows
                 ]
         finally:
-            conn.close()
+            self._release_connection(conn)

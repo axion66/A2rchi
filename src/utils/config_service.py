@@ -110,25 +110,39 @@ class ConfigService:
     Static config is cached in memory after initial load.
     
     Example:
-        >>> service = ConfigService(pg_config)
+        >>> service = ConfigService(pg_config={'host': 'localhost', ...})
         >>> static = service.get_static_config()
         >>> dynamic = service.get_dynamic_config()
         >>> service.update_dynamic_config(temperature=0.5, updated_by="admin")
     """
     
-    def __init__(self, pg_config: Dict[str, Any]):
+    def __init__(self, pg_config: Optional[Dict[str, Any]] = None, *, connection_pool=None):
         """
         Initialize ConfigService.
         
         Args:
-            pg_config: PostgreSQL connection parameters
+            pg_config: PostgreSQL connection parameters (fallback)
+            connection_pool: ConnectionPool instance (preferred)
         """
+        self._pool = connection_pool
         self._pg_config = pg_config
         self._static_cache: Optional[StaticConfig] = None
     
     def _get_connection(self) -> psycopg2.extensions.connection:
         """Get a database connection."""
-        return psycopg2.connect(**self._pg_config)
+        if self._pool:
+            return self._pool.get_connection()
+        elif self._pg_config:
+            return psycopg2.connect(**self._pg_config)
+        else:
+            raise ValueError("No connection pool or pg_config provided")
+    
+    def _release_connection(self, conn) -> None:
+        """Release connection back to pool or close it."""
+        if self._pool:
+            self._pool.release_connection(conn)
+        else:
+            conn.close()
     
     # =========================================================================
     # Static Configuration
@@ -188,7 +202,7 @@ class ConfigService:
                 
                 return self._static_cache
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     def initialize_static_config(
         self,
@@ -296,7 +310,7 @@ class ConfigService:
                 logger.info(f"Initialized static config: {deployment_name}")
                 return self._static_cache
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     # =========================================================================
     # Dynamic Configuration
@@ -355,7 +369,7 @@ class ConfigService:
                     updated_by=row["updated_by"],
                 )
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     def update_dynamic_config(
         self,
@@ -509,7 +523,7 @@ class ConfigService:
                     updated_by=row["updated_by"],
                 )
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     def _validate_dynamic_config(
         self,
@@ -751,7 +765,7 @@ class ConfigService:
                 # Return only non-null preferences
                 return {k: v for k, v in dict(row).items() if v is not None}
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     def update_user_preferences(
         self,
@@ -842,7 +856,7 @@ class ConfigService:
                 
                 return self.get_user_preferences(user_id)
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     # =========================================================================
     # Effective Configuration (User -> Dynamic -> Defaults)
@@ -970,7 +984,7 @@ class ConfigService:
         except Exception as e:
             logger.warning(f"Failed to log audit: {e}")
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     def get_audit_log(
         self,
@@ -1019,7 +1033,7 @@ class ConfigService:
                 
                 return [dict(row) for row in cursor.fetchall()]
         finally:
-            conn.close()
+            self._release_connection(conn)
     
     # =========================================================================
     # Admin Check
@@ -1045,4 +1059,4 @@ class ConfigService:
                 row = cursor.fetchone()
                 return bool(row and row[0])
         finally:
-            conn.close()
+            self._release_connection(conn)
