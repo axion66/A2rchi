@@ -28,8 +28,3 @@ openspec/changes/
 openspec/*/spec
 openspec/*/tasks.md
 openspec/*/proposal.md
-# G5 Workflow - ignore local state, keep artifacts
-.g5/state.sqlite
-.g5/activity.json
-.g5/traces/
-.g5/archive/

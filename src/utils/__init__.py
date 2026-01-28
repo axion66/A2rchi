@@ -38,13 +38,6 @@ from src.utils.conversation_service import (
     ABComparison,
 )
 
-# Migration tooling
-from src.utils.migration_manager import (
-    MigrationManager,
-    MigrationStatus,
-    MigrationCheckpoint,
-)
-
 # Service factory
 from src.utils.postgres_service_factory import (
     PostgresServiceFactory,
@@ -71,10 +64,6 @@ __all__ = [
     'ConversationService',
     'Message',
     'ABComparison',
-    # Migration
-    'MigrationManager',
-    'MigrationStatus',
-    'MigrationCheckpoint',
     # Factory
     'PostgresServiceFactory',
     'create_services',
