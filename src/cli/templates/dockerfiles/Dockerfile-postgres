@@ -5,7 +5,7 @@
 
 # Use official pgvector image - pre-built with pgvector properly compiled
 # This avoids ARM64 compilation issues we encountered with manual builds
-FROM pgvector/pgvector:pg17
+FROM docker.io/pgvector/pgvector:pg17
 
 # pg_textsearch version - enabled by default for BM25 hybrid search
 ARG PGTEXTSEARCH_VERSION=0.4.2

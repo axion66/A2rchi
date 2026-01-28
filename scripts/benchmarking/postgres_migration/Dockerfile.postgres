@@ -1,6 +1,6 @@
 # Custom PostgreSQL with pgvector for benchmarking
 # Use pgvector's official Docker image which is pre-built and tested
-FROM pgvector/pgvector:pg16
+FROM docker.io/pgvector/pgvector:pg16
 
 # Copy init script
 COPY init.sql /docker-entrypoint-initdb.d/
