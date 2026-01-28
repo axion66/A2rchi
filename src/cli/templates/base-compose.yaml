@@ -52,6 +52,8 @@ services:
       {% for secret in required_secrets | default([]) -%}
       {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
       {% endfor %}
+    env_file:
+      - .env
     secrets:
       {% for secret in required_secrets | default([]) -%}
       - {{ secret.lower() }}
@@ -78,14 +80,14 @@ services:
       dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-postgres
     container_name: {{ postgres_container_name }}
     environment:
-      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
       POSTGRES_USER: a2rchi
       POSTGRES_DB: a2rchi-db
       {% if host_mode -%}
       PGPORT: {{ postgres_port }}
       {% endif %}
-    secrets:
-      - pg_password
+    env_file:
+      - .env
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
       - {{ postgres_volume_name }}:/var/lib/postgresql/data
@@ -132,6 +134,8 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
+    env_file:
+      - .env
     {% if gpu_ids and not use_podman -%}
     deploy:
       resources:
@@ -236,6 +240,8 @@ services:
       {% for rubric in rubrics | default([]) -%}
       {{ rubric.upper() }}_FILE: /root/A2rchi/{{ rubric }}.txt
       {% endfor %}
+    env_file:
+      - .env
     {% if gpu_ids and not use_podman -%}
     deploy:
       resources:
@@ -308,6 +314,8 @@ services:
       {% for secret in required_secrets | default([]) -%}
       {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
       {% endfor %}
+    env_file:
+      - .env
     secrets:
       {% for secret in required_secrets | default([]) -%}
       - {{ secret.lower() }}
@@ -358,6 +366,8 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
+    env_file:
+      - .env
     {% if gpu_ids and not use_podman -%}
     deploy:
       resources:
@@ -428,6 +438,8 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
+    env_file:
+      - .env
     secrets:
       {% for secret in required_secrets | default([]) -%}
       - {{ secret.lower() }}
@@ -487,6 +499,8 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
+    env_file:
+      - .env
     secrets:
       {% for secret in required_secrets | default([]) -%}
       - {{ secret.lower() }}
@@ -537,6 +551,8 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
       container_name: {{ benchmarking_container_name }}
+    env_file:
+      - .env
     {% if gpu_ids and not use_podman -%}
     deploy:
       resources:
