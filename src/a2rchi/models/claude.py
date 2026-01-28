@@ -13,7 +13,7 @@ class ClaudeLLM(BaseCustomLLM):
     An LLM class that uses Anthropic's Claude model.
     """
 
-    api_key: str = "INSERT KEY HERE!!!"
+    api_key: str = ""  # Set via ANTHROPIC_API_KEY env var or config
     base_url: str = "https://api.anthropic.com/v1/messages"
     model_name: str = "claude-3-5-sonnet-20240620"
 

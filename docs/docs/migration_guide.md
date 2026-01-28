@@ -13,135 +13,66 @@ A2rchi v2.0 consolidates all storage to PostgreSQL:
 | Conversations | PostgreSQL | PostgreSQL (updated schema) |
 | Configuration | YAML files | YAML files (unchanged) |
 
-## Migration Prerequisites
+## Migration Strategy: Reingest
 
-1. **Backup your data** before migrating
-2. Ensure PostgreSQL 17+ is running with pgvector extension
-3. Have your deployment name ready (e.g., `mybot`)
+**There is no automatic data migration tool.** The recommended approach is to:
 
-## Migration Commands
+1. Create a fresh v2.0 deployment
+2. Re-ingest your documents from source
+3. Start conversations fresh (history is not migrated)
 
-### Dry Run (Recommended First)
+This is the cleanest approach because:
+- Document embeddings should be regenerated with consistent settings
+- The new schema structure differs significantly from v1.x
+- Re-ingesting ensures data integrity
 
-Check what would be migrated without making changes:
+## Migration Steps
 
-```bash
-a2rchi migrate --name mybot --dry-run
-```
+### 1. Backup Existing Deployment (Optional)
 
-This shows:
-- Number of ChromaDB vectors to migrate
-- Number of SQLite catalog records
-- Estimated migration time
-
-### Full Migration
-
-Migrate all data sources:
+If you want to preserve your v1.x data:
 
 ```bash
-a2rchi migrate --name mybot
+# Backup ChromaDB data
+cp -r ~/.a2rchi/a2rchi-mybot/chromadb ~/.a2rchi/a2rchi-mybot/chromadb.backup
+
+# Export PostgreSQL conversations (if you want to keep history)
+pg_dump -h localhost -p 5432 -U a2rchi -t conversations a2rchi_db > conversations_backup.sql
 ```
 
-### Selective Migration
-
-Migrate specific data sources:
+### 2. Create New v2.0 Deployment
 
 ```bash
-# Migrate only ChromaDB vectors
-a2rchi migrate --name mybot --source chromadb
+# Delete old deployment
+a2rchi delete --name mybot
 
-# Migrate only SQLite catalog
-a2rchi migrate --name mybot --source sqlite
-
-# Clean up old configs table (after verifying new schema works)
-a2rchi migrate --name mybot --source configs
+# Create fresh deployment with your existing config
+a2rchi create --name mybot --config myconfig.yaml
 ```
 
-### Migration Options
-
-| Option | Description |
-|--------|-------------|
-| `--source` | Data source: `chromadb`, `sqlite`, `configs`, or `all` (default) |
-| `--dry-run` | Analyze without making changes |
-| `--batch-size` | Records per batch (default: 1000) |
-| `--verbosity` | Logging verbosity 0-4 (default: 3) |
-
-## What Gets Migrated
-
-### ChromaDB → pgvector
-
-- All document embeddings and text chunks
-- Metadata (source, filename, chunk_index, etc.)
-- Preserved document hashes for deduplication
-
-### SQLite Catalog → documents table
-
-- Document sources and URLs
-- File hashes and metadata
-- Source configuration
-
-### Conversation Schema Updates
-
-The conversation schema is updated from:
-- `conf_id` (foreign key to configs table)
-
-To:
-- `model_used` (string, e.g., "openai/gpt-4o")
-- `pipeline_used` (string, e.g., "QAPipeline")
-
-## Post-Migration Steps
-
-1. **Verify the migration**:
-   ```bash
-   a2rchi migrate --name mybot --dry-run
-   # Should show "Nothing to migrate!"
-   ```
-
-2. **Test your deployment**:
-   ```bash
-   a2rchi up --name mybot
-   ```
-
-3. **Clean up old data** (optional, after verification):
-   - ChromaDB volume can be removed
-   - SQLite catalog file can be removed
-
-## Troubleshooting
-
-### Migration Fails Midway
-
-Migrations are resumable. Simply run the same command again:
+### 3. Re-ingest Documents
 
 ```bash
-a2rchi migrate --name mybot
+# Start the deployment
+a2rchi up --name mybot
+
+# The data manager will re-ingest documents from configured sources
+# Check the logs to monitor progress
+docker logs a2rchi-mybot-data-manager -f
 ```
 
-The migration will resume from the last checkpoint.
-
-### ChromaDB Not Found
-
-If you get "ChromaDB not found, skipping":
-- This is normal if you don't have existing ChromaDB data
-- Or the data path may be incorrect in your config
-
-### PostgreSQL Connection Errors
-
-Ensure:
-1. PostgreSQL is running: `docker ps | grep postgres`
-2. Password is set in secrets: `cat ~/.a2rchi/a2rchi-mybot/secrets/PG_PASSWORD`
-3. Database exists: `a2rchi-db`
-
-## New Deployments
-
-New deployments automatically use the consolidated PostgreSQL schema. No migration needed.
+### 4. Verify Deployment
 
 ```bash
-# Create a new PostgreSQL-only deployment
-a2rchi create --name mynewbot --config myconfig.yaml
-a2rchi up --name mynewbot
+# Open the chat UI
+open http://localhost:7861
+
+# Test a query to verify documents are indexed
 ```
 
-## Schema Reference
+## What Changes
+
+### New Storage Schema
 
 The new schema (init-v2.sql) includes:
 
@@ -154,4 +85,55 @@ The new schema (init-v2.sql) includes:
 - `conversation_metadata` - Conversation headers
 - `conversations` - Message history with model/pipeline tracking
 
-See `src/cli/templates/init-v2.sql` in the repository for the complete schema.
+### Conversation Schema
+
+Conversations now track:
+- `model_used` (string, e.g., "openai/gpt-4o")
+- `pipeline_used` (string, e.g., "QAPipeline")
+
+Instead of the previous `conf_id` foreign key.
+
+## New Deployments
+
+New deployments automatically use the consolidated PostgreSQL schema:
+
+```bash
+a2rchi create --name mynewbot --config myconfig.yaml
+a2rchi up --name mynewbot
+```
+
+## Troubleshooting
+
+### PostgreSQL Connection Errors
+
+Ensure:
+1. PostgreSQL is running: `docker ps | grep postgres`
+2. Password is set in secrets: `cat ~/.a2rchi/a2rchi-mybot/secrets/PG_PASSWORD`
+3. Database exists: `a2rchi-db`
+
+### Documents Not Appearing
+
+Check data manager logs:
+```bash
+docker logs a2rchi-mybot-data-manager -f
+```
+
+Common issues:
+- Source paths not accessible from container
+- Network issues reaching web sources
+- Embedding model not available
+
+## Schema Reference
+
+See `src/cli/templates/init-v2.sql` in the repository for the complete PostgreSQL schema.
+
+---
+
+## Future: Automated Migration (Planned)
+
+An automated migration tool (`a2rchi migrate`) is planned for a future release to support:
+- ChromaDB → pgvector vector migration
+- SQLite catalog → PostgreSQL documents table
+- Conversation history preservation
+
+Until then, the reingest approach above is recommended.
