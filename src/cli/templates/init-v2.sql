@@ -476,9 +476,9 @@ CREATE TABLE IF NOT EXISTS ab_comparisons (
     response_a_mid INTEGER NOT NULL REFERENCES conversations(message_id) ON DELETE CASCADE,
     response_b_mid INTEGER NOT NULL REFERENCES conversations(message_id) ON DELETE CASCADE,
     
-    -- Model/pipeline info (replaces config_a_id, config_b_id foreign keys)
-    model_a VARCHAR(200) NOT NULL,
-    model_b VARCHAR(200) NOT NULL,
+    -- Model/pipeline info (optional - can be derived from config_*_id if not set)
+    model_a VARCHAR(200),
+    model_b VARCHAR(200),
     pipeline_a VARCHAR(100),
     pipeline_b VARCHAR(100),
     
