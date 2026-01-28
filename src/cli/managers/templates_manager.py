@@ -408,7 +408,7 @@ class TemplateManager:
             vector_index_hnsw_m=data_manager_config.get("vector_index_hnsw_m", 16),
             vector_index_hnsw_ef=data_manager_config.get("vector_index_hnsw_ef", 64),
         )
-        dest = context.base_dir / "init-v2.sql"
+        dest = context.base_dir / "init.sql"
 
         with open(dest, "w") as f:
             f.write(init_sql)

@@ -37,11 +37,17 @@ services:
       args:
         APP_VERSION: {{ app_version }}
     container_name: {{ data_manager_container_name }}
+    {% if chromadb_enabled or postgres_enabled -%}
     depends_on:
       {% if chromadb_enabled -%}
       chromadb:
         condition: service_healthy
+      {% endif -%}
+      {% if postgres_enabled -%}
+      postgres:
+        condition: service_healthy
       {% endif %}
+    {% endif -%}
     environment:
       {% for secret in required_secrets | default([]) -%}
       {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
@@ -67,7 +73,9 @@ services:
 
   {% if postgres_enabled -%}
   postgres:
-    image: docker.io/postgres:16
+    build:
+      context: .
+      dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-postgres
     container_name: {{ postgres_container_name }}
     environment:
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
@@ -105,6 +113,7 @@ services:
       args:
         APP_VERSION: {{ app_version }}
     container_name: {{ chatbot_container_name }}
+    {% if chromadb_enabled or postgres_enabled -%}
     depends_on:
       {% if chromadb_enabled -%}
       chromadb:
@@ -114,6 +123,7 @@ services:
       postgres:
         condition: service_healthy
       {% endif %}
+    {% endif -%}
     environment:
       {% for secret in required_secrets | default([]) -%}
       {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
@@ -175,11 +185,11 @@ services:
       context: .
       dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-grafana
     container_name: {{ grafana_container_name }}
+    {% if postgres_enabled -%}
     depends_on:
-      {% if postgres_enabled -%}
       postgres:
         condition: service_healthy
-      {% endif %}
+    {% endif -%}
     ports:
       - {{ grafana_port_host }}:3000
     volumes:
@@ -203,6 +213,7 @@ services:
     build:
       context: .
       dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-grader{{ '-gpu' if gpu_ids else '' }}
+    {% if chromadb_enabled or postgres_enabled -%}
     depends_on:
       {% if chromadb_enabled -%}
       chromadb:
@@ -212,6 +223,7 @@ services:
       postgres:
         condition: service_healthy
       {% endif %}
+    {% endif -%}
     environment:
       {% for secret in required_secrets | default([]) -%}
       {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
@@ -281,6 +293,7 @@ services:
       context: .
       dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-piazza
     container_name: {{ piazza_container_name }}
+    {% if chromadb_enabled or postgres_enabled -%}
     depends_on:
       {% if chromadb_enabled -%}
       chromadb:
@@ -290,6 +303,7 @@ services:
       postgres:
         condition: service_healthy
       {% endif %}
+    {% endif -%}
     environment:
       {% for secret in required_secrets | default([]) -%}
       {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
@@ -325,6 +339,7 @@ services:
       dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-mattermost{{ '-gpu' if gpu_ids else '' }}
       args:
         TAG: {{ mattermost_tag }}
+    {% if chromadb_enabled or postgres_enabled -%}
     depends_on:
       {% if chromadb_enabled -%}
       chromadb:
@@ -334,6 +349,7 @@ services:
       postgres:
         condition: service_healthy
       {% endif %}
+    {% endif -%}
     environment:
       {% for secret in required_secrets | default([]) -%}
       {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
@@ -393,6 +409,7 @@ services:
       context: .
       dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-redmine{{ '-gpu' if gpu_ids else '' }}
     container_name: {{ redmine_mailer_container_name }}-redmine
+    {% if chromadb_enabled or postgres_enabled -%}
     depends_on:
       {% if chromadb_enabled -%}
       chromadb:
@@ -402,6 +419,7 @@ services:
       postgres:
         condition: service_healthy
       {% endif %}
+    {% endif -%}
     environment:
       {% for secret in required_secrets | default([]) -%}
       {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
@@ -450,6 +468,7 @@ services:
       context: .
       dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-mailbox{{ '-gpu' if gpu_ids else '' }}
     container_name: {{ redmine_mailer_container_name }}-mailer
+    {% if chromadb_enabled or postgres_enabled -%}
     depends_on:
       {% if chromadb_enabled -%}
       chromadb:
@@ -459,6 +478,7 @@ services:
       postgres:
         condition: service_healthy
       {% endif %}
+    {% endif -%}
     environment:
       {% for secret in required_secrets | default([]) -%}
       {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}

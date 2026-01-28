@@ -94,6 +94,10 @@ runs:
         USE_PODMAN: ${{ inputs.use-podman }}
       run: |
         set -euo pipefail
+        # Activate venv if it exists (for local/act testing)
+        if [[ -f /tmp/ci-venv/bin/activate ]]; then
+          . /tmp/ci-venv/bin/activate
+        fi
         if [[ -n "${EXTRA_ENV}" ]]; then
           while IFS="=" read -r key value; do
             if [[ -n "${key}" ]]; then

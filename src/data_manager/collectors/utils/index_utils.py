@@ -56,6 +56,7 @@ class CatalogService:
     """Expose lightweight access to catalogued resources and metadata."""
 
     data_path: Path | str
+    pg_config: Optional[Dict[str, Any]] = None  # Reserved for future PostgreSQL-backed catalog
     include_extensions: Sequence[str] = field(default_factory=lambda: sorted(DEFAULT_TEXT_EXTENSIONS))
     db_filename: str = "catalog.sqlite"
     _file_index: Dict[str, str] = field(init=False, default_factory=dict)

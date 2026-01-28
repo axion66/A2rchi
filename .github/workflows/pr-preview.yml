@@ -111,13 +111,13 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python (GitHub runner)
-        if: ${{ !contains(runner.name, 'submit') && steps.detect.outputs.changed == 'true' }}
+        if: ${{ !contains(runner.name, 'submit') }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Set up Python (Self-hosted)
-        if: ${{ contains(runner.name, 'submit') && steps.detect.outputs.changed == 'true' }}
+        if: ${{ contains(runner.name, 'submit') }}
         run: |
           export PYENV_ROOT="$HOME/.pyenv"
           export PATH="$PYENV_ROOT/bin:$PATH"
@@ -126,6 +126,8 @@ jobs:
 
       - name: Install a2rchi CLI
         run: |
+          python3 -m venv /tmp/ci-venv
+          . /tmp/ci-venv/bin/activate
           python -m pip install --upgrade pip
           pip install ".[all]" || pip install .
 
@@ -138,10 +140,14 @@ jobs:
 
       - name: Prepare base image references
         if: needs.build-base-images.outputs.changed == 'true'
-        run: python scripts/dev/update_service_base_images.py --tag "${{ needs.build-base-images.outputs.tag }}" --switch-source localhost --orig-tag all
+        run: |
+          . /tmp/ci-venv/bin/activate
+          python scripts/dev/update_service_base_images.py --tag "${{ needs.build-base-images.outputs.tag }}" --switch-source localhost --orig-tag all
 
       - name: Verify MkDocs build
-        run: mkdocs build --config-file docs/mkdocs.yml --strict
+        run: |
+          . /tmp/ci-venv/bin/activate
+          mkdocs build --config-file docs/mkdocs.yml --strict
 
       - name: Clean up MkDocs build artifacts
         run: rm -rf site
