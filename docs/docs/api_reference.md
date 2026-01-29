@@ -676,6 +676,125 @@ Get A/B comparison statistics with win rates.
 
 ---
 
+### Data Viewer
+
+Browse and manage ingested documents.
+
+#### `GET /api/data/documents`
+
+List all ingested documents.
+
+**Query params:**
+- `limit`: Max documents to return (default: 100)
+- `offset`: Pagination offset (default: 0)
+- `search`: Filter by document name
+- `source_type`: Filter by source type
+
+**Response:**
+```json
+{
+  "documents": [
+    {
+      "hash": "5e90ca54526f3e11",
+      "file_name": "readme.md",
+      "source_type": "links",
+      "chunk_count": 5,
+      "enabled": true,
+      "ingested_at": "2025-01-29T10:30:00Z"
+    }
+  ],
+  "total": 42
+}
+```
+
+#### `GET /api/data/documents/<hash>/content`
+
+Get document content and chunks.
+
+**Response:**
+```json
+{
+  "hash": "5e90ca54526f3e11",
+  "file_name": "readme.md",
+  "content": "Full document text...",
+  "chunks": [
+    {
+      "id": 1,
+      "content": "Chunk text...",
+      "metadata": {}
+    }
+  ]
+}
+```
+
+#### `POST /api/data/documents/<hash>/enable`
+
+Enable a document for retrieval.
+
+**Response:**
+```json
+{
+  "success": true,
+  "hash": "5e90ca54526f3e11",
+  "enabled": true
+}
+```
+
+#### `POST /api/data/documents/<hash>/disable`
+
+Disable a document from retrieval.
+
+**Response:**
+```json
+{
+  "success": true,
+  "hash": "5e90ca54526f3e11",
+  "enabled": false
+}
+```
+
+#### `POST /api/data/bulk-enable`
+
+Enable multiple documents.
+
+**Request:**
+```json
+{
+  "hashes": ["5e90ca54526f3e11", "a1b2c3d4e5f67890"]
+}
+```
+
+#### `POST /api/data/bulk-disable`
+
+Disable multiple documents.
+
+**Request:**
+```json
+{
+  "hashes": ["5e90ca54526f3e11", "a1b2c3d4e5f67890"]
+}
+```
+
+#### `GET /api/data/stats`
+
+Get document statistics.
+
+**Response:**
+```json
+{
+  "total_documents": 42,
+  "enabled_documents": 40,
+  "disabled_documents": 2,
+  "total_chunks": 350,
+  "by_source_type": {
+    "links": 30,
+    "jira": 12
+  }
+}
+```
+
+---
+
 ### Health & Info
 
 #### `GET /api/v2/health`

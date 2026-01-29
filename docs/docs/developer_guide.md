@@ -84,9 +84,12 @@ A2RCHI relies on Postgres as the durable metadata store across services. Core us
 - **Ingestion catalog**: the `resources` table tracks persisted files and metadata for the data manager catalog (`CatalogService`).
 - **Conversation history**: the `conversation_metadata` and `conversations` tables store chat/session metadata plus message history for interfaces like the chat app and ticketing integrations (e.g., Redmine mailer).
 
+The `conversations` table tracks:
+- `model_used` (string) - The model that generated the response (e.g., "openai/gpt-4o")
+- `pipeline_used` (string) - The pipeline that processed the request (e.g., "QAPipeline")
+
 Additional supporting tables store interaction telemetry and feedback:
 
-- `configs` stores serialized configuration snapshots used by services.
 - `feedback` captures like/dislike/comment feedback tied to conversation messages.
 - `timing` tracks per-message latency milestones.
 - `agent_tool_calls` stores tool call inputs/outputs extracted from agent messages.
