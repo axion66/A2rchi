@@ -37,6 +37,23 @@ services:
     networks:
       - a2rchi-test
 
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: a2rchi-test-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3001:3000"  # Use non-standard port to avoid conflicts
+    volumes:
+      - ./grafana-provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - a2rchi-test
+
 networks:
   a2rchi-test:
     driver: bridge

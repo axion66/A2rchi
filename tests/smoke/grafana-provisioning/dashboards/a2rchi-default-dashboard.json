@@ -247,29 +247,29 @@
             }
           },
           "mappings": [
-{% for palette in feedback_palette %}
-            {% set base = loop.index0 * 2 %}
+
+            
             {
               "options": {
-                "pattern": "like_{{ palette.name }}",
+                "pattern": "like_local-dev",
                 "result": {
-                  "color": "{{ palette.like }}",
-                  "index": {{ base }}
+                  "color": "#0F9D58",
+                  "index": 0
                 }
               },
               "type": "regex"
             },
             {
               "options": {
-                "pattern": "dislike_{{ palette.name }}",
+                "pattern": "dislike_local-dev",
                 "result": {
-                  "color": "{{ palette.dislike }}",
-                  "index": {{ base + 1 }}
+                  "color": "#C81E1E",
+                  "index": 1
                 }
               },
               "type": "regex"
-            }{% if not loop.last %},{% endif %}
-{% endfor %}
+            }
+
           ],
           "thresholds": {
             "mode": "absolute",
