@@ -491,6 +491,122 @@ def test_grafana_queries():
     print("✓ Grafana queries test passed")
 
 
+def test_catalog_ingestion():
+    """Test PostgresCatalogService ingestion workflow."""
+    print("\n=== Test: Catalog Ingestion ===")
+    
+    import tempfile
+    from pathlib import Path
+    from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
+    
+    # Create catalog service
+    with tempfile.TemporaryDirectory() as temp_dir:
+        catalog = PostgresCatalogService(
+            data_path=temp_dir,
+            pg_config=PG_CONFIG,
+        )
+        
+        # Initial state
+        initial_count = len(catalog.file_index)
+        print(f"✓ Catalog initialized with {initial_count} documents")
+        
+        # Add a test resource
+        test_hash = f"test_ingest_{uuid.uuid4().hex[:8]}"
+        test_path = "test_files/sample.txt"
+        test_metadata = {
+            "display_name": "Sample Test Document",
+            "source_type": "local_files",
+            "url": "https://example.com/sample.txt",
+        }
+        
+        catalog.upsert_resource(test_hash, test_path, test_metadata)
+        print(f"✓ Upserted resource: {test_hash}")
+        
+        # Refresh and verify it appears
+        catalog.refresh()
+        assert test_hash in catalog.file_index, "Resource not in file_index after refresh"
+        assert catalog.file_index[test_hash] == test_path, "Incorrect path in file_index"
+        print(f"✓ Resource in file_index: {catalog.file_index[test_hash]}")
+        
+        # Get document ID
+        doc_id = catalog.get_document_id(test_hash)
+        assert doc_id is not None, "Document ID should exist"
+        print(f"✓ Document ID: {doc_id}")
+        
+        # Test list_documents (returns dict with "documents" key)
+        result = catalog.list_documents()
+        documents = result.get("documents", [])
+        test_docs = [d for d in documents if d.get("hash") == test_hash]
+        assert len(test_docs) == 1, "Document should appear in list_documents"
+        print(f"✓ Document appears in list_documents: {test_docs[0].get('display_name')}")
+        
+        # Test update resource
+        updated_metadata = {
+            "display_name": "Updated Test Document",
+            "source_type": "local_files",
+        }
+        catalog.upsert_resource(test_hash, test_path, updated_metadata)
+        
+        result = catalog.list_documents()
+        documents = result.get("documents", [])
+        test_docs = [d for d in documents if d.get("hash") == test_hash]
+        assert test_docs[0].get("display_name") == "Updated Test Document"
+        print("✓ Resource metadata updated successfully")
+        
+        # Test delete
+        catalog.delete_resource(test_hash)
+        catalog.refresh()
+        assert test_hash not in catalog.file_index, "Resource should be deleted"
+        print("✓ Resource deleted successfully")
+        
+    print("✓ Catalog ingestion test passed")
+
+
+def test_data_viewer_service():
+    """Test DataViewerService returns documents from catalog."""
+    print("\n=== Test: DataViewerService ===")
+    
+    import tempfile
+    from pathlib import Path
+    from src.data_manager.data_viewer_service import DataViewerService
+    from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
+    
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # First add a document to the catalog
+        catalog = PostgresCatalogService(data_path=temp_dir, pg_config=PG_CONFIG)
+        test_hash = f"viewer_test_{uuid.uuid4().hex[:8]}"
+        test_path = "test_files/viewer_sample.txt"
+        
+        catalog.upsert_resource(test_hash, test_path, {
+            "display_name": "Viewer Test Document",
+            "source_type": "local_files",
+        })
+        print(f"✓ Added test document: {test_hash}")
+        
+        # Now test the DataViewerService
+        viewer = DataViewerService(data_path=temp_dir, pg_config=PG_CONFIG)
+        
+        # List documents (no conversation_id)
+        result = viewer.list_documents(conversation_id=None)
+        documents = result.get("documents", [])
+        test_docs = [d for d in documents if d.get("hash") == test_hash]
+        
+        assert len(test_docs) == 1, f"Document should appear in viewer list, got {len(documents)} docs"
+        print(f"✓ DataViewerService.list_documents() returned {len(documents)} documents")
+        print(f"✓ Test document found: {test_docs[0].get('display_name')}")
+        
+        # Test stats
+        stats = result
+        assert "total" in stats, "Stats should include total"
+        assert "enabled_count" in stats, "Stats should include enabled_count"
+        print(f"✓ Stats: total={stats['total']}, enabled_count={stats['enabled_count']}")
+        
+        # Clean up
+        catalog.delete_resource(test_hash)
+        
+    print("✓ DataViewerService test passed")
+
+
 def test_vector_similarity():
     """Test pgvector similarity search works."""
     print("\n=== Test: Vector Similarity Search ===")
@@ -588,6 +704,8 @@ def run_all_tests():
         ("A/B Comparison V2", lambda: test_ab_comparison_v2(test_conv_id)),
         ("Document Selection", lambda: test_document_selection_direct()),
         ("BYOK Resolver", lambda: test_byok_resolver(test_user_id)),
+        ("Catalog Ingestion", lambda: test_catalog_ingestion()),
+        ("DataViewerService", lambda: test_data_viewer_service()),
         ("Vector Similarity", lambda: test_vector_similarity()),
         ("Grafana Queries", lambda: test_grafana_queries()),
     ]
