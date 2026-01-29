@@ -52,8 +52,9 @@ test.describe('Page Load & Initialization', () => {
   test('shows pipeline default model in entry meta', async ({ page }) => {
     await page.goto('/chat');
     const entryMeta = page.locator('.entry-meta');
-    await expect(entryMeta).toContainText('Pipeline default');
-    await expect(entryMeta).toContainText(mockData.pipelineDefault.model_class);
+    // Entry meta shows "Agent: <name> · Model: <model>" format
+    // When using pipeline default, model shows the model_name
+    await expect(entryMeta).toContainText(mockData.pipelineDefault.model_name);
   });
 
   test('config dropdown is populated', async ({ page }) => {

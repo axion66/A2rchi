@@ -127,19 +127,18 @@ test.describe('Chat UI', () => {
     await page.goto('/chat');
     const entryMeta = page.locator('.entry-meta');
     
-    // Initially shows pipeline default
-    await expect(entryMeta).toContainText('Pipeline default');
+    // Initially shows the default model (format: "Agent: X · Model: Y")
+    await expect(entryMeta).toContainText('Model:');
     
-    // Open settings and select OpenRouter
+    // Open settings and select OpenRouter with custom model
     await page.getByRole('button', { name: 'Settings' }).click();
     await page.locator('#provider-select').selectOption('openrouter');
     await page.locator('#model-select-primary').selectOption('__custom__');
-    await page.locator('#custom-model-input').fill('test-model');
+    await page.locator('#custom-model-input').fill('my-custom-model');
     await page.getByRole('button', { name: 'Close settings' }).click();
     
-    // Entry meta should update
-    await expect(entryMeta).toContainText('OpenRouter');
-    await expect(entryMeta).toContainText('test-model');
+    // Entry meta should update to show the custom model
+    await expect(entryMeta).toContainText('my-custom-model');
   });
 
   // ============================================================

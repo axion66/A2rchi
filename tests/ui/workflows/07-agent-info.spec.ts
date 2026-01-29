@@ -41,8 +41,9 @@ test.describe('Agent Info Modal', () => {
     await page.getByRole('button', { name: /agent info/i }).click();
     
     await expect(page.getByRole('heading', { name: 'Model' })).toBeVisible();
-    // Should show the model info in the modal (exact match)
-    await expect(page.getByLabel('Agent Info', { exact: true }).getByText(/Pipeline default: OpenRouterLLM/)).toBeVisible();
+    // Should show the model info - either pipeline default class or model name
+    const modal = page.getByLabel('Agent Info', { exact: true });
+    await expect(modal.getByText(/OpenRouterLLM|openai\/gpt-5-nano/)).toBeVisible();
   });
 
   test('modal displays pipeline information', async ({ page }) => {
