@@ -63,19 +63,19 @@ def test_schema_creation():
     assert "pg_trgm" in extensions, "pg_trgm not installed"
     print("✓ pg_trgm extension enabled")
     
-    # Check tables
+    # Check tables (updated for v2 schema)
     expected_tables = [
         "users",
         "static_config",
         "dynamic_config",
         "document_chunks",
-        "resources",
+        "documents",
         "conversations",
-        "user_document_selection",
-        "conversation_document_selection",
+        "user_document_defaults",
+        "conversation_document_overrides",
         "ab_comparisons",
         "feedback",
-        "timings",
+        "timing",
         "configs",
         "conversation_metadata",
         "agent_traces",
@@ -156,7 +156,21 @@ def test_conversation_service(test_user_id):
     service = ConversationService(connection_params=PG_CONFIG)
     
     # Create a test conversation ID
-    test_conv_id = str(999999)
+    test_conv_id = 999999
+    
+    # First create conversation_metadata (required by FK constraint)
+    conn = psycopg2.connect(**PG_CONFIG)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO conversation_metadata (conversation_id, user_id, title)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (conversation_id) DO NOTHING
+            """, (test_conv_id, test_user_id, "Test Conversation"))
+        conn.commit()
+    finally:
+        conn.close()
+    print(f"✓ Created conversation metadata: {test_conv_id}")
     
     # Insert messages with model tracking (using correct field name: a2rchi_service)
     messages = [
@@ -164,7 +178,7 @@ def test_conversation_service(test_user_id):
             sender=test_user_id,
             content="What is the capital of France?",
             a2rchi_service="integration_test",
-            conversation_id=test_conv_id,
+            conversation_id=str(test_conv_id),
             model_used=None,
             pipeline_used=None,
         ),
@@ -172,7 +186,7 @@ def test_conversation_service(test_user_id):
             sender="A2rchi",
             content="The capital of France is Paris.",
             a2rchi_service="integration_test", 
-            conversation_id=test_conv_id,
+            conversation_id=str(test_conv_id),
             link="https://example.com",
             context='{"test": true}',
             model_used="gpt-4o",
@@ -185,7 +199,7 @@ def test_conversation_service(test_user_id):
     print(f"✓ Inserted messages with IDs: {message_ids}")
     
     # Query back and verify model tracking
-    history = service.get_conversation_history(test_conv_id)
+    history = service.get_conversation_history(str(test_conv_id))
     assert len(history) >= 2, "Expected at least 2 messages in history"
     print(f"✓ Retrieved {len(history)} messages from history")
     
@@ -264,7 +278,7 @@ def test_ab_comparison_v2(test_conv_id):
 
 
 def test_document_selection_direct():
-    """Test document selection tables directly with SQL."""
+    """Test document selection tables directly with SQL (v2 schema)."""
     print("\n=== Test: Document Selection (Direct SQL) ===")
     
     conn = psycopg2.connect(**PG_CONFIG)
@@ -280,40 +294,68 @@ def test_document_selection_direct():
     conn.commit()
     print(f"✓ Created test user: {test_user_id}")
     
-    # Test user document selection
+    # Create a test document first (required for FK)
+    test_doc_hash = f"doc_{uuid.uuid4().hex[:8]}"
     cursor.execute("""
-        INSERT INTO user_document_selection (user_id, selected_source_ids)
-        VALUES (%s, %s)
-        ON CONFLICT (user_id) DO UPDATE SET selected_source_ids = EXCLUDED.selected_source_ids
-    """, (test_user_id, ["source1", "source2"]))
+        INSERT INTO documents (resource_hash, file_path, display_name, source_type)
+        VALUES (%s, '/test/path.txt', 'Test Document', 'local_files')
+        RETURNING id
+    """, (test_doc_hash,))
+    doc_id = cursor.fetchone()[0]
     conn.commit()
-    print("✓ Set user document selection")
+    print(f"✓ Created test document with id: {doc_id}")
+    
+    # Test user document defaults (enable/disable per user)
+    cursor.execute("""
+        INSERT INTO user_document_defaults (user_id, document_id, enabled)
+        VALUES (%s, %s, FALSE)
+        ON CONFLICT (user_id, document_id) DO UPDATE SET enabled = EXCLUDED.enabled
+    """, (test_user_id, doc_id))
+    conn.commit()
+    print("✓ Set user document default (disabled)")
     
     # Verify
     cursor.execute("""
-        SELECT selected_source_ids FROM user_document_selection WHERE user_id = %s
-    """, (test_user_id,))
+        SELECT enabled FROM user_document_defaults WHERE user_id = %s AND document_id = %s
+    """, (test_user_id, doc_id))
     row = cursor.fetchone()
-    assert row is not None, "User selection not found"
-    assert row[0] == ["source1", "source2"], f"Expected ['source1', 'source2'], got {row[0]}"
-    print(f"✓ User selection retrieved: {row[0]}")
+    assert row is not None, "User document default not found"
+    assert row[0] == False, f"Expected enabled=False, got {row[0]}"
+    print(f"✓ User document default retrieved: enabled={row[0]}")
     
-    # Test conversation document selection
+    # Test conversation document overrides
+    # First create conversation metadata
+    cursor.execute("""
+        INSERT INTO conversation_metadata (conversation_id, user_id, title)
+        VALUES (%s, %s, 'Test Conversation')
+        ON CONFLICT (conversation_id) DO NOTHING
+        RETURNING conversation_id
+    """, (888888, test_user_id))
     test_conv_id = 888888
-    cursor.execute("""
-        INSERT INTO conversation_document_selection (conversation_id, selected_source_ids)
-        VALUES (%s, %s)
-        ON CONFLICT (conversation_id) DO UPDATE SET selected_source_ids = EXCLUDED.selected_source_ids
-    """, (test_conv_id, ["source3", "source4"]))
     conn.commit()
-    print("✓ Set conversation document selection")
+    print(f"✓ Created test conversation: {test_conv_id}")
     
     cursor.execute("""
-        SELECT selected_source_ids FROM conversation_document_selection WHERE conversation_id = %s
-    """, (test_conv_id,))
+        INSERT INTO conversation_document_overrides (conversation_id, document_id, enabled)
+        VALUES (%s, %s, TRUE)
+        ON CONFLICT (conversation_id, document_id) DO UPDATE SET enabled = EXCLUDED.enabled
+    """, (test_conv_id, doc_id))
+    conn.commit()
+    print("✓ Set conversation document override (enabled)")
+    
+    cursor.execute("""
+        SELECT enabled FROM conversation_document_overrides 
+        WHERE conversation_id = %s AND document_id = %s
+    """, (test_conv_id, doc_id))
     row = cursor.fetchone()
-    assert row[0] == ["source3", "source4"], f"Expected ['source3', 'source4'], got {row[0]}"
-    print(f"✓ Conversation selection retrieved: {row[0]}")
+    assert row[0] == True, f"Expected enabled=True, got {row[0]}"
+    print(f"✓ Conversation override retrieved: enabled={row[0]}")
+    
+    # Clean up
+    cursor.execute("DELETE FROM conversation_document_overrides WHERE conversation_id = %s", (test_conv_id,))
+    cursor.execute("DELETE FROM user_document_defaults WHERE user_id = %s", (test_user_id,))
+    cursor.execute("DELETE FROM documents WHERE resource_hash = %s", (test_doc_hash,))
+    conn.commit()
     
     cursor.close()
     conn.close()
@@ -456,13 +498,16 @@ def test_vector_similarity():
     conn = psycopg2.connect(**PG_CONFIG)
     cursor = conn.cursor()
     
-    # Create a test resource first
+    # Create a test document first (v2 schema uses documents table)
     test_hash = f"test_doc_{uuid.uuid4().hex[:8]}"
     cursor.execute("""
-        INSERT INTO resources (resource_hash, filename, doc_type)
-        VALUES (%s, 'test.txt', 'text')
-        ON CONFLICT DO NOTHING
+        INSERT INTO documents (resource_hash, file_path, display_name, source_type)
+        VALUES (%s, '/test/vector_test.txt', 'Vector Test Doc', 'local_files')
+        RETURNING id
     """, (test_hash,))
+    doc_id = cursor.fetchone()[0]
+    conn.commit()
+    print(f"✓ Created test document with id: {doc_id}")
     
     # Insert test vectors (384 dimensions as per schema)
     import random
@@ -474,7 +519,7 @@ def test_vector_similarity():
         cursor.execute("""
             INSERT INTO document_chunks (document_id, chunk_index, chunk_text, embedding)
             VALUES (%s, %s, %s, %s::vector)
-        """, (test_hash, i, f"Test chunk {i}", embedding_str))
+        """, (doc_id, i, f"Test chunk {i}", embedding_str))
     
     conn.commit()
     print(f"✓ Inserted 5 test chunks with embeddings")
@@ -492,7 +537,7 @@ def test_vector_similarity():
         WHERE document_id = %s
         ORDER BY embedding <=> %s::vector
         LIMIT 3
-    """, (query_str, test_hash, query_str))
+    """, (query_str, doc_id, query_str))
     
     results = cursor.fetchall()
     assert len(results) == 3, f"Expected 3 results, got {len(results)}"
@@ -503,9 +548,8 @@ def test_vector_similarity():
     assert distances == sorted(distances), "Results not ordered by distance"
     print(f"✓ Results correctly ordered by distance: {[round(d, 4) for d in distances]}")
     
-    # Clean up
-    cursor.execute("DELETE FROM document_chunks WHERE document_id = %s", (test_hash,))
-    cursor.execute("DELETE FROM resources WHERE resource_hash = %s", (test_hash,))
+    # Clean up (cascade deletes chunks when document is deleted)
+    cursor.execute("DELETE FROM documents WHERE resource_hash = %s", (test_hash,))
     conn.commit()
     
     cursor.close()
