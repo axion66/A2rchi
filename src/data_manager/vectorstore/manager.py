@@ -342,6 +342,13 @@ class VectorStoreManager:
                         template="(%s, %s, %s, %s::vector, %s::jsonb)",
                     )
                     logger.debug(f"Added {len(insert_data)} chunks for {filename} (document_id={document_id})")
+                    
+                    # Update ingested_at timestamp in the documents table
+                    if document_id is not None:
+                        cursor.execute(
+                            "UPDATE documents SET ingested_at = NOW() WHERE id = %s",
+                            (document_id,)
+                        )
 
                 conn.commit()
         finally:

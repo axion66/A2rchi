@@ -1790,6 +1790,7 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/data', 'data_viewer', self.require_auth(self.data_viewer_page))
         self.add_endpoint('/api/data/documents', 'list_data_documents', self.require_auth(self.list_data_documents), methods=["GET"])
         self.add_endpoint('/api/data/documents/<document_hash>/content', 'get_data_document_content', self.require_auth(self.get_data_document_content), methods=["GET"])
+        self.add_endpoint('/api/data/documents/<document_hash>/chunks', 'get_data_document_chunks', self.require_auth(self.get_data_document_chunks), methods=["GET"])
         self.add_endpoint('/api/data/documents/<document_hash>/enable', 'enable_data_document', self.require_auth(self.enable_data_document), methods=["POST"])
         self.add_endpoint('/api/data/documents/<document_hash>/disable', 'disable_data_document', self.require_auth(self.disable_data_document), methods=["POST"])
         self.add_endpoint('/api/data/bulk-enable', 'bulk_enable_documents', self.require_auth(self.bulk_enable_documents), methods=["POST"])
@@ -3291,6 +3292,28 @@ class FlaskAppWrapper(object):
 
         except Exception as e:
             logger.error(f"Error getting document content for {document_hash}: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    def get_data_document_chunks(self, document_hash: str):
+        """
+        Get chunks for a document.
+
+        URL params:
+        - document_hash: The document's SHA-256 hash
+
+        Returns:
+            JSON with hash, chunks (list of {index, text, start_char, end_char})
+        """
+        try:
+            chunks = self.chat.data_viewer.get_document_chunks(document_hash)
+            return jsonify({
+                'hash': document_hash,
+                'chunks': chunks,
+                'total': len(chunks)
+            }), 200
+
+        except Exception as e:
+            logger.error(f"Error getting chunks for {document_hash}: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
     def enable_data_document(self, document_hash: str):

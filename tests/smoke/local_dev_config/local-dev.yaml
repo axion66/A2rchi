@@ -2,7 +2,7 @@
 name: local-dev
 
 global:
-  DATA_PATH: /tmp/a2rchi-data/
+  DATA_PATH: /Users/jason/projects/A2rchi/
   ACCOUNTS_PATH: /tmp/a2rchi-accounts/
   verbosity: 2
 
@@ -12,6 +12,7 @@ services:
     port: 5439
     database: a2rchi
     user: a2rchi
+    password: testpassword123
   chat_app:
     pipeline: QAPipeline
     trained_on: "Test agent - local development"
@@ -30,8 +31,14 @@ services:
 
 data_manager:
   collection_name: default_collection
-  embedding_name: OpenAIEmbeddings
+  embedding_name: HuggingFaceEmbeddings
   embedding_class_map:
+    HuggingFaceEmbeddings:
+      class: HuggingFaceEmbeddings
+      kwargs:
+        model_name: sentence-transformers/all-MiniLM-L6-v2
+      similarity_score_reference: 10
+      dimensions: 384
     OpenAIEmbeddings:
       class: OpenAIEmbeddings
       kwargs:
@@ -51,6 +58,12 @@ data_manager:
       num_documents_to_retrieve: 5
       k: 1.5
       b: 0.75
+    hybrid_retriever:
+      num_documents_to_retrieve: 5
+      bm25_weight: 0.6
+      semantic_weight: 0.4
+      bm25_k1: 0.5
+      bm25_b: 0.75
   rerank:
     enabled: false
   sources:
@@ -76,11 +89,13 @@ data_manager:
 
 a2rchi:
   agent_description: "Local development test agent"
+  mcp_servers: {}
   pipelines:
+    - CMSCompOpsAgent
     - QAPipeline
   pipeline_map:
     QAPipeline:
-      max_tokens: 10000
+      max_tokens: 4096
       prompts:
         required:
           condense_prompt: "/Users/jason/projects/A2rchi/examples/defaults/prompts/condense/default.prompt"
@@ -89,6 +104,14 @@ a2rchi:
         required:
           condense_model: DumbLLM
           chat_model: DumbLLM
+    CMSCompOpsAgent:
+      recursion_limit: 100
+      prompts:
+        required:
+          agent_prompt: "/Users/jason/projects/A2rchi/examples/deployments/basic-agent/agent.prompt"
+      models:
+        required:
+          agent_model: DumbLLM
   model_class_map:
     OpenAILLM:
       class: OpenAILLM

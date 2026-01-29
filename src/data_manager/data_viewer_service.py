@@ -199,3 +199,15 @@ class DataViewerService:
             True if enabled (default), False if disabled
         """
         return self.catalog.is_document_enabled(conversation_id, document_hash)
+
+    def get_document_chunks(self, document_hash: str) -> List[Dict[str, Any]]:
+        """
+        Get all chunks for a document with their boundaries.
+        
+        Args:
+            document_hash: The document's resource_hash
+            
+        Returns:
+            List of chunk dicts with index, text, start_char, end_char
+        """
+        return self.catalog.get_document_chunks(document_hash)
