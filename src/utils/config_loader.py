@@ -2,8 +2,8 @@ import os
 
 import yaml
 
-# DEFINITIONS
-CONFIGS_PATH = "/root/A2rchi/configs/"
+# DEFINITIONS - can be overridden with A2RCHI_CONFIGS_PATH env var
+CONFIGS_PATH = os.environ.get("A2RCHI_CONFIGS_PATH", "/root/A2rchi/configs/")
 
 def load_config(map: bool = False, name: str = None):
     """
