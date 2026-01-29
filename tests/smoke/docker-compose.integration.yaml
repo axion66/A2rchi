@@ -1,17 +1,21 @@
 version: "3.8"
 
-# Docker Compose for PostgreSQL Consolidation Integration Testing
+# Docker Compose for PostgreSQL Integration Testing (pytest)
 # 
+# PURPOSE: Provides an isolated PostgreSQL instance for pytest-based integration
+# tests (test_integration.py, test_postgres_consolidation.py). This is separate
+# from scripts/dev/run_smoke_preview.sh which tests full CLI deployment workflows.
+#
 # Starts minimal services needed to test:
 # - PostgreSQL with pgvector, pgcrypto
-# - Chat service
-# - Data manager (for ingestion testing)
 #
 # Usage:
 #   cd tests/smoke
 #   docker compose -f docker-compose.integration.yaml up -d
-#   python test_integration.py
+#   pytest test_integration.py -v
 #   docker compose -f docker-compose.integration.yaml down -v
+#
+# Note: Uses port 5439 to avoid conflicts with local PostgreSQL installations.
 
 services:
   postgres:
