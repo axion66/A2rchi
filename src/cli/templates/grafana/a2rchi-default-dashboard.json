@@ -188,7 +188,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT\n  t.server_received_msg_ts AS time,\n  COALESCE(c.model_used, cfg.config_name, 'unknown') AS metric,\n  EXTRACT(EPOCH FROM t.msg_duration) AS value\nFROM timing t\nJOIN conversations c ON t.mid = c.message_id\nLEFT JOIN configs cfg ON c.conf_id = cfg.config_id\nWHERE $__timeFilter(t.server_received_msg_ts)\nORDER BY time",
+          "rawSql": "SELECT\n  t.server_received_msg_ts AS time,\n  COALESCE(c.model_used, 'unknown') AS metric,\n  EXTRACT(EPOCH FROM t.msg_duration) AS value\nFROM timing t\nJOIN conversations c ON t.mid = c.message_id\nWHERE $__timeFilter(t.server_received_msg_ts)\nORDER BY time",
           "refId": "A",
           "sql": {
             "columns": [
@@ -325,7 +325,7 @@
           "format": "table",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "WITH msg_to_model AS (\n  SELECT c.message_id,\n         COALESCE(c.model_used, cfg.config_name, 'unknown') AS model_name\n  FROM conversations c\n  LEFT JOIN configs cfg ON c.conf_id = cfg.config_id\n),\nfeedback_by_model AS (\n  SELECT f.feedback,\n         mtm.model_name\n  FROM feedback f\n  JOIN msg_to_model mtm ON f.mid = mtm.message_id\n  WHERE f.feedback IN ('like', 'dislike')\n)\nSELECT \n  COUNT(*) AS count,\n  feedback || '_' || model_name AS feedback,\n  model_name\nFROM feedback_by_model\nGROUP BY feedback, model_name\nORDER BY model_name,\n         CASE feedback WHEN 'like' THEN 1 ELSE 2 END;\n",
+          "rawSql": "WITH msg_to_model AS (\n  SELECT c.message_id,\n         COALESCE(c.model_used, 'unknown') AS model_name\n  FROM conversations c\n),\nfeedback_by_model AS (\n  SELECT f.feedback,\n         mtm.model_name\n  FROM feedback f\n  JOIN msg_to_model mtm ON f.mid = mtm.message_id\n  WHERE f.feedback IN ('like', 'dislike')\n)\nSELECT \n  COUNT(*) AS count,\n  feedback || '_' || model_name AS feedback,\n  model_name\nFROM feedback_by_model\nGROUP BY feedback, model_name\nORDER BY model_name,\n         CASE feedback WHEN 'like' THEN 1 ELSE 2 END;\n",
           "refId": "A",
           "sql": {
             "columns": [
