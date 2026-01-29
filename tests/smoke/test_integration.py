@@ -572,19 +572,29 @@ def test_data_viewer_service():
     from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
     
     with tempfile.TemporaryDirectory() as temp_dir:
-        # First add a document to the catalog
-        catalog = PostgresCatalogService(data_path=temp_dir, pg_config=PG_CONFIG)
-        test_hash = f"viewer_test_{uuid.uuid4().hex[:8]}"
-        test_path = "test_files/viewer_sample.txt"
+        temp_path = Path(temp_dir)
         
-        catalog.upsert_resource(test_hash, test_path, {
+        # Create a real file for content retrieval test
+        test_file = temp_path / "test_files" / "viewer_sample.txt"
+        test_file.parent.mkdir(parents=True, exist_ok=True)
+        test_content = "This is test content for the data viewer service integration test."
+        test_file.write_text(test_content)
+        
+        # Add document to the catalog with relative path
+        catalog = PostgresCatalogService(data_path=temp_path, pg_config=PG_CONFIG)
+        test_hash = f"viewer_test_{uuid.uuid4().hex[:8]}"
+        relative_path = "test_files/viewer_sample.txt"
+        
+        catalog.upsert_resource(test_hash, relative_path, {
             "display_name": "Viewer Test Document",
             "source_type": "local_files",
+            "suffix": ".txt",
+            "size_bytes": len(test_content),
         })
         print(f"✓ Added test document: {test_hash}")
         
         # Now test the DataViewerService
-        viewer = DataViewerService(data_path=temp_dir, pg_config=PG_CONFIG)
+        viewer = DataViewerService(data_path=temp_path, pg_config=PG_CONFIG)
         
         # List documents (no conversation_id)
         result = viewer.list_documents(conversation_id=None)
@@ -600,6 +610,16 @@ def test_data_viewer_service():
         assert "total" in stats, "Stats should include total"
         assert "enabled_count" in stats, "Stats should include enabled_count"
         print(f"✓ Stats: total={stats['total']}, enabled_count={stats['enabled_count']}")
+        
+        # Test content retrieval
+        content_result = viewer.get_document_content(test_hash, max_size=1000)
+        assert content_result is not None, "Content retrieval should succeed"
+        assert content_result["content"] == test_content, "Content should match"
+        assert content_result["display_name"] == "Viewer Test Document"
+        assert content_result["content_type"] == "text/plain"
+        assert content_result["size_bytes"] == len(test_content)
+        assert content_result["truncated"] == False
+        print(f"✓ Content retrieval successful: {len(content_result['content'])} chars")
         
         # Clean up
         catalog.delete_resource(test_hash)
