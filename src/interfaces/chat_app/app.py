@@ -185,12 +185,12 @@ class ChatWrapper:
         self.current_config_name = target_config_name
         self.current_pipeline_used = pipeline_name
         self.current_model_used = model_name
-        self.a2rchi.update(pipeline=pipeline_name, config_name=target_config_name)
+        self.archi.update(pipeline=pipeline_name, config_name=target_config_name)
 
     def _extract_model_name(self, config_payload, pipeline_name):
         """Extract the primary model name from config for a given pipeline."""
         try:
-            pipeline_map = config_payload.get("a2rchi", {}).get("pipeline_map", {})
+            pipeline_map = config_payload.get("archi", {}).get("pipeline_map", {})
             pipeline_cfg = pipeline_map.get(pipeline_name, {})
             required_models = pipeline_cfg.get("models", {}).get("required", {})
             
@@ -949,7 +949,7 @@ class ChatWrapper:
             ]
             if not is_refresh
             else [
-                (service, conversation_id, archi_sender, archi_content, link, archi_context, a2rchi_msg_ts, self.current_model_used, self.current_pipeline_used),
+                (service, conversation_id, archi_sender, archi_content, link, archi_context, archi_msg_ts, self.current_model_used, self.current_pipeline_used),
             ]
         )
 
