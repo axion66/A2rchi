@@ -12,8 +12,8 @@ services:
   chat_app:
     pipeline: CMSCompOpsAgent
     trained_on: "My data"
-    port: 7867
-    external_port: 7867
+    port: 7866
+    external_port: 7866
   vectorstore:
     backend: postgres  # PostgreSQL with pgvector (only supported backend)
   data_manager:
