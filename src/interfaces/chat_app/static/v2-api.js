@@ -1,8 +1,8 @@
 /**
- * V2 API Integration for archi Chat UI
+ * API Integration for Archi Chat UI
  * 
- * Provides client-side utilities for interacting with the PostgreSQL-consolidated
- * V2 API endpoints for:
+ * Provides client-side utilities for interacting with the PostgreSQL-based
+ * API endpoints for:
  * - User preferences (theme, preferred model)
  * - BYOK API key management  
  * - Document selection preferences
@@ -14,11 +14,11 @@ const USER_PREFERENCES_KEY = 'archi_user_preferences';
 const THEME_KEY = 'archi_theme';
 
 /**
- * V2 API client for user management
+ * API client for user management
  */
 class V2ApiClient {
   constructor() {
-    this.baseUrl = '/api/v2';
+    this.baseUrl = '/api';
     this.clientId = this._getClientId();
   }
 

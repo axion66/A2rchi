@@ -55,7 +55,6 @@ langchain-classic==1.0.0
 openai==2.2.0
 pydantic==2.11.7
 pydantic-core==2.33.2
-chroma-hnswlib==0.7.3
 anthropic==0.71.0
 scipy==1.13.1
 urllib3==2.3.0

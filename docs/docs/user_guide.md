@@ -1121,13 +1121,13 @@ Question: {question}
 
 **Admin (deployment-wide default):**
 ```
-PATCH /api/v2/config/dynamic
+PATCH /api/config/dynamic
 {"active_chat_prompt": "technical"}
 ```
 
 **User (personal preference):**
 ```
-PATCH /api/v2/users/me/preferences
+PATCH /api/users/me/preferences
 {"preferred_chat_prompt": "formal"}
 ```
 
@@ -1135,7 +1135,7 @@ PATCH /api/v2/users/me/preferences
 
 After adding or modifying prompt files, reload the cache:
 ```
-POST /api/v2/prompts/reload
+POST /api/prompts/reload
 ```
 
 This is admin-only and updates the in-memory prompt cache without restarting services.
@@ -1155,8 +1155,8 @@ UPDATE users SET is_admin = true WHERE email = 'admin@example.com';
 ### Admin Responsibilities
 
 1. **Configuration Management**
-   - Set deployment-wide defaults via `/api/v2/config/dynamic`
-   - Monitor configuration changes via `/api/v2/config/audit`
+   - Set deployment-wide defaults via `/api/config/dynamic`
+   - Monitor configuration changes via `/api/config/audit`
 
 2. **Prompt Management**
    - Add/edit prompt files in `prompts/` directory
@@ -1171,7 +1171,7 @@ UPDATE users SET is_admin = true WHERE email = 'admin@example.com';
 All admin configuration changes are logged:
 
 ```
-GET /api/v2/config/audit?limit=50
+GET /api/config/audit?limit=50
 ```
 
 Returns:

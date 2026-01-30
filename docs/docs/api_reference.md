@@ -340,13 +340,13 @@ using PostgreSQL with pgvector for unified vector storage and metadata.
 
 ### Base URL
 
-All V2 endpoints are prefixed with `/api/v2/`.
+All endpoints are prefixed with `/api/`.
 
 ---
 
 ### Authentication
 
-#### `POST /api/v2/auth/login`
+#### `POST /api/auth/login`
 
 Authenticate with email and password.
 
@@ -372,7 +372,7 @@ Authenticate with email and password.
 }
 ```
 
-#### `POST /api/v2/auth/logout`
+#### `POST /api/auth/logout`
 
 End the current session.
 
@@ -383,7 +383,7 @@ End the current session.
 }
 ```
 
-#### `GET /api/v2/auth/me`
+#### `GET /api/auth/me`
 
 Get the current authenticated user.
 
@@ -412,7 +412,7 @@ Get the current authenticated user.
 
 ### User Management
 
-#### `GET /api/v2/users/me`
+#### `GET /api/users/me`
 
 Get or create the current user.
 
@@ -433,7 +433,7 @@ Get or create the current user.
 }
 ```
 
-#### `PATCH /api/v2/users/me/preferences`
+#### `PATCH /api/users/me/preferences`
 
 Update user preferences.
 
@@ -446,7 +446,7 @@ Update user preferences.
 }
 ```
 
-#### `PUT /api/v2/users/me/api-keys/{provider}`
+#### `PUT /api/users/me/api-keys/{provider}`
 
 Set BYOK API key (provider: `openrouter`, `openai`, `anthropic`).
 
@@ -457,7 +457,7 @@ Set BYOK API key (provider: `openrouter`, `openai`, `anthropic`).
 }
 ```
 
-#### `DELETE /api/v2/users/me/api-keys/{provider}`
+#### `DELETE /api/users/me/api-keys/{provider}`
 
 Delete BYOK API key.
 
@@ -465,7 +465,7 @@ Delete BYOK API key.
 
 ### Configuration
 
-#### `GET /api/v2/config/static`
+#### `GET /api/config/static`
 
 Get static (deploy-time) configuration.
 
@@ -482,7 +482,7 @@ Get static (deploy-time) configuration.
 }
 ```
 
-#### `GET /api/v2/config/dynamic`
+#### `GET /api/config/dynamic`
 
 Get dynamic (runtime) configuration.
 
@@ -503,7 +503,7 @@ Get dynamic (runtime) configuration.
 }
 ```
 
-#### `PATCH /api/v2/config/dynamic`
+#### `PATCH /api/config/dynamic`
 
 Update dynamic configuration. **Admin only.**
 
@@ -518,7 +518,7 @@ Update dynamic configuration. **Admin only.**
 
 **Response:** `403 Forbidden` if not admin.
 
-#### `GET /api/v2/config/effective`
+#### `GET /api/config/effective`
 
 Get effective configuration for the current user, with user preferences applied.
 
@@ -534,7 +534,7 @@ Get effective configuration for the current user, with user preferences applied.
 }
 ```
 
-#### `GET /api/v2/config/audit`
+#### `GET /api/config/audit`
 
 Get configuration change audit log. **Admin only.**
 
@@ -562,7 +562,7 @@ Get configuration change audit log. **Admin only.**
 
 ### Prompts
 
-#### `GET /api/v2/prompts`
+#### `GET /api/prompts`
 
 List all available prompts by type.
 
@@ -575,7 +575,7 @@ List all available prompts by type.
 }
 ```
 
-#### `GET /api/v2/prompts/{type}`
+#### `GET /api/prompts/{type}`
 
 List prompts for a specific type.
 
@@ -584,7 +584,7 @@ List prompts for a specific type.
 ["default", "formal", "technical"]
 ```
 
-#### `GET /api/v2/prompts/{type}/{name}`
+#### `GET /api/prompts/{type}/{name}`
 
 Get prompt content.
 
@@ -597,7 +597,7 @@ Get prompt content.
 }
 ```
 
-#### `POST /api/v2/prompts/reload`
+#### `POST /api/prompts/reload`
 
 Reload prompt cache from disk. **Admin only.**
 
@@ -618,11 +618,11 @@ The document selection system uses a 3-tier precedence:
 2. **User default**
 3. **System default** (all documents enabled)
 
-#### `GET /api/v2/documents/selection?conversation_id={id}`
+#### `GET /api/documents/selection?conversation_id={id}`
 
 Get enabled documents for a conversation.
 
-#### `PUT /api/v2/documents/user-defaults`
+#### `PUT /api/documents/user-defaults`
 
 Set user's default for a document.
 
@@ -634,7 +634,7 @@ Set user's default for a document.
 }
 ```
 
-#### `PUT /api/v2/documents/conversation-override`
+#### `PUT /api/documents/conversation-override`
 
 Set conversation-specific override.
 
@@ -647,7 +647,7 @@ Set conversation-specific override.
 }
 ```
 
-#### `DELETE /api/v2/documents/conversation-override`
+#### `DELETE /api/documents/conversation-override`
 
 Clear conversation override (fall back to user default).
 
@@ -655,7 +655,7 @@ Clear conversation override (fall back to user default).
 
 ### Analytics
 
-#### `GET /api/v2/analytics/model-usage`
+#### `GET /api/analytics/model-usage`
 
 Get model usage statistics.
 
@@ -664,7 +664,7 @@ Get model usage statistics.
 - `end_date`: ISO date (optional)
 - `service`: Filter by service (optional)
 
-#### `GET /api/v2/analytics/ab-comparisons`
+#### `GET /api/analytics/ab-comparisons`
 
 Get A/B comparison statistics with win rates.
 
@@ -797,11 +797,11 @@ Get document statistics.
 
 ### Health & Info
 
-#### `GET /api/v2/health`
+#### `GET /api/health`
 
 Health check with database connectivity status.
 
-#### `GET /api/v2/info`
+#### `GET /api/info`
 
 Get API version and available features.
 

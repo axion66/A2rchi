@@ -1,5 +1,5 @@
--- archi PostgreSQL Schema v2.0
--- Consolidates: PostgreSQL (conversations), ChromaDB (vectors), SQLite (catalog)
+-- Archi PostgreSQL Schema v2.0
+-- Unified database for conversations, vectors, and document catalog
 -- Requires: PostgreSQL 17+ with pgvector, pg_textsearch (optional), pgcrypto, pg_trgm
 
 -- ============================================================================
@@ -189,7 +189,7 @@ CREATE INDEX IF NOT EXISTS idx_config_audit_user ON config_audit(user_id);
 CREATE INDEX IF NOT EXISTS idx_config_audit_time ON config_audit(changed_at DESC);
 
 -- ============================================================================
--- 4. DOCUMENTS & VECTORS (Replaces SQLite catalog + ChromaDB)
+-- 4. DOCUMENTS & VECTORS
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS documents (
@@ -241,7 +241,7 @@ CREATE INDEX IF NOT EXISTS idx_documents_source ON documents(source_type);
 CREATE INDEX IF NOT EXISTS idx_documents_name ON documents USING gin (display_name gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_documents_active ON documents(is_deleted) WHERE NOT is_deleted;
 
--- Document chunks with embeddings (replaces ChromaDB)
+-- Document chunks with embeddings
 -- Note: Vector dimension ({{ embedding_dimensions }}) must match static_config.embedding_dimensions
 CREATE TABLE IF NOT EXISTS document_chunks (
     id SERIAL PRIMARY KEY,
@@ -326,11 +326,10 @@ CREATE TABLE IF NOT EXISTS conversation_document_overrides (
 CREATE INDEX IF NOT EXISTS idx_conv_doc_overrides_conv ON conversation_document_overrides(conversation_id);
 
 -- ============================================================================
--- 6. CONVERSATIONS & CHAT (Existing + Enhancements)
+-- 6. CONVERSATIONS & CHAT
 -- ============================================================================
 
--- Keep configs table for backward compatibility during migration
--- Will be dropped in cleanup phase
+-- Legacy configs table - kept for reference but not actively used
 CREATE TABLE IF NOT EXISTS configs (
     config_id SERIAL,
     config TEXT NOT NULL,
@@ -341,7 +340,6 @@ CREATE TABLE IF NOT EXISTS configs (
 CREATE TABLE IF NOT EXISTS conversation_metadata (
     conversation_id SERIAL PRIMARY KEY,
     user_id VARCHAR(200) REFERENCES users(id) ON DELETE SET NULL,
-    -- Legacy column for backward compatibility
     client_id TEXT,
     title TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -377,7 +375,6 @@ CREATE TABLE IF NOT EXISTS conversations (
     
     ts TIMESTAMP NOT NULL,
     
-    -- Legacy column for backward compatibility (will be dropped)
     conf_id INTEGER REFERENCES configs(config_id)
 );
 
@@ -482,7 +479,6 @@ CREATE TABLE IF NOT EXISTS ab_comparisons (
     pipeline_a VARCHAR(100),
     pipeline_b VARCHAR(100),
     
-    -- Legacy columns for backward compatibility
     config_a_id INTEGER REFERENCES configs(config_id),
     config_b_id INTEGER REFERENCES configs(config_id),
     
@@ -547,12 +543,5 @@ TO grafana;
 -- NOTES
 -- ============================================================================
 -- 
--- Migration from v1.x:
--- 1. configs table kept for backward compatibility
--- 2. conversations.conf_id kept but nullable, model_used/pipeline_used added
--- 3. ab_comparisons has both config_*_id and model_* columns
--- 4. After migration verified, run cleanup to drop legacy columns
---
--- Grafana query migration:
--- OLD: SELECT c.*, conf.config_name FROM conversations c JOIN configs conf ON c.conf_id = conf.config_id
--- NEW: SELECT c.*, c.model_used, c.pipeline_used FROM conversations c
+-- Grafana queries use model_used and pipeline_used columns directly:
+-- SELECT c.*, c.model_used, c.pipeline_used FROM conversations c

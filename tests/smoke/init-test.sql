@@ -1,5 +1,5 @@
--- archi PostgreSQL Schema v2.0 (Test Version - Static)
--- Consolidates: PostgreSQL (conversations), ChromaDB (vectors), SQLite (catalog)
+-- Archi PostgreSQL Schema v2.0 (Test Version - Static)
+-- Unified database for conversations, vectors, and document catalog
 
 -- ============================================================================
 -- EXTENSIONS
@@ -146,9 +146,9 @@ CREATE TABLE IF NOT EXISTS conversations (
     link TEXT,
     context TEXT,
     ts TIMESTAMP NOT NULL DEFAULT NOW(),
-    conf_id INTEGER,  -- Legacy, nullable
-    model_used VARCHAR(200),  -- New: direct model tracking
-    pipeline_used VARCHAR(100)  -- New: direct pipeline tracking
+    conf_id INTEGER,
+    model_used VARCHAR(200),
+    pipeline_used VARCHAR(100)
 );
 
 CREATE INDEX IF NOT EXISTS idx_conversations_conv_id ON conversations(conversation_id);
@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS timings (
 CREATE INDEX IF NOT EXISTS idx_timings_msg ON timings(msg_id);
 
 -- ============================================================================
--- 11. CONFIGS (Legacy - kept for backward compatibility)
+-- 11. CONFIGS
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS configs (

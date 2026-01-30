@@ -945,10 +945,10 @@ def get_api_info():
             'analytics',
         ],
         'endpoints': {
-            'users': '/api/v2/users/*',
-            'config': '/api/v2/config/*',
-            'documents': '/api/v2/documents/*',
-            'analytics': '/api/v2/analytics/*',
+            'users': '/api/users/*',
+            'config': '/api/config/*',
+            'documents': '/api/documents/*',
+            'analytics': '/api/analytics/*',
         },
     }), 200
 
