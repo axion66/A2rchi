@@ -421,25 +421,20 @@ class PostgresVectorStore(VectorStore):
                 where_sql = " AND ".join(where_clauses)
                 
                 if has_bm25_index:
-                    # Use pg_textsearch BM25
+                    # Use pg_textsearch BM25 - no chunk_tsv column needed
                     bm25_score = "chunk_text <@> %s"
-                    chunk_tsv_select = ""
+                    tsv_column = ""
                 else:
-                    # Fallback to ts_rank with GIN index when available,
-                    # otherwise compute tsvector on the fly (no index).
-                    if has_chunk_tsv:
-                        bm25_score = "ts_rank(chunk_tsv, plainto_tsquery('english', %s))"
-                        chunk_tsv_select = "c.chunk_tsv,"
-                    else:
-                        bm25_score = "ts_rank(to_tsvector('english', c.chunk_text), plainto_tsquery('english', %s))"
-                        chunk_tsv_select = ""
+                    # Fallback to ts_rank with GIN index - needs chunk_tsv
+                    bm25_score = "ts_rank(chunk_tsv, plainto_tsquery('english', %s))"
+                    tsv_column = "c.chunk_tsv,"
                 
                 query_sql = f"""
                     WITH semantic AS (
                         SELECT 
                             c.id,
                             c.chunk_text,
-                            {chunk_tsv_select}
+                            {tsv_column}
                             c.metadata,
                             1.0 - (c.embedding {self._distance_op} %s::vector) AS semantic_score,
                             d.resource_hash,

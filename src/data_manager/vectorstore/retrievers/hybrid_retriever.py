@@ -39,15 +39,28 @@ class HybridRetriever(BaseRetriever):
         k: int = 5,
         bm25_weight: float = 0.5,
         semantic_weight: float = 0.5,
-        # Legacy params (ignored - Postgres handles BM25 internally)
-        bm25_k1: float = 0.5,
-        bm25_b: float = 0.75,
+        **kwargs,
     ):
+        # Handle legacy parameters passed positionally or by name via **kwargs.
+        if "bm25_k1" in kwargs:
+            logger.warning(
+                "HybridRetriever: 'bm25_k1' is deprecated and ignored; "
+                "BM25 parameters are configured at index creation time in PostgreSQL."
+            )
+            kwargs.pop("bm25_k1")
+        if "bm25_b" in kwargs:
+            logger.warning(
+                "HybridRetriever: 'bm25_b' is deprecated and ignored; "
+                "BM25 parameters are configured at index creation time in PostgreSQL."
+            )
+            kwargs.pop("bm25_b")
+        
         super().__init__(
             vectorstore=vectorstore,
             k=k,
             bm25_weight=bm25_weight,
             semantic_weight=semantic_weight,
+            **kwargs,
         )
         self.k = k
         
