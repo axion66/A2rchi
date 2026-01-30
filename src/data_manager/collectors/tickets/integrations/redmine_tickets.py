@@ -10,8 +10,21 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-# use this to grab the answer for a given ticket, then remove it from answer text
-ANSWER_TAG = load_services_config()["redmine_mailbox"]["answer_tag"]
+# Lazy-load answer tag to avoid config loading at import time
+_ANSWER_TAG = None
+
+def _get_answer_tag() -> str:
+    """Get the answer tag, loading from config on first access."""
+    global _ANSWER_TAG
+    if _ANSWER_TAG is None:
+        try:
+            _ANSWER_TAG = load_services_config()["redmine_mailbox"]["answer_tag"]
+        except (KeyError, FileNotFoundError):
+            _ANSWER_TAG = "[ANSWER]"  # Default fallback
+    return _ANSWER_TAG
+
+# Keep ANSWER_TAG for backward compatibility but as a property-like access
+ANSWER_TAG = "[ANSWER]"  # Default, will be updated at runtime
 
 
 class RedmineClient:
@@ -182,10 +195,11 @@ class RedmineClient:
         if exists, otherwise empty string (checked later)
         """
         answers = []
+        answer_tag = _get_answer_tag()
         for record in journals[::-1]:
             note = record.notes
-            if note and ANSWER_TAG in note:
-                answer = note.replace(ANSWER_TAG, "")
+            if note and answer_tag in note:
+                answer = note.replace(answer_tag, "")
                 answer = "\n".join(line for line in answer.splitlines() if "ISSUE_ID" not in line)
                 answer = answer.replace("\n", " ")
                 if self.anonymizer:

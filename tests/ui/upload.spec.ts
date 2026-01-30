@@ -12,15 +12,15 @@ test.describe('Upload Page', () => {
   // Setup: Mock API endpoints
   // ============================================================
   test.beforeEach(async ({ page }) => {
-    // Mock embedding status
-    await page.route('**/api/upload/embedding-status', async (route) => {
+    // Mock embedding status - matches /api/upload/status endpoint
+    await page.route('**/api/upload/status', async (route) => {
       await route.fulfill({
         status: 200,
         json: {
-          total_documents: 184,
-          pending_documents: 25,
-          embedded_documents: 159,
-          status: 'idle'
+          documents_in_catalog: 184,
+          documents_embedded: 159,
+          pending_embedding: 25,
+          is_synced: false
         }
       });
     });
@@ -355,14 +355,14 @@ test.describe('Upload Page', () => {
     });
 
     test('process button disabled when already processing', async ({ page }) => {
-      await page.route('**/api/upload/embedding-status', async (route) => {
+      await page.route('**/api/upload/status', async (route) => {
         await route.fulfill({
           status: 200,
           json: {
-            total_documents: 184,
-            pending_documents: 25,
-            embedded_documents: 159,
-            status: 'processing'
+            documents_in_catalog: 184,
+            documents_embedded: 159,
+            pending_embedding: 25,
+            is_synced: false
           }
         });
       });

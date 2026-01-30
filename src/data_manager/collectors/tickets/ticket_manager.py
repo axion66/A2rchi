@@ -11,12 +11,13 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-global_config = load_global_config()
 
 class TicketManager:
     """Coordinates ticket integrations and delegates persistence."""
 
-    def __init__(self, dm_config: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(self, dm_config: Optional[Dict[str, Any]] = None, global_config: Optional[Dict[str, Any]] = None) -> None:
+        if global_config is None:
+            global_config = load_global_config()
         self.data_path = Path(global_config["DATA_PATH"])
         raw_sources = (dm_config or {}).get('sources', {}) if isinstance(dm_config, dict) else {}
         sources_config = dict(raw_sources) if isinstance(raw_sources, dict) else {}

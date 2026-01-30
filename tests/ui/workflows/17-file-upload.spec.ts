@@ -8,15 +8,15 @@ import { test, expect } from '@playwright/test';
 
 test.describe('File Upload Workflows', () => {
   test.beforeEach(async ({ page }) => {
-    // Mock API endpoints
-    await page.route('**/api/upload/embedding-status', async (route) => {
+    // Mock API endpoints - matches /api/upload/status endpoint
+    await page.route('**/api/upload/status', async (route) => {
       await route.fulfill({
         status: 200,
         json: {
-          total_documents: 100,
-          pending_documents: 10,
-          embedded_documents: 90,
-          status: 'idle'
+          documents_in_catalog: 100,
+          documents_embedded: 90,
+          pending_embedding: 10,
+          is_synced: false
         }
       });
     });

@@ -8,14 +8,15 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Git Repository Workflows', () => {
   test.beforeEach(async ({ page }) => {
-    await page.route('**/api/upload/embedding-status', async (route) => {
+    // Mock API endpoints - matches /api/upload/status endpoint
+    await page.route('**/api/upload/status', async (route) => {
       await route.fulfill({
         status: 200,
         json: {
-          total_documents: 200,
-          pending_documents: 50,
-          embedded_documents: 150,
-          status: 'idle'
+          documents_in_catalog: 200,
+          documents_embedded: 150,
+          pending_embedding: 50,
+          is_synced: false
         }
       });
     });

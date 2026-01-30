@@ -30,6 +30,12 @@ services:
     flask_debug_mode: true
     auth:
       enabled: false
+  data_manager:
+    host: "0.0.0.0"
+    port: 5001
+    template_folder: "/Users/jason/projects/A2rchi/src/interfaces/uploader_app/templates"
+    static_folder: "/Users/jason/projects/A2rchi/src/interfaces/uploader_app/static"
+    flask_debug_mode: true
 
 data_manager:
   collection_name: default_collection
