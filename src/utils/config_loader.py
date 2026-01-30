@@ -54,22 +54,17 @@ def load_config(map: bool = False, name: str = None):
             config["data_manager"]["embedding_class_map"][model]["class"] = EMBEDDING_MAPPING[model]
 
         # change the SSO class parameter from a string to an actual class
-        sso_section = config.get('utils', {}).get('sso', {}) or {}
-        sources_sso = config.get('data_manager', {}).get('sources', {}).get('sso', {}) or {}
-        active_sso_config = None
-        if sources_sso.get('enabled'):
-            active_sso_config = sources_sso
-        elif sso_section.get('enabled'):
-            active_sso_config = sso_section
+        sources_links = config.get('data_manager', {}).get('sources', {}).get('links', {}) or {}
+        selenium_scraper = sources_links.get('selenium_scraper', {}) or {}
 
-        if active_sso_config:
+        if selenium_scraper:
             SSO_MAPPING = {
                 'CERNSSOScraper': CERNSSOScraper,
             }
-            sso_class_map = active_sso_config.get('sso_class_map', {})
-            for sso_class in sso_class_map.keys():
+            selenium_class_map = selenium_scraper.get('selenium_class_map', {})
+            for sso_class in selenium_class_map.keys():
                 if sso_class in SSO_MAPPING:
-                    sso_class_map[sso_class]['class'] = SSO_MAPPING[sso_class]
+                    selenium_class_map[sso_class]['class'] = SSO_MAPPING[sso_class]
 
     return config
 
@@ -128,5 +123,3 @@ def get_config_names():
 
     names = [n.replace('.yaml','') for n in os.listdir(CONFIGS_PATH)]
     return names
-
-

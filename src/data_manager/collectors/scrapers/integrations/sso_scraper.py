@@ -335,11 +335,11 @@ class CERNSSOScraper(SSOScraper):
 class SSOCollector:
     """Collects resources behind SSO-protected URLs using configured scrapers."""
 
-    def __init__(self, sso_config: Dict[str, Dict]) -> None:
-        self._config = sso_config or {}
+    def __init__(self, selenium_config: Dict[str, Dict]) -> None:
+        self._config = selenium_config or {}
         self._enabled = self._config.get("enabled", False)
-        self._class_name = self._config.get("sso_class", "")
-        self._class_map = self._config.get("sso_class_map", {})
+        self._class_name = self._config.get("selenium_class", "")
+        self._class_map = self._config.get("selenium_class_map", {})
 
     def collect(self, url: str) -> List[ScrapedResource]:
         if not self._enabled:
