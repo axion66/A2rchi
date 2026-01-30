@@ -249,9 +249,11 @@ class TestModelRegistry:
         """The registry module should import without model dependencies."""
         # Import just the registry module, not through __init__
         import importlib.util
+        import os
+        registry_path = os.path.join(os.path.dirname(__file__), "../../src/archi/models/registry.py")
         spec = importlib.util.spec_from_file_location(
             "registry", 
-            "/Users/jason/projects/archi/src/archi/models/registry.py"
+            registry_path
         )
         registry_module = importlib.util.module_from_spec(spec)
         
@@ -263,17 +265,19 @@ class TestModelRegistry:
         # Import just the file, not through __init__ which imports model classes
         import sys
         import importlib.util
+        import os
         
         # Load registry directly without importing model classes
+        registry_path = os.path.join(os.path.dirname(__file__), "../../src/archi/models/registry.py")
         spec = importlib.util.spec_from_file_location(
             "registry_test", 
-            "/Users/jason/projects/archi/src/archi/models/registry.py"
+            registry_path
         )
         module = importlib.util.module_from_spec(spec)
         
         # Don't execute - just check the file is valid Python
         import ast
-        with open("/Users/jason/projects/archi/src/archi/models/registry.py") as f:
+        with open(registry_path) as f:
             tree = ast.parse(f.read())
         
         # Check that ModelRegistry and EmbeddingRegistry classes exist
