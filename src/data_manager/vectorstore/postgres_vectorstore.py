@@ -394,10 +394,21 @@ class PostgresVectorStore(VectorStore):
         conn = self._get_connection()
         try:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-                # Check if pg_textsearch BM25 index exists
+                # Check if pg_textsearch BM25 index exists on document_chunks.chunk_text
+                # This is a strict check that verifies:
+                # - Index is on the correct table (document_chunks)
+                # - Index uses BM25 access method
+                # - Index is in the public schema
                 cursor.execute("""
-                    SELECT 1 FROM pg_indexes 
-                    WHERE indexname = 'idx_chunks_bm25'
+                    SELECT 1
+                    FROM pg_class t
+                    JOIN pg_index i ON t.oid = i.indrelid
+                    JOIN pg_class idx ON idx.oid = i.indexrelid
+                    JOIN pg_am am ON am.oid = idx.relam
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                    WHERE t.relname = 'document_chunks'
+                      AND n.nspname = 'public'
+                      AND am.amname = 'bm25'
                 """)
                 has_bm25_index = cursor.fetchone() is not None
 
@@ -421,22 +432,26 @@ class PostgresVectorStore(VectorStore):
                 where_sql = " AND ".join(where_clauses)
                 
                 if has_bm25_index:
-                    # Use pg_textsearch BM25 - no chunk_tsv column needed
-                    bm25_score = "chunk_text <@> %s"
+                    # Use pg_textsearch BM25 - must be computed on base table where index exists
+                    # The <@> operator requires the BM25 index on the actual table being queried
+                    bm25_score_expr = "c.chunk_text <@> %s"
                     tsv_column = ""
                 else:
                     # Fallback to ts_rank with GIN index - needs chunk_tsv
-                    bm25_score = "ts_rank(chunk_tsv, plainto_tsquery('english', %s))"
+                    bm25_score_expr = "ts_rank(c.chunk_tsv, plainto_tsquery('english', %s))"
                     tsv_column = "c.chunk_tsv,"
                 
+                # BM25 score must be computed in the base query (not a CTE) because
+                # the <@> operator requires direct access to the indexed table
                 query_sql = f"""
-                    WITH semantic AS (
+                    WITH scored AS (
                         SELECT 
                             c.id,
                             c.chunk_text,
                             {tsv_column}
                             c.metadata,
                             1.0 - (c.embedding {self._distance_op} %s::vector) AS semantic_score,
+                            {bm25_score_expr} AS bm25_score,
                             d.resource_hash,
                             d.display_name,
                             d.source_type,
@@ -444,17 +459,11 @@ class PostgresVectorStore(VectorStore):
                         FROM document_chunks c
                         LEFT JOIN documents d ON c.document_id = d.id
                         WHERE {where_sql}
-                    ),
-                    ranked AS (
-                        SELECT 
-                            *,
-                            {bm25_score} AS bm25_score
-                        FROM semantic
                     )
                     SELECT 
                         *,
                         (semantic_score * %s + COALESCE(bm25_score, 0) * %s) AS combined_score
-                    FROM ranked
+                    FROM scored
                     ORDER BY combined_score DESC
                     LIMIT %s
                 """

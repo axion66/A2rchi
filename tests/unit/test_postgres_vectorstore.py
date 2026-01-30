@@ -248,9 +248,8 @@ class TestHybridSearch:
         """Test hybrid search when BM25 index exists."""
         conn, cursor = mock_pg_connection
         
-        # First call checks for BM25 index
-        # Second call gets results
-        cursor.fetchone.side_effect = [(1,)]  # BM25 index exists
+        # First call checks for BM25 index, second checks for chunk_tsv column
+        cursor.fetchone.side_effect = [(1,), None]  # BM25 index exists, no chunk_tsv
         cursor.fetchall.return_value = [
             {
                 'id': 1,
@@ -282,7 +281,8 @@ class TestHybridSearch:
         """Test hybrid search falls back to ts_rank without BM25 index."""
         conn, cursor = mock_pg_connection
         
-        cursor.fetchone.return_value = None  # No BM25 index
+        # First call checks for BM25 index, second checks for chunk_tsv column
+        cursor.fetchone.side_effect = [None, (1,)]  # No BM25 index, has chunk_tsv
         cursor.fetchall.return_value = [
             {
                 'id': 1,
@@ -307,7 +307,8 @@ class TestHybridSearch:
     def test_hybrid_search_custom_weights(self, vector_store, mock_pg_connection):
         """Test hybrid search with custom weights."""
         conn, cursor = mock_pg_connection
-        cursor.fetchone.return_value = (1,)
+        # First call checks for BM25 index, second checks for chunk_tsv column
+        cursor.fetchone.side_effect = [(1,), None]  # BM25 index exists, no chunk_tsv
         cursor.fetchall.return_value = []
         
         with patch.object(vector_store, '_get_connection', return_value=conn):
@@ -327,7 +328,8 @@ class TestHybridSearch:
     def test_hybrid_search_score_combination(self, vector_store, mock_pg_connection):
         """Test that hybrid search correctly combines scores."""
         conn, cursor = mock_pg_connection
-        cursor.fetchone.return_value = (1,)
+        # First call checks for BM25 index, second checks for chunk_tsv column
+        cursor.fetchone.side_effect = [(1,), None]  # BM25 index exists, no chunk_tsv
         
         # Results with known scores
         cursor.fetchall.return_value = [
