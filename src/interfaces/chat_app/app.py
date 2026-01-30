@@ -10,6 +10,8 @@ from typing import Any, Dict, Iterator, List, Optional
 from urllib.parse import urlparse
 from functools import wraps
 
+import requests
+
 import mistune as mt
 import numpy as np
 import psycopg2
@@ -29,7 +31,10 @@ from src.archi.archi import archi
 from src.archi.utils.output_dataclass import PipelineOutput
 # from src.data_manager.data_manager import DataManager
 from src.data_manager.data_viewer_service import DataViewerService
+from src.data_manager.vectorstore.manager import VectorStoreManager
 from src.utils.config_loader import CONFIGS_PATH, get_config_names, load_config
+from src.utils.yaml_config import load_config_with_class_mapping
+from src.utils.config_service import ConfigService
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.utils.sql import (
@@ -139,6 +144,15 @@ class ChatWrapper:
         embedding_name = self.config["data_manager"]["embedding_name"]
         self.similarity_score_reference = self.config["data_manager"]["embedding_class_map"][embedding_name]["similarity_score_reference"]
         self.sources_config = self.config["data_manager"]["sources"]
+
+        # initialize vectorstore manager for embedding uploads (needs class-mapped config)
+        vectorstore_config = load_config_with_class_mapping()
+        self.vector_manager = VectorStoreManager(
+            config=vectorstore_config,
+            global_config=vectorstore_config["global"],
+            data_path=self.data_path,
+            pg_config=self.pg_config,
+        )
 
         # initialize data viewer service for per-chat document selection
         self.data_viewer = DataViewerService(data_path=self.data_path, pg_config=self.pg_config)
@@ -1682,6 +1696,16 @@ class FlaskAppWrapper(object):
         self.conn = None
         self.cursor = None
 
+        # Initialize config service for dynamic settings
+        self.config_service = ConfigService(pg_config=self.pg_config)
+
+        # Data manager service URL for upload proxy
+        dm_config = self.services_config.get("data_manager", {})
+        dm_host = dm_config.get("host", "localhost")
+        dm_port = dm_config.get("port", 5001)
+        self.data_manager_url = f"http://{dm_host}:{dm_port}"
+        logger.info(f"Data manager service URL: {self.data_manager_url}")
+
         # Initialize authentication methods
         self.oauth = None
         auth_config = self.chat_app_config.get('auth', {})
@@ -1758,6 +1782,26 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/data/bulk-enable', 'bulk_enable_documents', self.require_auth(self.bulk_enable_documents), methods=["POST"])
         self.add_endpoint('/api/data/bulk-disable', 'bulk_disable_documents', self.require_auth(self.bulk_disable_documents), methods=["POST"])
         self.add_endpoint('/api/data/stats', 'get_data_stats', self.require_auth(self.get_data_stats), methods=["GET"])
+
+        # Data uploader endpoints
+        logger.info("Adding data uploader API endpoints")
+        self.add_endpoint('/upload', 'upload_page', self.require_auth(self.upload_page))
+        self.add_endpoint('/api/upload/file', 'upload_file', self.require_auth(self.upload_file), methods=["POST"])
+        self.add_endpoint('/api/upload/url', 'upload_url', self.require_auth(self.upload_url), methods=["POST"])
+        self.add_endpoint('/api/upload/git', 'upload_git', self.require_auth(self.upload_git), methods=["POST"])
+        self.add_endpoint('/api/upload/jira', 'upload_jira', self.require_auth(self.upload_jira), methods=["POST"])
+        self.add_endpoint('/api/upload/embed', 'trigger_embedding', self.require_auth(self.trigger_embedding), methods=["POST"])
+        self.add_endpoint('/api/upload/status', 'get_embedding_status', self.require_auth(self.get_embedding_status), methods=["GET"])
+        self.add_endpoint('/api/sources/git', 'list_git_sources', self.require_auth(self.list_git_sources), methods=["GET"])
+        self.add_endpoint('/api/sources/jira', 'list_jira_sources', self.require_auth(self.list_jira_sources), methods=["GET"])
+        self.add_endpoint('/api/sources/schedules', 'get_source_schedules', self.require_auth(self.get_source_schedules), methods=["GET"])
+        self.add_endpoint('/api/sources/schedules', 'update_source_schedule', self.require_auth(self.update_source_schedule), methods=["PUT"])
+
+        # Database viewer endpoints (admin only)
+        logger.info("Adding database viewer API endpoints")
+        self.add_endpoint('/admin/database', 'database_viewer_page', self.require_auth(self.database_viewer_page))
+        self.add_endpoint('/api/admin/database/tables', 'list_database_tables', self.require_auth(self.list_database_tables), methods=["GET"])
+        self.add_endpoint('/api/admin/database/query', 'run_database_query', self.require_auth(self.run_database_query), methods=["POST"])
 
         # add unified auth endpoints
         if self.auth_enabled:
@@ -3375,6 +3419,517 @@ class FlaskAppWrapper(object):
         except Exception as e:
             logger.error(f"Error getting data stats: {str(e)}")
             return jsonify({'error': str(e)}), 500
+
+    # =========================================================================
+    # Data Uploader Endpoints
+    # =========================================================================
+
+    def upload_page(self):
+        """Render the data upload page."""
+        return render_template('upload.html')
+
+    def upload_file(self):
+        """
+        Handle file uploads via multipart form data.
+        Proxies to data-manager service.
+        """
+        try:
+            upload = request.files.get("file")
+            if not upload:
+                return jsonify({"error": "missing_file"}), 400
+
+            # Proxy to data-manager service
+            resp = requests.post(
+                f"{self.data_manager_url}/document_index/upload",
+                files={"file": (upload.filename, upload.stream, upload.content_type)},
+                timeout=120
+            )
+            data = resp.json()
+            
+            if resp.status_code == 200 and data.get("status") == "ok":
+                return jsonify({
+                    "success": True,
+                    "filename": upload.filename,
+                    "path": data.get("path", "")
+                }), 200
+            else:
+                return jsonify({"error": data.get("error", "upload_failed")}), resp.status_code
+
+        except requests.exceptions.ConnectionError:
+            logger.error("Data manager service unavailable")
+            return jsonify({"error": "data_manager_unavailable"}), 503
+        except Exception as e:
+            logger.error(f"Error uploading file: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def upload_url(self):
+        """
+        Scrape and ingest content from a URL.
+        Proxies to data-manager service.
+        """
+        try:
+            data = request.json or {}
+            url = data.get("url", "").strip()
+
+            if not url:
+                return jsonify({"error": "missing_url"}), 400
+
+            # Proxy to data-manager service
+            resp = requests.post(
+                f"{self.data_manager_url}/document_index/upload_url",
+                data={"url": url},
+                timeout=120
+            )
+            dm_data = resp.json()
+
+            if resp.status_code == 200 and dm_data.get("status") == "ok":
+                return jsonify({
+                    "success": True,
+                    "url": url,
+                    "resources_scraped": 1
+                }), 200
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": dm_data.get("error", "scrape_failed"),
+                    "url": url
+                }), resp.status_code if resp.status_code != 200 else 400
+
+        except requests.exceptions.ConnectionError:
+            logger.error("Data manager service unavailable")
+            return jsonify({"error": "data_manager_unavailable"}), 503
+        except Exception as e:
+            logger.error(f"Error uploading URL: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def upload_git(self):
+        """
+        Clone and ingest a Git repository.
+        Proxies to data-manager service.
+        """
+        try:
+            data = request.json or {}
+            repo_url = data.get("repo_url", "").strip()
+
+            if not repo_url:
+                return jsonify({"error": "missing_repo_url"}), 400
+
+            # Proxy to data-manager service
+            resp = requests.post(
+                f"{self.data_manager_url}/document_index/add_git_repo",
+                data={"repo_url": repo_url},
+                timeout=300  # Git clones can take a while
+            )
+            dm_data = resp.json()
+
+            if resp.status_code == 200 and dm_data.get("status") == "ok":
+                return jsonify({
+                    "success": True,
+                    "repo_url": repo_url,
+                    "message": "Repository cloned. Documents will be embedded shortly."
+                }), 200
+            else:
+                return jsonify({"error": dm_data.get("error", "git_clone_failed")}), resp.status_code
+
+        except requests.exceptions.ConnectionError:
+            logger.error("Data manager service unavailable")
+            return jsonify({"error": "data_manager_unavailable"}), 503
+        except Exception as e:
+            logger.error(f"Error cloning Git repo: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def upload_jira(self):
+        """
+        Sync issues from a Jira project.
+        Proxies to data-manager service.
+        """
+        try:
+            data = request.json or {}
+            project_key = data.get("project_key", "").strip()
+
+            if not project_key:
+                return jsonify({"error": "missing_project_key"}), 400
+
+            # Proxy to data-manager service
+            resp = requests.post(
+                f"{self.data_manager_url}/document_index/add_jira_project",
+                data={"project_key": project_key},
+                timeout=120
+            )
+            dm_data = resp.json()
+
+            if resp.status_code == 200 and dm_data.get("status") == "ok":
+                return jsonify({
+                    "success": True,
+                    "project_key": project_key
+                }), 200
+            else:
+                return jsonify({"error": dm_data.get("error", "jira_sync_failed")}), resp.status_code
+
+        except requests.exceptions.ConnectionError:
+            logger.error("Data manager service unavailable")
+            return jsonify({"error": "data_manager_unavailable"}), 503
+        except Exception as e:
+            logger.error(f"Error syncing Jira project: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def trigger_embedding(self):
+        """
+        Trigger embedding/vectorstore update for recently uploaded documents.
+
+        This synchronizes the documents catalog with the vectorstore,
+        creating embeddings for any new documents that haven't been processed yet.
+
+        Returns:
+            JSON with embedding status
+        """
+        try:
+            logger.info("Triggering vectorstore update...")
+            self.chat.vector_manager.update_vectorstore()
+            logger.info("Vectorstore update completed")
+            
+            return jsonify({
+                "success": True,
+                "message": "Embedding complete. Documents are now searchable."
+            }), 200
+
+        except Exception as e:
+            logger.error(f"Error triggering embedding: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def get_embedding_status(self):
+        """
+        Get the current embedding/ingestion status.
+
+        Returns:
+            JSON with counts of documents in catalog vs vectorstore
+        """
+        try:
+            from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
+            
+            # Get count of documents in catalog (load_sources_catalog returns hash->path dict)
+            sources = PostgresCatalogService.load_sources_catalog(self.chat.data_path, self.chat.pg_config)
+            docs_in_catalog = len(sources)
+            
+            # Get count of unique documents in vectorstore
+            conn = psycopg2.connect(**self.chat.pg_config)
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT COUNT(DISTINCT metadata->>'resource_hash')
+                        FROM document_chunks
+                        WHERE metadata->>'resource_hash' IS NOT NULL
+                        """
+                    )
+                    docs_in_vectorstore = cursor.fetchone()[0] or 0
+            finally:
+                conn.close()
+
+            pending = max(0, docs_in_catalog - docs_in_vectorstore)
+            
+            return jsonify({
+                "documents_in_catalog": docs_in_catalog,
+                "documents_embedded": docs_in_vectorstore,
+                "pending_embedding": pending,
+                "is_synced": pending == 0
+            }), 200
+
+        except Exception as e:
+            logger.error(f"Error getting embedding status: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def list_git_sources(self):
+        """
+        List currently synced Git repositories.
+
+        Returns:
+            JSON with list of git sources
+        """
+        try:
+            # Query unique git repos from the database directly
+            conn = psycopg2.connect(**self.chat.pg_config)
+            try:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                    # Get unique git repos by extracting the repo URL from document URLs
+                    cursor.execute("""
+                        SELECT DISTINCT 
+                            CASE 
+                                WHEN url LIKE 'https://github.com/%' THEN
+                                    regexp_replace(url, '^(https://github.com/[^/]+/[^/]+).*', '\\1')
+                                WHEN url LIKE 'https://gitlab.com/%' THEN
+                                    regexp_replace(url, '^(https://gitlab.com/[^/]+/[^/]+).*', '\\1')
+                                ELSE url
+                            END as repo_url,
+                            COUNT(*) as file_count,
+                            MAX(indexed_at) as last_updated
+                        FROM documents 
+                        WHERE source_type = 'git' 
+                          AND NOT is_deleted
+                          AND url IS NOT NULL
+                        GROUP BY 1
+                        ORDER BY last_updated DESC NULLS LAST
+                    """)
+                    rows = cursor.fetchall()
+            finally:
+                conn.close()
+
+            sources = []
+            for row in rows:
+                repo_url = row['repo_url']
+                if repo_url:
+                    # Extract repo name from URL
+                    name = repo_url.rstrip('/').split('/')[-1].replace('.git', '')
+                    sources.append({
+                        'name': name,
+                        'url': repo_url,
+                        'file_count': row['file_count'],
+                        'last_updated': row['last_updated'].isoformat() if row['last_updated'] else None
+                    })
+
+            return jsonify({"sources": sources}), 200
+
+        except Exception as e:
+            logger.error(f"Error listing Git sources: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def list_jira_sources(self):
+        """
+        List currently synced Jira projects.
+
+        Returns:
+            JSON with list of jira sources
+        """
+        try:
+            sources = []
+            seen_projects = set()
+
+            result = self.chat.data_viewer.list_documents(source_type='jira', limit=1000)
+            for doc in result.get('documents', []):
+                # Parse project key from display name or URL
+                display_name = doc.get('display_name', '')
+                # Jira documents often have display_name like "PROJECT-123: Title"
+                if display_name:
+                    project_key = display_name.split('-')[0] if '-' in display_name else display_name
+                    if project_key and project_key not in seen_projects:
+                        seen_projects.add(project_key)
+                        sources.append({
+                            'project_key': project_key,
+                            'name': project_key,
+                        })
+
+            return jsonify({"sources": sources}), 200
+
+        except Exception as e:
+            logger.error(f"Error listing Jira sources: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def get_source_schedules(self):
+        """
+        Get all source sync schedules.
+
+        Returns:
+            JSON with source schedules
+        """
+        try:
+            schedules = self.config_service.get_source_schedules()
+            
+            # Convert cron expressions to UI-friendly values
+            schedule_display = {}
+            cron_to_ui = {
+                '': 'disabled',
+                '0 * * * *': 'hourly',
+                '0 */6 * * *': 'every_6h',
+                '0 0 * * *': 'daily',
+            }
+            
+            for source, cron in schedules.items():
+                schedule_display[source] = {
+                    'cron': cron,
+                    'display': cron_to_ui.get(cron, 'custom'),
+                }
+            
+            return jsonify({"schedules": schedule_display}), 200
+
+        except Exception as e:
+            logger.error(f"Error getting source schedules: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def update_source_schedule(self):
+        """
+        Update the schedule for a specific data source.
+
+        PUT body (JSON):
+        - source: Source name (e.g., 'jira', 'git', 'links')
+        - schedule: Schedule value ('disabled', 'hourly', 'every_6h', 'daily', or cron expression)
+
+        Returns:
+            JSON with updated schedules
+        """
+        try:
+            data = request.json or {}
+            source = data.get("source", "").strip()
+            schedule = data.get("schedule", "").strip()
+
+            if not source:
+                return jsonify({"error": "missing_source"}), 400
+            
+            valid_sources = ['jira', 'git', 'links', 'local_files', 'redmine', 'sso']
+            if source not in valid_sources:
+                return jsonify({"error": f"invalid_source, must be one of {valid_sources}"}), 400
+
+            # Get current user for audit logging, if available
+            user_id = None
+            if session.get('logged_in'):
+                user = session.get('user', {})
+                user_id = user.get('username') or user.get('email') or 'anonymous'
+            
+            schedules = self.config_service.update_source_schedule(
+                source, 
+                schedule,
+                updated_by=user_id
+            )
+
+            return jsonify({
+                "success": True,
+                "schedules": schedules
+            }), 200
+
+        except Exception as e:
+            logger.error(f"Error updating source schedule: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    # =========================================================================
+    # Database Viewer Endpoints
+    # =========================================================================
+
+    def database_viewer_page(self):
+        """Render the database viewer page."""
+        return render_template('database.html')
+
+    def list_database_tables(self):
+        """
+        List all tables in the database.
+
+        Returns:
+            JSON with list of tables and their row counts
+        """
+        conn = None
+        cursor = None
+        try:
+            conn = psycopg2.connect(
+                host=self.pg_config.get("host", "postgres"),
+                port=self.pg_config.get("port", 5432),
+                database=self.pg_config.get("database", "archi"),
+                user=self.pg_config.get("user", "archi"),
+                password=self.pg_config.get("password"),
+            )
+            cursor = conn.cursor()
+
+            # Get list of tables with row counts
+            # Note: pg_stat_user_tables uses 'relname' not 'tablename' in some PostgreSQL versions
+            cursor.execute("""
+                SELECT 
+                    schemaname,
+                    relname as tablename,
+                    n_live_tup as row_count
+                FROM pg_stat_user_tables
+                ORDER BY schemaname, relname
+            """)
+
+            tables = []
+            for row in cursor.fetchall():
+                tables.append({
+                    'schema': row[0],
+                    'name': row[1],
+                    'row_count': row[2],
+                })
+
+            return jsonify({"tables": tables}), 200
+
+        except Exception as e:
+            logger.error(f"Error listing database tables: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+    def run_database_query(self):
+        """
+        Execute a read-only SQL query.
+
+        POST body (JSON):
+        - query: The SQL query to execute
+
+        Returns:
+            JSON with columns and rows
+        """
+        conn = None
+        cursor = None
+        try:
+            data = request.json or {}
+            query = data.get("query", "").strip()
+
+            if not query:
+                return jsonify({"error": "missing_query"}), 400
+
+            # Basic security: only allow SELECT statements
+            query_upper = query.upper().strip()
+            if not query_upper.startswith("SELECT"):
+                return jsonify({"error": "only_select_allowed", "message": "Only SELECT queries are allowed"}), 400
+
+            # Block dangerous patterns - check for keywords as separate tokens
+            dangerous_keywords = ['DROP', 'DELETE', 'INSERT', 'UPDATE', 'ALTER', 'CREATE', 'TRUNCATE', 'GRANT', 'REVOKE']
+            # Split on non-word characters and check for exact keyword matches
+            import re
+            tokens = set(re.findall(r'\b\w+\b', query_upper))
+            for keyword in dangerous_keywords:
+                if keyword in tokens:
+                    return jsonify({"error": "forbidden_operation", "message": f"Operation '{keyword}' is not allowed"}), 400
+
+            conn = psycopg2.connect(
+                host=self.pg_config.get("host", "postgres"),
+                port=self.pg_config.get("port", 5432),
+                database=self.pg_config.get("database", "archi"),
+                user=self.pg_config.get("user", "archi"),
+                password=self.pg_config.get("password"),
+            )
+            cursor = conn.cursor()
+
+            # Add a LIMIT if not present to prevent runaway queries
+            # Only wrap simple queries - avoid breaking complex ones
+            if "LIMIT" not in query_upper:
+                query = query.rstrip(';') + " LIMIT 1000"
+
+            cursor.execute(query)
+
+            columns = [desc[0] for desc in cursor.description] if cursor.description else []
+            rows = cursor.fetchall()
+
+            # Convert rows to list of dicts for JSON serialization
+            result_rows = []
+            for row in rows:
+                result_rows.append([
+                    str(cell) if cell is not None else None
+                    for cell in row
+                ])
+
+            return jsonify({
+                "columns": columns,
+                "rows": result_rows,
+                "row_count": len(result_rows),
+            }), 200
+
+        except Exception as e:
+            logger.error(f"Error executing query: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
 
     def is_authenticated(self):
         """

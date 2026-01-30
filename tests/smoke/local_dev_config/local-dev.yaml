@@ -2,8 +2,8 @@
 name: local-dev
 
 global:
-  DATA_PATH: /Users/jason/projects/A2rchi/
-  ACCOUNTS_PATH: /tmp/a2rchi-accounts/
+  DATA_PATH: /tmp/archi-data/
+  ACCOUNTS_PATH: /tmp/archi-accounts/
   verbosity: 2
 
 services:
@@ -13,6 +13,8 @@ services:
     database: a2rchi
     user: a2rchi
     password: testpassword123
+  redmine_mailbox:
+    answer_tag: "[ANSWER]"
   chat_app:
     pipeline: QAPipeline
     trained_on: "Test agent - local development"
@@ -87,7 +89,7 @@ data_manager:
       enabled: false
       visible: false
 
-a2rchi:
+archi:
   agent_description: "Local development test agent"
   mcp_servers: {}
   pipelines:

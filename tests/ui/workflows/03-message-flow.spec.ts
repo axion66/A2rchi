@@ -113,11 +113,10 @@ test.describe('Message Flow', () => {
     const userMsg = page.locator('.message.user').first();
     await expect(userMsg.locator('.message-meta')).toHaveCount(0);
     
-    // Assistant message has meta
+    // Assistant message has meta - format is "<agent> · <model>" without labels
     const assistantMsg = page.locator('.message.assistant').first();
     await expect(assistantMsg.locator('.message-meta')).toBeVisible();
-    await expect(assistantMsg.locator('.message-meta')).toContainText('Agent:');
-    await expect(assistantMsg.locator('.message-meta')).toContainText('Model:');
+    await expect(assistantMsg.locator('.message-meta')).toContainText('·');
   });
 
   test('user message shows sender as "You"', async ({ page }) => {

@@ -34,7 +34,7 @@ class DataViewerService:
 
     def list_documents(
         self,
-        conversation_id: str,
+        conversation_id: Optional[str] = None,
         source_type: Optional[str] = None,
         search: Optional[str] = None,
         enabled_filter: Optional[str] = None,
@@ -45,7 +45,7 @@ class DataViewerService:
         List documents with per-chat enabled state.
 
         Args:
-            conversation_id: The conversation ID for per-chat state
+            conversation_id: The conversation ID for per-chat state (optional for global listing)
             source_type: Filter by source type ("local", "web", "ticket", "all")
             search: Search query for display_name and url
             enabled_filter: Filter by enabled state ("all", "enabled", "disabled")

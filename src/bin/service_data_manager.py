@@ -11,6 +11,7 @@ from flask import Flask, jsonify
 from src.data_manager.data_manager import DataManager
 from src.data_manager.scheduler import CronScheduler
 from src.interfaces.uploader_app.app import FlaskAppWrapper
+from src.utils.config_service import ConfigService
 from src.utils.yaml_config import load_yaml_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger, setup_logging
@@ -77,12 +78,36 @@ def main() -> None:
 
     scheduler = CronScheduler()
     sources_cfg = config.get("data_manager", {}).get("sources", {}) or {}
+    
+    # Load schedules from database (UI-controlled schedules take priority)
+    db_schedules: Dict[str, str] = {}
+    try:
+        pg_config = {
+            "password": read_secret("PG_PASSWORD"),
+            **services_config["postgres"],
+        }
+        config_service = ConfigService(pg_config)
+        db_schedules = config_service.get_source_schedules()
+        logger.info("Loaded source schedules from database: %s", db_schedules)
+    except Exception as e:
+        logger.warning("Could not load schedules from database: %s", e)
+    
     # seed status with schedules
     initial_status = load_status()
-    for source_name, source_cfg in sources_cfg.items():
+    
+    # Merge YAML and database schedules (database takes priority)
+    all_sources = set(sources_cfg.keys()) | set(db_schedules.keys())
+    for source_name in all_sources:
         if source_name not in schedule_map:
             continue
-        schedule = (source_cfg or {}).get("schedule")
+        
+        # Database schedule takes priority over YAML
+        if source_name in db_schedules and db_schedules[source_name]:
+            schedule = db_schedules[source_name]
+        else:
+            source_cfg = sources_cfg.get(source_name) or {}
+            schedule = source_cfg.get("schedule")
+        
         if schedule:
             entry = initial_status.get(source_name, {})
             entry.setdefault("schedule", schedule)

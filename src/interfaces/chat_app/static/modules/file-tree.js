@@ -23,18 +23,64 @@ class FileTree {
   /**
    * Build tree structure from flat document list
    * @param {Array} documents - List of document objects
-   * @returns {{ localFiles: Object, webPages: Object, tickets: Array }}
+   * @returns {{ localFiles: Object, webPages: Object, tickets: Array, gitRepos: Object }}
    */
   buildTrees(documents) {
     const localFiles = documents.filter(d => d.source_type === 'local_files');
     const webPages = documents.filter(d => d.source_type === 'web');
     const tickets = documents.filter(d => d.source_type === 'ticket');
+    const gitFiles = documents.filter(d => d.source_type === 'git');
     
     return {
       localFiles: this.buildFileTree(localFiles),
       webPages: this.buildDomainTree(webPages),
-      tickets: tickets
+      tickets: tickets,
+      gitRepos: this.buildGitRepoTree(gitFiles)
     };
+  }
+
+  /**
+   * Build repository-grouped tree for git files
+   */
+  buildGitRepoTree(documents) {
+    const tree = { name: 'root', children: {}, files: [], path: '' };
+    
+    for (const doc of documents) {
+      try {
+        const url = doc.url || '';
+        // Extract repo name from GitHub/GitLab URLs
+        // e.g., https://github.com/org/repo/blob/main/path/file.py -> org/repo
+        const match = url.match(/(?:github\.com|gitlab\.com)\/([^\/]+\/[^\/]+)/);
+        const repoName = match ? match[1] : 'unknown';
+        
+        if (!tree.children[repoName]) {
+          tree.children[repoName] = {
+            name: repoName,
+            children: {},
+            files: [],
+            path: repoName
+          };
+        }
+        
+        // Extract file path within repo
+        const pathMatch = url.match(/\/blob\/[^\/]+\/(.+)$/);
+        const filePath = pathMatch ? pathMatch[1] : doc.display_name;
+        
+        tree.children[repoName].files.push({
+          ...doc,
+          name: filePath,
+          repoName: repoName
+        });
+      } catch (e) {
+        // Invalid URL, add to root
+        tree.files.push({
+          ...doc,
+          name: doc.display_name || doc.url
+        });
+      }
+    }
+    
+    return tree;
   }
 
   /**
@@ -269,8 +315,8 @@ class FileTree {
 
   /**
    * Render a complete source category
-   * @param {string} type - 'local_files', 'web', or 'ticket'
-   * @param {Object} tree - Tree structure for local/web, or array for tickets
+   * @param {string} type - 'local_files', 'web', 'ticket', or 'git'
+   * @param {Object} tree - Tree structure for local/web/git, or array for tickets
    * @param {string} selectedHash - Currently selected document hash
    */
   renderCategory(type, tree, selectedHash = null) {
@@ -289,6 +335,11 @@ class FileTree {
         icon: this.icons.ticket, 
         label: 'Tickets',
         emptyMessage: 'No tickets ingested'
+      },
+      'git': { 
+        icon: this.icons.git, 
+        label: 'Git Repos',
+        emptyMessage: 'No git repositories ingested'
       }
     };
     
@@ -534,6 +585,8 @@ class FileTree {
       database: '<svg class="icon-db" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>',
       
       link: '<svg class="icon-link" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
+      
+      git: '<svg class="icon-git" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 3v6m0 6v6"/><path d="M3 12h6m6 0h6"/></svg>',
     };
   }
 }

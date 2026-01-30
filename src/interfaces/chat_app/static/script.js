@@ -62,10 +62,10 @@ let userText = null;
 let conversation = []
 let num_responses_since_last_rating = 0;
 let last_response_is_feedback_request = false;
-const CLIENT_ID_STORAGE_KEY = "a2rchi_client_id";
-const ACTIVE_CONVERSATION_STORAGE_KEY = "a2rchi_active_conversation_id";
-const CLEARED_CONVERSATIONS_KEY = "a2rchi_cleared_conversation_ids";
-const MAX_CONVERSATION_ID_KEY = "a2rchi_max_conversation_id";
+const CLIENT_ID_STORAGE_KEY = "archi_client_id";
+const ACTIVE_CONVERSATION_STORAGE_KEY = "archi_active_conversation_id";
+const CLEARED_CONVERSATIONS_KEY = "archi_cleared_conversation_ids";
+const MAX_CONVERSATION_ID_KEY = "archi_max_conversation_id";
 
 const generateClientId = () => {
     if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -520,7 +520,7 @@ async function loadConversation(convId) {
                     </div>`
                 : `<div class="chat-content">
                         <div class="chat-details">
-                            <img src="/static/images/a2rchi.png" alt="chatbot-img">
+                            <img src="/static/images/archi.png" alt="chatbot-img">
                             <div>${msg.content}</div>
                         </div>
                         <div class="button-container">
@@ -589,10 +589,10 @@ function startNewConversation(options = {}) {
     // clear localStorage and show default welcome text
     localStorage.removeItem("all-chats");
     const defaultText = `<div class="default-text">
-                            <h1>A2rchi</h1>
-                            <p>Start a conversation and explore the power of A2rchi, specially trained on Local development test agent.<br> 
+                            <h1>archi</h1>
+                            <p>Start a conversation and explore the power of archi, specially trained on Local development test agent.<br> 
                             Your chat history will be displayed here. <br> <br>
-                            Remember, the more context you provide in your question, the better A2rchi will be able to answer your question! <br> <br>
+                            Remember, the more context you provide in your question, the better archi will be able to answer your question! <br> <br>
                             By using this website, you agree to the <a href="/terms">terms and conditions</a>.</p>
                         </div>`;
     chatContainer.innerHTML = defaultText;
@@ -611,10 +611,10 @@ const loadDataFromLocalstorage = () => {
     themeButton.innerText = document.body.classList.contains("light-mode") ? "dark_mode" : "light_mode";
 
     const defaultText = `<div class="default-text">
-                            <h1>A2rchi</h1>
-                            <p>Start a conversation and explore the power of A2rchi, specially trained on Local development test agent.<br> 
+                            <h1>archi</h1>
+                            <p>Start a conversation and explore the power of archi, specially trained on Local development test agent.<br> 
                             Your chat history will be displayed here. <br> <br>
-                            Remember, the more context you provide in your question, the better A2rchi will be able to answer your question! <br> <br>
+                            Remember, the more context you provide in your question, the better archi will be able to answer your question! <br> <br>
                             By using this website, you agree to the <a href="/terms">terms and conditions</a>.</p>
                         </div>`
 
@@ -714,13 +714,13 @@ const finalizeIncomingChat = (incomingChatDiv, pElement, responseData) => {
             console.error("Error setting innerHTML:", error);
             pElement.textContent = responseData.response || "";
         }
-        pElement.setAttribute("id", responseData.a2rchi_msg_id?.toString() || "");
+        pElement.setAttribute("id", responseData.archi_msg_id?.toString() || "");
         pElement.classList.add(".default-text");
-        conversation.push(["A2rchi", responseData.response]);
+        conversation.push(["archi", responseData.response]);
         updateActiveConversationId(responseData.conversation_id);
         last_response_is_feedback_request = false;
-        if (responseData.a2rchi_msg_id !== undefined && responseData.a2rchi_msg_id !== null) {
-            incomingChatDiv.dataset.messageId = responseData.a2rchi_msg_id.toString();
+        if (responseData.archi_msg_id !== undefined && responseData.archi_msg_id !== null) {
+            incomingChatDiv.dataset.messageId = responseData.archi_msg_id.toString();
             incomingChatDiv.dataset.commentCount = "0";
         } else {
             delete incomingChatDiv.dataset.messageId;
@@ -1143,7 +1143,7 @@ const showTypingAnimation = (isRefresh = false) => {
     // Create the typing animation and append it to the chat container
     const html = `<div class="chat-content">
                     <div class="chat-details">
-                        <img src="/static/images/a2rchi.png" alt="chatbot-img">
+                        <img src="/static/images/archi.png" alt="chatbot-img">
                         <p id="loading-text"><em class="loading-text">Processing request...</em></p>
                         <div class="stream-steps" data-stream-steps></div>
                     </div>
@@ -1194,15 +1194,15 @@ const showTypingAnimation = (isRefresh = false) => {
 };
 
 const showFeedbackRequest = () => {
-    // Display a message from A2rchi to ask the user to give feedback
+    // Display a message from archi to ask the user to give feedback
 
     num_responses_since_last_rating = num_responses_since_last_rating + 1;
 
     const html = `<div class="chat-content">
                     <div class="chat-details">
-                        <img src="/static/images/a2rchi.png" alt="chatbot-img">
+                        <img src="/static/images/archi.png" alt="chatbot-img">
                         <div class=".default-text">
-                            <p>I've noticed you haven't rated any of my responses in a while. Rating responses is crucial because it not only helps me improve, but it also ensures that this project remains open source and freely accessible for everyone. Your input is highly valuable in supporting the A2rchi mission! </p>
+                            <p>I've noticed you haven't rated any of my responses in a while. Rating responses is crucial because it not only helps me improve, but it also ensures that this project remains open source and freely accessible for everyone. Your input is highly valuable in supporting the archi mission! </p>
                         </div>
                     </div>
                 </div>`;
@@ -1242,7 +1242,7 @@ const handleOutgoingChat = () => {
 }
 
 deleteButton.addEventListener("click", () => {
-    if(!confirm("Clear this chat window? A2rchi will no longer be able to reference it for context.")) {
+    if(!confirm("Clear this chat window? archi will no longer be able to reference it for context.")) {
         return;
     }
     startNewConversation({ hideActiveConversation: true });

@@ -2,8 +2,10 @@ import os
 
 import yaml
 
-# DEFINITIONS
-CONFIGS_PATH = "/root/archi/configs/"
+# DEFINITIONS - allow override via environment variable
+_configs_path = os.environ.get("A2RCHI_CONFIGS_PATH", os.environ.get("ARCHI_CONFIGS_PATH", "/root/archi/configs/"))
+# Ensure trailing slash
+CONFIGS_PATH = _configs_path if _configs_path.endswith("/") else _configs_path + "/"
 
 def load_config(map: bool = False, name: str = None):
     """

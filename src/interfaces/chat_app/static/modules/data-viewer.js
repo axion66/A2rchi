@@ -110,6 +110,8 @@ class DataViewer {
       if (this.conversationId) {
         params.set('conversation_id', this.conversationId);
       }
+      // Request all documents up to the max limit
+      params.set('limit', '500');
       
       const response = await fetch(`/api/data/documents?${params.toString()}`);
       if (!response.ok) throw new Error('Failed to load documents');
@@ -195,6 +197,7 @@ class DataViewer {
     // Render each category
     let html = '';
     html += this.fileTree.renderCategory('local_files', trees.localFiles, this.selectedDocument?.hash);
+    html += this.fileTree.renderCategory('git', trees.gitRepos, this.selectedDocument?.hash);
     html += this.fileTree.renderCategory('web', trees.webPages, this.selectedDocument?.hash);
     html += this.fileTree.renderCategory('ticket', trees.tickets, this.selectedDocument?.hash);
     
@@ -518,6 +521,7 @@ class DataViewer {
   expandAll() {
     const trees = this.fileTree.buildTrees(this.documents);
     this.fileTree.expandAll(trees.localFiles, 'category-local_files');
+    this.fileTree.expandAll(trees.gitRepos, 'category-git');
     this.fileTree.expandAll(trees.webPages, 'category-web');
     this.renderDocuments();
   }
@@ -528,6 +532,7 @@ class DataViewer {
   collapseAll() {
     const trees = this.fileTree.buildTrees(this.documents);
     this.fileTree.collapseAll(trees.localFiles, 'category-local_files');
+    this.fileTree.collapseAll(trees.gitRepos, 'category-git');
     this.fileTree.collapseAll(trees.webPages, 'category-web');
     this.renderDocuments();
   }

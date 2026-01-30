@@ -162,6 +162,7 @@ CREATE TABLE IF NOT EXISTS dynamic_config (
     
     -- Schedules
     ingestion_schedule VARCHAR(100) NOT NULL DEFAULT '',  -- Cron expression
+    source_schedules JSONB NOT NULL DEFAULT '{}'::jsonb,  -- Per-source schedules
     
     -- Logging
     verbosity INTEGER NOT NULL DEFAULT 3,
