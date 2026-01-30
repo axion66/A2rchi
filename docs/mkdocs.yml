@@ -6,8 +6,6 @@ nav:
   - User Guide: user_guide.md
   - Advanced Setup and Deployment: advanced_setup_deploy.md
   - API Reference: api_reference.md
-  - Migration Guide: migration_guide.md
-  - Grafana Migration: grafana_migration.md
   - Developer Guide: developer_guide.md
 theme: readthedocs
 repo_url: https://github.com/mit-submit/archi

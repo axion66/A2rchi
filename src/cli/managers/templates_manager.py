@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 # Template file constants
 BASE_CONFIG_TEMPLATE = "base-config.yaml"
 BASE_COMPOSE_TEMPLATE = "base-compose.yaml"
-BASE_INIT_SQL_V2_TEMPLATE = "init-v2.sql"  # PostgreSQL + pgvector consolidated schema
+BASE_INIT_SQL_TEMPLATE = "init.sql"  # PostgreSQL + pgvector schema
 BASE_GRAFANA_DATASOURCES_TEMPLATE = "grafana/datasources.yaml"
 BASE_GRAFANA_DASHBOARDS_TEMPLATE = "grafana/dashboards.yaml"
 BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE = "grafana/archi-default-dashboard.json"
@@ -380,8 +380,8 @@ class TemplateManager:
             context.secrets_manager.get_secret("GRAFANA_PG_PASSWORD") if grafana_enabled else ""
         )
         
-        # Always use init-v2.sql for PostgreSQL + pgvector consolidated storage
-        init_sql_template = self.env.get_template(BASE_INIT_SQL_V2_TEMPLATE)
+        # PostgreSQL + pgvector schema
+        init_sql_template = self.env.get_template(BASE_INIT_SQL_TEMPLATE)
         
         # Get embedding dimensions from data_manager config
         data_manager_config = context.config_manager.config.get("data_manager", {})

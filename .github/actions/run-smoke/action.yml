@@ -1,5 +1,5 @@
 name: Run Smoke Deployment
-description: Launches an A2rchi deployment and runs smoke tests.
+description: Launches an archi deployment and runs smoke tests.
 
 inputs:
   deployment-name:
@@ -18,7 +18,7 @@ inputs:
     required: false
     default: ""
   services:
-    description: Services list passed to a2rchi create.
+    description: Services list passed to archi create.
     required: false
     default: chatbot
   hostmode:

@@ -34,7 +34,7 @@ from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.utils.sql import (
     SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO,
-    SQL_INSERT_CONFIG, SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP,
+    SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP,
     SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION,
     SQL_INSERT_TOOL_CALLS, SQL_QUERY_CONVO_WITH_FEEDBACK, SQL_DELETE_REACTION_FEEDBACK,
     SQL_INSERT_AB_COMPARISON, SQL_UPDATE_AB_PREFERENCE, SQL_GET_AB_COMPARISON,
@@ -150,89 +150,66 @@ class ChatWrapper:
         self.archi = archi(pipeline=self.config["services"]["chat_app"]["pipeline"])
         self.number_of_queries = 0
 
-        # track configs and active config state
+        # track active config/model/pipeline state
         self.default_config_name = self.config.get("name")
         self.current_config_name = None
-        self.config_id = None
-        self.config_name_to_id = {}
+        self.current_model_used = None
+        self.current_pipeline_used = None
         self._config_cache = {}
         if self.default_config_name:
             self._config_cache[self.default_config_name] = self.config
 
-        # ensure all supplied configs are registered in Postgres and activate default
-        self._store_config_ids()
+        # activate default config
         if self.default_config_name:
             self.update_config(config_name=self.default_config_name)
 
-    def update_config(self, config_id=None, config_name=None):
+    def update_config(self, config_name=None):
         """
-        Update the active config by ensuring it exists in thje postgres and applying it to the pipeline.
+        Update the active config and apply it to the pipeline.
+        Tracks model_used and pipeline_used for conversation storage.
         """
         target_config_name = config_name or self.current_config_name or self.default_config_name
         if not target_config_name:
             raise ValueError("Config name must be provided to update the chat configuration.")
 
         config_payload = self._get_config_payload(target_config_name)
-        if config_id is None:
-            config_id = self._get_or_create_config_id(target_config_name, config_payload)
-        else:
-            self.config_name_to_id[target_config_name] = config_id
 
-        if self.config_id == config_id and self.current_config_name == target_config_name:
+        if self.current_config_name == target_config_name:
             return
 
         pipeline_name = config_payload["services"]["chat_app"]["pipeline"]
-        self.config_id = config_id
+        
+        # Extract the model name from the config
+        model_name = self._extract_model_name(config_payload, pipeline_name)
+        
         self.current_config_name = target_config_name
-        self.archi.update(pipeline=pipeline_name, config_name=target_config_name)
+        self.current_pipeline_used = pipeline_name
+        self.current_model_used = model_name
+        self.a2rchi.update(pipeline=pipeline_name, config_name=target_config_name)
+
+    def _extract_model_name(self, config_payload, pipeline_name):
+        """Extract the primary model name from config for a given pipeline."""
+        try:
+            pipeline_map = config_payload.get("a2rchi", {}).get("pipeline_map", {})
+            pipeline_cfg = pipeline_map.get(pipeline_name, {})
+            required_models = pipeline_cfg.get("models", {}).get("required", {})
+            
+            # Try common model keys
+            for key in ["chat_model", "agent_model", "model"]:
+                if key in required_models:
+                    return required_models[key]
+            
+            # Return first model if any exist
+            if required_models:
+                return next(iter(required_models.values()))
+        except Exception:
+            pass
+        return None
 
     def _get_config_payload(self, config_name):
         if config_name not in self._config_cache:
             self._config_cache[config_name] = load_config(name=config_name)
         return self._config_cache[config_name]
-
-    def _get_or_create_config_id(self, config_name, config_payload=None):
-        if config_name in self.config_name_to_id:
-            return self.config_name_to_id[config_name]
-
-        payload = config_payload or self._get_config_payload(config_name)
-        serialized = yaml.dump(payload)
-
-        conn = psycopg2.connect(**self.pg_config)
-        cursor = conn.cursor()
-        try:
-            cursor.execute("SELECT config_id FROM configs WHERE config_name = %s ORDER BY config_id DESC LIMIT 1", (config_name,))
-            row = cursor.fetchone()
-            if row:
-                config_id = row[0]
-            else:
-                insert_tup = [(serialized, config_name)]
-                psycopg2.extras.execute_values(cursor, SQL_INSERT_CONFIG, insert_tup)
-                config_id = list(map(lambda tup: tup[0], cursor.fetchall()))[0]
-            conn.commit()
-            self.config_name_to_id[config_name] = config_id
-            return config_id
-        finally:
-            cursor.close()
-            conn.close()
-
-    def _store_config_ids(self):
-        for config_name in get_config_names():
-            try:
-                payload = self._get_config_payload(config_name)
-                self._get_or_create_config_id(config_name, payload)
-            except FileNotFoundError:
-                logger.warning(f"Config file {config_name} missing.")
-            except Exception as exc:
-                logger.warning(f"Failed to register config {config_name}: {exc}")
-
-    def get_config_id(self, config_name):
-        """
-        Helper for external callers needing the config_id for a given config name.
-        """
-        if config_name in self.config_name_to_id:
-            return self.config_name_to_id[config_name]
-        return self._get_or_create_config_id(config_name)
 
     @staticmethod
     def convert_to_app_history(history):
@@ -963,9 +940,11 @@ class ChatWrapper:
         link = _sanitize(link)
         archi_context = _sanitize(archi_context)
 
-        # construct insert_tups
+        # construct insert_tups with model_used and pipeline_used
+        # Format: (service, conversation_id, sender, content, link, context, ts, model_used, pipeline_used)
         insert_tups = (
             [
+<<<<<<< HEAD
                 # (service, conversation_id, sender, content, context, ts)
                 (service, conversation_id, user_sender, user_content, '', '', user_msg_ts, self.config_id),
                 (service, conversation_id, archi_sender, archi_content, link, archi_context, archi_msg_ts, self.config_id),
@@ -973,6 +952,14 @@ class ChatWrapper:
             if not is_refresh
             else [
                 (service, conversation_id, archi_sender, archi_content, link, archi_context, archi_msg_ts, self.config_id),
+=======
+                (service, conversation_id, user_sender, user_content, '', '', user_msg_ts, self.current_model_used, self.current_pipeline_used),
+                (service, conversation_id, a2rchi_sender, a2rchi_content, link, a2rchi_context, a2rchi_msg_ts, self.current_model_used, self.current_pipeline_used),
+            ]
+            if not is_refresh
+            else [
+                (service, conversation_id, a2rchi_sender, a2rchi_content, link, a2rchi_context, a2rchi_msg_ts, self.current_model_used, self.current_pipeline_used),
+>>>>>>> f9f495ef349c55ffb9c07f0df211d314664e66a9
             ]
         )
 
@@ -1445,12 +1432,16 @@ class ChatWrapper:
                     yield {"type": "warning", "message": f"Using default model: {e}"}
             
             # Create trace for this streaming request
-            config_id = self._get_config_id(requested_config)
             trace_id = self.create_agent_trace(
                 conversation_id=context.conversation_id,
                 user_message_id=None,  # Will be updated at finalization
+<<<<<<< HEAD
                 config_id=config_id,
                 pipeline_name=self.archi.pipeline_name if hasattr(self.archi, 'pipeline_name') else None,
+=======
+                config_id=None,  # Legacy field, no longer used
+                pipeline_name=self.a2rchi.pipeline_name if hasattr(self.a2rchi, 'pipeline_name') else None,
+>>>>>>> f9f495ef349c55ffb9c07f0df211d314664e66a9
             )
 
             for output in self.archi.stream(history=context.history, conversation_id=context.conversation_id):
@@ -1669,19 +1660,6 @@ class ChatWrapper:
             if self.conn is not None:
                 self.conn.close()
 
-    def _get_config_id(self, config_name: str) -> Optional[int]:
-        """Get config_id from configs table by name, or None if not found."""
-        try:
-            conn = psycopg2.connect(**self.pg_config)
-            cursor = conn.cursor()
-            cursor.execute("SELECT config_id FROM configs WHERE config_name = %s", (config_name,))
-            row = cursor.fetchone()
-            cursor.close()
-            conn.close()
-            return row[0] if row else None
-        except Exception:
-            return None
-
 
 class FlaskAppWrapper(object):
 
@@ -1730,9 +1708,6 @@ class FlaskAppWrapper(object):
         
         if self.sso_enabled:
             self._setup_sso()
-
-        # insert config
-        self.config_id = self.insert_config(self.config)
 
         # create the chat from the wrapper and ensure default config is active
         self.chat = ChatWrapper()
@@ -1969,38 +1944,16 @@ class FlaskAppWrapper(object):
     def run(self, **kwargs):
         self.app.run(**kwargs)
 
-    def insert_config(self, config):
-        # TODO: use config_name (and then hash of config string) to determine
-        #       if config already exists; if so, don't push new config
-
-        # parse config and config_name
-        config_name = self.config["name"]
-        config = yaml.dump(self.config)
-
-        # construct insert_tup
-        insert_tup = [
-            (config, config_name),
-        ]
-
-        # create connection to database
-        self.conn = psycopg2.connect(**self.pg_config)
-        self.cursor = self.conn.cursor()
-        psycopg2.extras.execute_values(self.cursor, SQL_INSERT_CONFIG, insert_tup)
-        self.conn.commit()
-        config_id = list(map(lambda tup: tup[0], self.cursor.fetchall()))[0]
-
-        # clean up database connection state
-        self.cursor.close()
-        self.conn.close()
-        self.cursor, self.conn = None, None
-
-        return config_id
-
     def update_config(self):
         """
+<<<<<<< HEAD
         Updates the config used by archi for responding to messages. The config
         is parsed and inserted into the `configs` table. Finally, the chat wrapper's
         config_id is updated.
+=======
+        Updates the config used by A2rchi for responding to messages.
+        Reloads the config and updates the chat wrapper.
+>>>>>>> f9f495ef349c55ffb9c07f0df211d314664e66a9
         """
         # parse config and write it out to CONFIGS_PATH
         config_str = request.json.get('config')
@@ -2040,9 +1993,8 @@ class FlaskAppWrapper(object):
         # recreate chat wrapper so all dependent services reload the new config
         self.chat = ChatWrapper()
         self.chat.update_config(config_name=self.config["name"])
-        new_config_id = self.chat.get_config_id(self.config["name"])
 
-        return jsonify({'response': f'config updated successfully w/config_id: {new_config_id}'}), 200
+        return jsonify({'response': 'config updated successfully'}), 200
 
     def get_configs(self):
         """
@@ -2057,14 +2009,17 @@ class FlaskAppWrapper(object):
         options = []
         for name in config_names:
             description = ""
-            config_id = None
             try:
                 payload = load_config(name=name)
+<<<<<<< HEAD
                 description = payload.get("archi", {}).get("agent_description", "No description provided")
                 config_id = self.chat._get_or_create_config_id(name, payload)
+=======
+                description = payload.get("a2rchi", {}).get("agent_description", "No description provided")
+>>>>>>> f9f495ef349c55ffb9c07f0df211d314664e66a9
             except Exception as exc:
                 logger.warning(f"Failed to load config {name} for description: {exc}")
-            options.append({"name": name, "description": description, "id": config_id})
+            options.append({"name": name, "description": description})
         return jsonify({'options': options}), 200
 
     def get_providers(self):

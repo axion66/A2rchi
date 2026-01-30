@@ -37,7 +37,7 @@ from src.data_manager.data_manager import DataManager
 from src.utils.yaml_config import CONFIGS_PATH, load_yaml_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
-from src.utils.sql import (SQL_INSERT_CONFIG, SQL_INSERT_CONVO,
+from src.utils.sql import (SQL_INSERT_CONVO,
                            SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING,
                            SQL_QUERY_CONVO)
 
@@ -181,8 +181,9 @@ class FlaskAppWrapper(object):
         self.conn = None
         self.cursor = None
 
-        # insert config
-        self.config_id = self.insert_config(self.config)
+        # track current model and pipeline for conversation logging
+        self.current_model_used = self._extract_model_name()
+        self.current_pipeline_used = "GradingPipeline"
 
         # WRAPPERS 
         self.image_processor = ImageToTextWrapper()
@@ -717,32 +718,22 @@ class FlaskAppWrapper(object):
         self.app.run(**kwargs)
 
 
-    def insert_config(self, config):
-        # TODO: use config_name (and then hash of config string) to determine
-        #       if config already exists; if so, don't push new config
+    def _extract_model_name(self):
+        """Extract model name from config for conversation logging."""
+        try:
+            # Navigate through config to find the model being used
+            pipelines_config = self.config.get("pipelines", {})
+            grading_pipeline = pipelines_config.get("GradingPipeline", {})
+            models = grading_pipeline.get("models", [])
+            if models and len(models) > 0:
+                first_model = models[0]
+                if isinstance(first_model, dict):
+                    return first_model.get("name", "unknown")
+                return str(first_model)
+        except Exception:
+            pass
+        return "unknown"
 
-        # parse config and config_name
-        config_name = self.config["name"]
-        config = yaml.dump(self.config)
-
-        # construct insert_tup
-        insert_tup = [
-            (config, config_name),
-        ]
-
-        # create connection to database
-        self.conn = psycopg2.connect(**self.pg_config)
-        self.cursor = self.conn.cursor()
-        psycopg2.extras.execute_values(self.cursor, SQL_INSERT_CONFIG, insert_tup)
-        self.conn.commit()
-        config_id = list(map(lambda tup: tup[0], self.cursor.fetchall()))[0]
-
-        # clean up database connection state
-        self.cursor.close()
-        self.conn.close()
-        self.cursor, self.conn = None, None
-
-        return config_id
 
     def get_device_flags(self):
         is_mobile = "iphone" in request.user_agent.string.lower()

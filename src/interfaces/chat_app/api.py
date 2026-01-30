@@ -1,5 +1,5 @@
 """
-V2 API Blueprint - PostgreSQL-consolidated endpoints.
+API Blueprint - PostgreSQL-consolidated endpoints.
 
 Provides REST API endpoints for:
 - User management (preferences, BYOK API keys)
@@ -22,7 +22,7 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 # Create blueprint
-api_v2 = Blueprint('api_v2', __name__, url_prefix='/api/v2')
+api = Blueprint('api', __name__, url_prefix='/api')
 
 
 def get_services() -> PostgresServiceFactory:
@@ -86,7 +86,7 @@ def require_client_id(f):
 # User Endpoints
 # =============================================================================
 
-@api_v2.route('/users/me', methods=['GET'])
+@api.route('/users/me', methods=['GET'])
 @require_client_id
 def get_current_user():
     """
@@ -121,7 +121,7 @@ def get_current_user():
         return jsonify({'error': str(e)}), 500
 
 
-@api_v2.route('/users/me/preferences', methods=['PATCH'])
+@api.route('/users/me/preferences', methods=['PATCH'])
 @require_client_id
 def update_user_preferences():
     """
@@ -171,7 +171,7 @@ def update_user_preferences():
         return jsonify({'error': str(e)}), 500
 
 
-@api_v2.route('/users/me/api-keys/<provider>', methods=['PUT'])
+@api.route('/users/me/api-keys/<provider>', methods=['PUT'])
 @require_client_id
 def set_api_key(provider: str):
     """
@@ -214,7 +214,7 @@ def set_api_key(provider: str):
         return jsonify({'error': str(e)}), 500
 
 
-@api_v2.route('/users/me/api-keys/<provider>', methods=['DELETE'])
+@api.route('/users/me/api-keys/<provider>', methods=['DELETE'])
 @require_client_id
 def delete_api_key(provider: str):
     """
@@ -252,7 +252,7 @@ def delete_api_key(provider: str):
 # Configuration Endpoints
 # =============================================================================
 
-@api_v2.route('/config/static', methods=['GET'])
+@api.route('/config/static', methods=['GET'])
 def get_static_config():
     """
     Get static (deploy-time) configuration.
@@ -289,7 +289,7 @@ def get_static_config():
         return jsonify({'error': str(e)}), 500
 
 
-@api_v2.route('/config/dynamic', methods=['GET'])
+@api.route('/config/dynamic', methods=['GET'])
 def get_dynamic_config():
     """
     Get dynamic (runtime) configuration.
@@ -331,7 +331,7 @@ def get_dynamic_config():
         return jsonify({'error': str(e)}), 500
 
 
-@api_v2.route('/config/dynamic', methods=['PATCH'])
+@api.route('/config/dynamic', methods=['PATCH'])
 @require_client_id
 def update_dynamic_config():
     """
@@ -415,7 +415,7 @@ def update_dynamic_config():
         return jsonify({'error': str(e)}), 500
 
 
-@api_v2.route('/config/effective', methods=['GET'])
+@api.route('/config/effective', methods=['GET'])
 @require_client_id
 def get_effective_config():
     """
@@ -435,7 +435,7 @@ def get_effective_config():
         return jsonify({'error': str(e)}), 500
 
 
-@api_v2.route('/config/audit', methods=['GET'])
+@api.route('/config/audit', methods=['GET'])
 @require_client_id
 def get_config_audit():
     """
@@ -477,7 +477,7 @@ def get_config_audit():
 # Document Selection Endpoints
 # =============================================================================
 
-@api_v2.route('/documents/selection', methods=['GET'])
+@api.route('/documents/selection', methods=['GET'])
 @require_client_id
 def get_document_selection():
     """
@@ -511,7 +511,7 @@ def get_document_selection():
         return jsonify({'error': str(e)}), 500
 
 
-@api_v2.route('/documents/user-defaults', methods=['PUT'])
+@api.route('/documents/user-defaults', methods=['PUT'])
 @require_client_id
 def set_user_document_default():
     """
@@ -552,7 +552,7 @@ def set_user_document_default():
         return jsonify({'error': str(e)}), 500
 
 
-@api_v2.route('/documents/conversation-override', methods=['PUT'])
+@api.route('/documents/conversation-override', methods=['PUT'])
 @require_client_id
 def set_conversation_document_override():
     """
@@ -598,7 +598,7 @@ def set_conversation_document_override():
         return jsonify({'error': str(e)}), 500
 
 
-@api_v2.route('/documents/conversation-override', methods=['DELETE'])
+@api.route('/documents/conversation-override', methods=['DELETE'])
 @require_client_id
 def clear_conversation_document_override():
     """
@@ -642,7 +642,7 @@ def clear_conversation_document_override():
 # Analytics Endpoints
 # =============================================================================
 
-@api_v2.route('/analytics/model-usage', methods=['GET'])
+@api.route('/analytics/model-usage', methods=['GET'])
 def get_model_usage_stats():
     """
     Get model usage statistics.
@@ -689,7 +689,7 @@ def get_model_usage_stats():
         return jsonify({'error': str(e)}), 500
 
 
-@api_v2.route('/analytics/ab-comparisons', methods=['GET'])
+@api.route('/analytics/ab-comparisons', methods=['GET'])
 def get_ab_comparison_stats():
     """
     Get A/B comparison statistics.
@@ -744,7 +744,7 @@ def get_ab_comparison_stats():
 # Prompts Endpoints
 # =============================================================================
 
-@api_v2.route('/prompts', methods=['GET'])
+@api.route('/prompts', methods=['GET'])
 def list_prompts():
     """
     List all available prompts by type.
@@ -772,7 +772,7 @@ def list_prompts():
         return jsonify({'error': str(e)}), 500
 
 
-@api_v2.route('/prompts/<prompt_type>', methods=['GET'])
+@api.route('/prompts/<prompt_type>', methods=['GET'])
 def list_prompts_by_type(prompt_type: str):
     """
     List prompts of a specific type.
@@ -809,7 +809,7 @@ def list_prompts_by_type(prompt_type: str):
         return jsonify({'error': str(e)}), 500
 
 
-@api_v2.route('/prompts/<prompt_type>/<name>', methods=['GET'])
+@api.route('/prompts/<prompt_type>/<name>', methods=['GET'])
 def get_prompt_content(prompt_type: str, name: str):
     """
     Get the content of a specific prompt.
@@ -852,7 +852,7 @@ def get_prompt_content(prompt_type: str, name: str):
         return jsonify({'error': str(e)}), 500
 
 
-@api_v2.route('/prompts/reload', methods=['POST'])
+@api.route('/prompts/reload', methods=['POST'])
 @require_client_id
 def reload_prompts():
     """
@@ -892,7 +892,7 @@ def reload_prompts():
 # Health & Info Endpoints
 # =============================================================================
 
-@api_v2.route('/health', methods=['GET'])
+@api.route('/health', methods=['GET'])
 def health_check():
     """
     Health check endpoint.
@@ -924,7 +924,7 @@ def health_check():
         }), 503
 
 
-@api_v2.route('/info', methods=['GET'])
+@api.route('/info', methods=['GET'])
 def get_api_info():
     """
     Get API version and capabilities info.
@@ -953,13 +953,13 @@ def get_api_info():
     }), 200
 
 
-def register_v2_api(app):
+def register_api(app):
     """
-    Register the V2 API blueprint with a Flask app.
+    Register the API blueprint with a Flask app.
     
     Usage:
-        from src.interfaces.chat_app.api_v2 import register_v2_api
-        register_v2_api(app)
+        from src.interfaces.chat_app.api import register_api
+        register_api(app)
     """
-    app.register_blueprint(api_v2)
-    logger.info("Registered V2 API blueprint at /api/v2")
+    app.register_blueprint(api)
+    logger.info("Registered API blueprint at /api")

@@ -265,6 +265,30 @@ The GUI will then allow you to upload documents while A2RCHI is still running. N
 
 The documents used for RAG live in the chat container at `/root/data/<directory>/<files>`. Thus, in a pinch, you can `docker/podman cp` a file at this directory level, e.g., `podman/docker cp myfile.pdf <container name or ID>:/root/data/<new_dir>/`. If you need to make a new directory in the container, you can do `podman exec -it <container name or ID> mkdir /root/data/<new_dir>`.
 
+#### Data Viewer
+
+The chat interface includes a built-in Data Viewer for browsing and managing ingested documents. Access it at `/data` on your chat app (e.g., `http://localhost:7861/data`).
+
+**Features:**
+
+- **Browse documents**: View all ingested documents with metadata (source, file type, chunk count)
+- **Search and filter**: Filter documents by name or source type
+- **View content**: Click on a document to see its full content and individual chunks
+- **Enable/disable documents**: Toggle whether specific documents are included in RAG retrieval
+- **Bulk operations**: Enable or disable multiple documents at once
+
+**Document States:**
+
+| State | Description |
+|-------|-------------|
+| Enabled | Document chunks are included in retrieval (default) |
+| Disabled | Document is excluded from retrieval but remains in the database |
+
+Disabling documents is useful for:
+- Temporarily excluding outdated content
+- Testing retrieval with specific document subsets
+- Hiding sensitive documents from certain users
+
 ---
 
 ### Redmine
@@ -855,22 +879,6 @@ Required secrets for PostgreSQL:
 ```bash
 PG_PASSWORD=your_secure_password
 ```
-
-### Migrating from Legacy Backends
-
-If you have an existing deployment using ChromaDB (from older archi versions), you can migrate your data to PostgreSQL:
-
-```bash
-archi migrate --name your-deployment --source chromadb
-```
-
-This command:
-1. Analyzes your existing ChromaDB data
-2. Exports embeddings and metadata
-3. Imports into the PostgreSQL vector store with pgvector
-4. Verifies the migration
-
-> **Note:** ChromaDB support has been removed in current versions. The migration command is retained for users upgrading from older deployments.
 
 ---
 
