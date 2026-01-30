@@ -8,7 +8,9 @@ authors = [
     {name="Julius Heitkoetter", email="juliush@mit.edu"},
     {name="Tim Kraska", email="kraska@mit.edu"},
     {name="Christoph Paus", email="paus@mit.edu"},
-    {name="Matthew Russo", email="mdrusso@mit.edu"}
+    {name="Matthew Russo", email="mdrusso@mit.edu"},
+    {name="Luca Lavezzo", email="lavezzo@mit.edu"},
+    {name="Jason Mohoney", email="mohoney@mit.edu"}
 ]
 dependencies = [
     "pyyaml==6.0.1",
@@ -44,4 +46,4 @@ requires = ["setuptools>=61.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project.urls]
-"Homepage" = "https://github.com/mit-submit/archi"
+"Homepage" = "https://github.com/archi-physics/archi"
