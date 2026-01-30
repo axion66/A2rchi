@@ -324,18 +324,6 @@ dm = (cfg.get("services") or {}).get("data_manager") or {}
 print(dm.get("external_port") or dm.get("port") or 7871)
 PY
 )"
-export CHROMA_URL="http://localhost:$(RENDERED_CONFIG="${RENDERED_CONFIG}" python - <<'PY'
-import os
-import yaml
-
-rendered = os.environ.get("RENDERED_CONFIG")
-with open(rendered, "r", encoding="utf-8") as handle:
-    cfg = yaml.safe_load(handle) or {}
-chromadb = (cfg.get("services") or {}).get("chromadb") or {}
-print(chromadb.get("external_port") or chromadb.get("port") or 8000)
-PY
-)"
-
 export OLLAMA_URL="$(RENDERED_CONFIG="${RENDERED_CONFIG}" python - <<'PY'
 import os
 import yaml

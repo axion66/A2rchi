@@ -142,7 +142,7 @@ class ConversationService:
                 ]
                 result = execute_values(
                     cur,
-                    SQL_INSERT_CONVO_V2,
+                    SQL_INSERT_CONVO,
                     values,
                     fetch=True
                 )
@@ -289,7 +289,7 @@ class ConversationService:
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    SQL_INSERT_AB_COMPARISON_V2,
+                    SQL_INSERT_AB_COMPARISON,
                     (
                         conversation_id,
                         user_prompt_mid,
@@ -353,7 +353,7 @@ class ConversationService:
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute(SQL_GET_AB_COMPARISON_V2, (comparison_id,))
+                cur.execute(SQL_GET_AB_COMPARISON, (comparison_id,))
                 row = cur.fetchone()
                 
                 if not row:
@@ -393,7 +393,7 @@ class ConversationService:
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute(SQL_GET_PENDING_AB_COMPARISON_V2, (conversation_id,))
+                cur.execute(SQL_GET_PENDING_AB_COMPARISON, (conversation_id,))
                 row = cur.fetchone()
                 
                 if not row:
@@ -434,7 +434,7 @@ class ConversationService:
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    SQL_GET_AB_COMPARISONS_BY_CONVERSATION_V2,
+                    SQL_GET_AB_COMPARISONS_BY_CONVERSATION,
                     (conversation_id,)
                 )
                 rows = cur.fetchall()

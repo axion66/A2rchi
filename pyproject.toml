@@ -27,12 +27,6 @@ dependencies = [
     "psycopg2-binary==2.9.10"
 ]
 
-[project.optional-dependencies]
-chromadb = [
-    "chromadb>=1.0.0",
-    "langchain-chroma>=1.0.0"
-]
-
 [project.scripts]
 archi = "src.cli.cli_main:main"
 
