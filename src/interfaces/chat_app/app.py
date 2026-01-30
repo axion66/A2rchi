@@ -944,22 +944,12 @@ class ChatWrapper:
         # Format: (service, conversation_id, sender, content, link, context, ts, model_used, pipeline_used)
         insert_tups = (
             [
-<<<<<<< HEAD
-                # (service, conversation_id, sender, content, context, ts)
-                (service, conversation_id, user_sender, user_content, '', '', user_msg_ts, self.config_id),
-                (service, conversation_id, archi_sender, archi_content, link, archi_context, archi_msg_ts, self.config_id),
-            ]
-            if not is_refresh
-            else [
-                (service, conversation_id, archi_sender, archi_content, link, archi_context, archi_msg_ts, self.config_id),
-=======
                 (service, conversation_id, user_sender, user_content, '', '', user_msg_ts, self.current_model_used, self.current_pipeline_used),
-                (service, conversation_id, a2rchi_sender, a2rchi_content, link, a2rchi_context, a2rchi_msg_ts, self.current_model_used, self.current_pipeline_used),
+                (service, conversation_id, archi_sender, archi_content, link, archi_context, archi_msg_ts, self.current_model_used, self.current_pipeline_used),
             ]
             if not is_refresh
             else [
-                (service, conversation_id, a2rchi_sender, a2rchi_content, link, a2rchi_context, a2rchi_msg_ts, self.current_model_used, self.current_pipeline_used),
->>>>>>> f9f495ef349c55ffb9c07f0df211d314664e66a9
+                (service, conversation_id, archi_sender, archi_content, link, archi_context, a2rchi_msg_ts, self.current_model_used, self.current_pipeline_used),
             ]
         )
 
@@ -1435,13 +1425,8 @@ class ChatWrapper:
             trace_id = self.create_agent_trace(
                 conversation_id=context.conversation_id,
                 user_message_id=None,  # Will be updated at finalization
-<<<<<<< HEAD
-                config_id=config_id,
-                pipeline_name=self.archi.pipeline_name if hasattr(self.archi, 'pipeline_name') else None,
-=======
                 config_id=None,  # Legacy field, no longer used
-                pipeline_name=self.a2rchi.pipeline_name if hasattr(self.a2rchi, 'pipeline_name') else None,
->>>>>>> f9f495ef349c55ffb9c07f0df211d314664e66a9
+                pipeline_name=self.archi.pipeline_name if hasattr(self.archi, 'pipeline_name') else None,
             )
 
             for output in self.archi.stream(history=context.history, conversation_id=context.conversation_id):
@@ -1946,14 +1931,8 @@ class FlaskAppWrapper(object):
 
     def update_config(self):
         """
-<<<<<<< HEAD
-        Updates the config used by archi for responding to messages. The config
-        is parsed and inserted into the `configs` table. Finally, the chat wrapper's
-        config_id is updated.
-=======
         Updates the config used by A2rchi for responding to messages.
         Reloads the config and updates the chat wrapper.
->>>>>>> f9f495ef349c55ffb9c07f0df211d314664e66a9
         """
         # parse config and write it out to CONFIGS_PATH
         config_str = request.json.get('config')
@@ -2011,12 +1990,7 @@ class FlaskAppWrapper(object):
             description = ""
             try:
                 payload = load_config(name=name)
-<<<<<<< HEAD
                 description = payload.get("archi", {}).get("agent_description", "No description provided")
-                config_id = self.chat._get_or_create_config_id(name, payload)
-=======
-                description = payload.get("a2rchi", {}).get("agent_description", "No description provided")
->>>>>>> f9f495ef349c55ffb9c07f0df211d314664e66a9
             except Exception as exc:
                 logger.warning(f"Failed to load config {name} for description: {exc}")
             options.append({"name": name, "description": description})

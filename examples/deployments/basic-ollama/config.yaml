@@ -1,4 +1,4 @@
-# Basic configuration file for a A2RCHI deployment
+# Basic configuration file for a Archi deployment
 # with a chat app interface, a QA pipeline, and
 # PostgreSQL with pgvector for document storage.
 # The LLM is used through an existing Ollama server.
@@ -10,6 +10,7 @@ name: my_archi
 
 services:
   chat_app:
+    pipeline: CMSCompOpsAgent
     trained_on: "My data"
     port: 7869
     external_port: 7869
@@ -35,11 +36,10 @@ archi:
     CMSCompOpsAgent:
       prompts:
         required:
-          agent_prompt: examples/deployments/basic-ollama/qa.prompt
+          agent_prompt: examples/deployments/basic-ollama/agent.prompt
       models:
         required:
           chat_model: OllamaInterface
-          condense_model: OllamaInterface
   model_class_map:
     OllamaInterface:
       kwargs:
