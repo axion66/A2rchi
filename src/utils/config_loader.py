@@ -34,8 +34,7 @@ def load_config(map: bool = False, name: str = None):
         
         MODEL_MAPPING = {
             "AnthropicLLM": AnthropicLLM,
-            "OpenAIGPT4": OpenAILLM,
-            "OpenAIGPT35": OpenAILLM,
+            "OpenAILLM": OpenAILLM,
             "OpenRouterLLM": OpenRouterLLM,
             "DumbLLM": DumbLLM,
             "LlamaLLM": LlamaLLM,

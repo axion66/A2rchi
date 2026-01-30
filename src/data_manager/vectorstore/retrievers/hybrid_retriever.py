@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 
 class HybridRetriever(BaseRetriever):
     """
-    Hybrid retriever that combines BM25 (lexical) and ChromaDB (semantic) search.
+    Hybrid retriever that combines BM25 (lexical) and semantic vector search.
     """
     vectorstore: VectorStore
     k: int

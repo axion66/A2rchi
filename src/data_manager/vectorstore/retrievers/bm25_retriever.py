@@ -82,48 +82,29 @@ class BM25LexicalRetriever(BaseRetriever):
     def _get_all_documents_from_vectorstore(self) -> List[Document]:
         """
         Get all documents from the vectorstore to build BM25 corpus.
-        Uses ChromaDB's collection.get() method to retrieve all documents.
+        Supports PostgresVectorStore via get_all_documents() method.
         """
         try:
-            if hasattr(self.vectorstore, "_collection"):
-                collection = self.vectorstore._collection
-            elif hasattr(self.vectorstore, "collection"):
-                collection = self.vectorstore.collection
-            else:
-                logger.warning("Could not access ChromaDB collection directly")
-                return []
-
-            if hasattr(collection, "get"):
-                results = collection.get()
-                if results and "documents" in results and results["documents"]:
-                    documents = []
-                    for i, doc_content in enumerate(results["documents"]):
-                        metadata: Dict[str, Any] = {}
-                        if (
-                            "metadatas" in results
-                            and results["metadatas"]
-                            and i < len(results["metadatas"])
-                        ):
-                            metadata = results["metadatas"][i] or {}
-
-                        documents.append(
-                            Document(
-                                page_content=doc_content,
-                                metadata=metadata,
-                            )
-                        )
-
+            # Try PostgresVectorStore's get_all_documents method first
+            if hasattr(self.vectorstore, "get_all_documents"):
+                documents = self.vectorstore.get_all_documents()
+                if documents:
                     logger.debug("Retrieved %s documents for BM25 corpus", len(documents))
                     return documents
-
-                logger.warning("No documents found in ChromaDB collection")
+                logger.warning("No documents found in vectorstore")
                 return []
 
-            logger.warning("ChromaDB collection does not have 'get' method")
+            # Fallback for other vectorstore types with similarity_search
+            if hasattr(self.vectorstore, "similarity_search"):
+                # Use a broad search to get documents
+                logger.warning("Vectorstore does not support get_all_documents, BM25 may be incomplete")
+                return []
+
+            logger.warning("Vectorstore does not support document retrieval for BM25")
             return []
 
         except Exception as exc:
-            logger.error("Error getting documents from ChromaDB: %s", exc)
+            logger.error("Error getting documents from vectorstore: %s", exc)
         return []
 
     def _get_relevant_documents(

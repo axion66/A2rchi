@@ -1,31 +1,16 @@
 """SQL queries used by A2rchi"""
 
-# Legacy query (uses conf_id foreign key to configs table)
-SQL_INSERT_CONVO = """
-INSERT INTO conversations (
-    a2rchi_service, conversation_id, sender, content, link, context, ts, conf_id
-)
-VALUES %s
-RETURNING message_id;
-"""
+# =============================================================================
+# Conversation Queries
+# =============================================================================
 
-# V2 query: stores model/pipeline directly (no configs table dependency)
-SQL_INSERT_CONVO_V2 = """
+SQL_INSERT_CONVO = """
 INSERT INTO conversations (
     a2rchi_service, conversation_id, sender, content, link, context, ts,
     model_used, pipeline_used
 )
 VALUES %s
 RETURNING message_id;
-"""
-
-# Legacy query (kept for backward compatibility)
-SQL_INSERT_CONFIG = """
-INSERT INTO configs (
-    config, config_name
-)
-VALUES %s
-RETURNING config_id;
 """
 
 SQL_INSERT_FEEDBACK = """
@@ -92,6 +77,10 @@ INSERT INTO timing (
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
 """
 
+# =============================================================================
+# Conversation Metadata Queries
+# =============================================================================
+
 SQL_CREATE_CONVERSATION = """
 INSERT INTO conversation_metadata (
     title, created_at, last_message_at, client_id, a2rchi_version
@@ -134,6 +123,10 @@ DELETE FROM conversation_metadata
 WHERE conversation_id = %s AND client_id = %s;
 """
 
+# =============================================================================
+# Tool Calls Queries
+# =============================================================================
+
 SQL_INSERT_TOOL_CALLS = """
 INSERT INTO agent_tool_calls (
     conversation_id, message_id, step_number, tool_name, tool_args, tool_result, ts
@@ -149,20 +142,10 @@ ORDER BY step_number ASC;
 """
 
 # =============================================================================
-# A/B Comparison Queries (Legacy - uses config_a_id/config_b_id)
+# A/B Comparison Queries
 # =============================================================================
 
 SQL_INSERT_AB_COMPARISON = """
-INSERT INTO ab_comparisons (
-    conversation_id, user_prompt_mid, response_a_mid, response_b_mid, 
-    config_a_id, config_b_id, is_config_a_first
-)
-VALUES (%s, %s, %s, %s, %s, %s, %s)
-RETURNING comparison_id;
-"""
-
-# V2: stores model/pipeline directly (no config foreign keys)
-SQL_INSERT_AB_COMPARISON_V2 = """
 INSERT INTO ab_comparisons (
     conversation_id, user_prompt_mid, response_a_mid, response_b_mid, 
     model_a, pipeline_a, model_b, pipeline_b, is_config_a_first
@@ -179,14 +162,6 @@ WHERE comparison_id = %s;
 
 SQL_GET_AB_COMPARISON = """
 SELECT comparison_id, conversation_id, user_prompt_mid, response_a_mid, response_b_mid,
-       config_a_id, config_b_id, is_config_a_first, preference, preference_ts, created_at
-FROM ab_comparisons
-WHERE comparison_id = %s;
-"""
-
-# V2: includes model/pipeline columns
-SQL_GET_AB_COMPARISON_V2 = """
-SELECT comparison_id, conversation_id, user_prompt_mid, response_a_mid, response_b_mid,
        model_a, pipeline_a, model_b, pipeline_b, 
        is_config_a_first, preference, preference_ts, created_at
 FROM ab_comparisons
@@ -194,16 +169,6 @@ WHERE comparison_id = %s;
 """
 
 SQL_GET_PENDING_AB_COMPARISON = """
-SELECT comparison_id, conversation_id, user_prompt_mid, response_a_mid, response_b_mid,
-       config_a_id, config_b_id, is_config_a_first, preference, preference_ts, created_at
-FROM ab_comparisons
-WHERE conversation_id = %s AND preference IS NULL
-ORDER BY created_at DESC
-LIMIT 1;
-"""
-
-# V2: includes model/pipeline columns
-SQL_GET_PENDING_AB_COMPARISON_V2 = """
 SELECT comparison_id, conversation_id, user_prompt_mid, response_a_mid, response_b_mid,
        model_a, pipeline_a, model_b, pipeline_b,
        is_config_a_first, preference, preference_ts, created_at
@@ -219,15 +184,6 @@ WHERE comparison_id = %s;
 """
 
 SQL_GET_AB_COMPARISONS_BY_CONVERSATION = """
-SELECT comparison_id, conversation_id, user_prompt_mid, response_a_mid, response_b_mid,
-       config_a_id, config_b_id, is_config_a_first, preference, preference_ts, created_at
-FROM ab_comparisons
-WHERE conversation_id = %s
-ORDER BY created_at ASC;
-"""
-
-# V2: includes model/pipeline columns
-SQL_GET_AB_COMPARISONS_BY_CONVERSATION_V2 = """
 SELECT comparison_id, conversation_id, user_prompt_mid, response_a_mid, response_b_mid,
        model_a, pipeline_a, model_b, pipeline_b,
        is_config_a_first, preference, preference_ts, created_at

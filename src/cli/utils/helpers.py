@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 TEMPLATE_COMPARISON_PATHS = (
     "base-config.yaml",
     "base-compose.yaml",
-    "init-v2.sql",  # PostgreSQL + pgvector consolidated schema
+    "init.sql",  # PostgreSQL + pgvector schema
     "grafana/datasources.yaml",
     "grafana/dashboards.yaml",
     "grafana/a2rchi-default-dashboard.json",

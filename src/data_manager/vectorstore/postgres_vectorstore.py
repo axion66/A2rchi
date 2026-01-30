@@ -1,7 +1,6 @@
 """
 PostgresVectorStore - A LangChain-compatible vector store using PostgreSQL + pgvector.
 
-This replaces ChromaDB for vector similarity search in A2rchi.
 Implements the langchain_core.vectorstores.VectorStore interface.
 """
 

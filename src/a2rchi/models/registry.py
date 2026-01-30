@@ -59,8 +59,6 @@ class ModelRegistry:
             "LlamaLLM": LlamaLLM,
             "OllamaInterface": OllamaInterface,
             "OpenAILLM": OpenAILLM,
-            "OpenAIGPT4": OpenAILLM,      # Alias for backward compat
-            "OpenAIGPT35": OpenAILLM,     # Alias for backward compat
             "OpenRouterLLM": OpenRouterLLM,
             "VLLM": VLLM,
         }

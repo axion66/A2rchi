@@ -278,16 +278,11 @@ a2rchi:
       kwargs:
         model_name: {{ a2rchi.model_class_map.AnthropicLLM.kwargs.model_name | default('claude-3-opus-20240229', true) }}
         temperature: {{ a2rchi.model_class_map.AnthropicLLM.kwargs.temperature | default(1, true) }}
-    OpenAIGPT4:
+    OpenAILLM:
       class: OpenAILLM
       kwargs:
-        model_name: {{ a2rchi.model_class_map.OpenAIGPT4.kwargs.model_name | default('gpt-4', true) }}
-        temperature: {{ a2rchi.model_class_map.OpenAIGPT4.kwargs.temperature | default(1, true) }}
-    OpenAIGPT35:
-      class: OpenAILLM
-      kwargs:
-        model_name: {{ a2rchi.model_class_map.OpenAIGPT35.kwargs.model_name | default('gpt-3.5-turbo', true) }}
-        temperature: {{ a2rchi.model_class_map.OpenAIGPT35.kwargs.temperature | default(1, true) }}
+        model_name: {{ a2rchi.model_class_map.OpenAILLM.kwargs.model_name | default('gpt-4o', true) }}
+        temperature: {{ a2rchi.model_class_map.OpenAILLM.kwargs.temperature | default(1, true) }}
     DumbLLM:
       class: DumbLLM
       kwargs:

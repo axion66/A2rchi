@@ -20,8 +20,8 @@ a2rchi:
           chat_prompt: configs/prompts/submit.prompt  
       models:
         required:
-          chat_model: OpenAIGPT4
-          condense_model: OpenAIGPT4
+          chat_model: OpenAILLM
+          condense_model: OpenAILLM
 
 
 services:
