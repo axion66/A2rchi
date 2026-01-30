@@ -7,7 +7,7 @@ Deploy your first instance of A2RCHI and walk through the important concepts.
 A2RCHI can ingest data from a variety of **sources** and supports several **services**. List them with the CLI command below and decide which ones you want to use so that we can configure them.
 
 ```bash
-a2rchi list-services
+archi list-services
 ```
 
 Example output:
@@ -52,7 +52,7 @@ Once you have chosen the services, sources, and pipelines you want to use, creat
 Example configuration (`examples/deployments/basic-gpu/config.yaml`) for the `chatbot` service using `QAPipeline` with a local VLLM model:
 
 ```yaml
-name: my_a2rchi
+name: my_archi
 
 data_manager:
   sources:
@@ -63,7 +63,7 @@ data_manager:
   embedding_name: HuggingFaceEmbeddings
   chunk_size: 1000
 
-a2rchi:
+archi:
   pipelines:
     - QAPipeline
   pipeline_map:
@@ -103,7 +103,7 @@ services:
   - `sources.<name>.visible`: Controls whether content from a given source should be surfaced to end users (defaults to `true`).
   - `embedding_name`: Embedding model used for vectorization.
   - `chunk_size`: Controls how documents are split prior to embedding.
-- `a2rchi`: Core pipeline settings.
+- `archi`: Core pipeline settings.
   - `pipelines`: Pipelines to use (e.g., `QAPipeline`).
   - `pipeline_map`: Configuration for each pipeline, including prompts and models.
   - `model_class_map`: Mapping of model names to their classes and parameters.
@@ -143,7 +143,7 @@ Other services may require additional secrets; see the [User Guide](user_guide.m
 Create your deployment with the CLI:
 
 ```bash
-a2rchi create --name my-a2rchi --config examples/deployments/basic-gpu/config.yaml --podman --env-file .secrets.env --services chatbot --gpu-ids all
+archi create --name my-archi --config examples/deployments/basic-gpu/config.yaml --podman --env-file .secrets.env --services chatbot --gpu-ids all
 ```
 
 This command specifies:
@@ -160,25 +160,25 @@ Note that this command will create a deployment using only the link sources spec
 <summary>Example output</summary>
 
 ```bash
-a2rchi create --name my-a2rchi --config examples/deployments/basic-gpu/config.yaml --podman --env-file .secrets.env --services chatbot --gpu-ids all
+archi create --name my-archi --config examples/deployments/basic-gpu/config.yaml --podman --env-file .secrets.env --services chatbot --gpu-ids all
 ```
 
 ```
 Starting A2RCHI deployment process...
-[a2rchi] Creating deployment 'my-a2rchi' with services: chatbot
-[a2rchi] Auto-enabling dependencies: postgres
-[a2rchi] Configuration validated successfully
-[a2rchi] You are using an embedding model from HuggingFace; make sure to include a HuggingFace token if required for usage, it won't be explicitly enforced
-[a2rchi] Required secrets validated: PG_PASSWORD
-[a2rchi] Volume 'a2rchi-pg-my-a2rchi' already exists. No action needed.
-[a2rchi] Volume 'a2rchi-my-a2rchi' already exists. No action needed.
-[a2rchi] Starting compose deployment from /path/to/my/.a2rchi/a2rchi-my-a2rchi
-[a2rchi] Using compose file: /path/to/my/.a2rchi/a2rchi-my-a2rchi/compose.yaml
-[a2rchi] (This might take a minute...)
-[a2rchi] Deployment started successfully
-A2RCHI deployment 'my-a2rchi' created successfully!
+[archi] Creating deployment 'my-archi' with services: chatbot
+[archi] Auto-enabling dependencies: postgres
+[archi] Configuration validated successfully
+[archi] You are using an embedding model from HuggingFace; make sure to include a HuggingFace token if required for usage, it won't be explicitly enforced
+[archi] Required secrets validated: PG_PASSWORD
+[archi] Volume 'archi-pg-my-archi' already exists. No action needed.
+[archi] Volume 'archi-my-archi' already exists. No action needed.
+[archi] Starting compose deployment from /path/to/my/.archi/archi-my-archi
+[archi] Using compose file: /path/to/my/.archi/archi-my-archi/compose.yaml
+[archi] (This might take a minute...)
+[archi] Deployment started successfully
+A2RCHI deployment 'my-archi' created successfully!
 Services running: chatbot, postgres
-[a2rchi] Chatbot: http://localhost:7861
+[archi] Chatbot: http://localhost:7861
 ```
 
 </details>
@@ -196,7 +196,7 @@ When multiple configuration files are passed, their `services` sections must rem
 List running deployments with:
 
 ```bash
-a2rchi list-deployments
+archi list-deployments
 ```
 
 You should see output similar to:

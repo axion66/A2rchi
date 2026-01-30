@@ -38,7 +38,7 @@ class StaticConfig:
     distance_metric: str
     
     # Paths with defaults
-    prompts_path: str = "/root/A2rchi/data/prompts/"
+    prompts_path: str = "/root/archi/data/prompts/"
     
     # Available options
     available_pipelines: List[str] = field(default_factory=list)
@@ -186,7 +186,7 @@ class ConfigService:
                     deployment_name=row["deployment_name"],
                     config_version=row["config_version"],
                     data_path=row["data_path"],
-                    prompts_path=row.get("prompts_path", "/root/A2rchi/data/prompts/"),
+                    prompts_path=row.get("prompts_path", "/root/archi/data/prompts/"),
                     embedding_model=row["embedding_model"],
                     embedding_dimensions=row["embedding_dimensions"],
                     chunk_size=row["chunk_size"],
@@ -688,11 +688,11 @@ class ConfigService:
             )
         
         # Get available models from model_class_map
-        model_class_map = config.get("a2rchi", {}).get("model_class_map", {})
+        model_class_map = config.get("archi", {}).get("model_class_map", {})
         available_models = list(model_class_map.keys())
         
         # Get available pipelines
-        available_pipelines = config.get("a2rchi", {}).get("pipelines", [])
+        available_pipelines = config.get("archi", {}).get("pipelines", [])
         
         # Initialize static config (uses UPSERT - won't fail if exists)
         self.initialize_static_config(

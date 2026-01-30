@@ -1,7 +1,7 @@
 """
 PostgresVectorStore - A LangChain-compatible vector store using PostgreSQL + pgvector.
 
-This replaces ChromaDB for vector similarity search in A2rchi.
+This replaces ChromaDB for vector similarity search in archi.
 Implements the langchain_core.vectorstores.VectorStore interface.
 """
 
@@ -37,7 +37,7 @@ class PostgresVectorStore(VectorStore):
     
     Example:
         >>> store = PostgresVectorStore(
-        ...     pg_config={"host": "localhost", "port": 5432, "user": "postgres", "password": "...", "dbname": "a2rchi"},
+        ...     pg_config={"host": "localhost", "port": 5432, "user": "postgres", "password": "...", "dbname": "archi"},
         ...     embedding_function=HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2"),
         ...     collection_name="my_collection",
         ... )

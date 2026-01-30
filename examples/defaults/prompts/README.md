@@ -1,6 +1,6 @@
 # Default Prompt Templates
 
-This directory contains default prompt templates for A2rchi deployments.
+This directory contains default prompt templates for archi deployments.
 
 ## Directory Structure
 
@@ -39,7 +39,7 @@ Used as system instructions for the LLM. These set the assistant's persona and b
 ### Option 1: Edit Deployment Prompts (Recommended)
 After deployment, prompts are copied to your deployment's `data/prompts/` directory:
 ```
-~/.a2rchi/<deployment-name>/data/prompts/
+~/.archi/<deployment-name>/data/prompts/
 ```
 
 Edit the files there and reload via API:
@@ -50,7 +50,7 @@ curl -X POST http://localhost:7868/api/v2/prompts/reload
 ### Option 2: Specify in Config
 You can specify explicit prompt file paths in your config.yaml:
 ```yaml
-a2rchi:
+archi:
   pipeline_map:
     QAPipeline:
       prompts:

@@ -20,19 +20,19 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `src/` holds core (`src/a2rchi`), CLI (`src/cli`), ingestion (`src/data_manager`), interfaces (`src/interfaces`), and utilities (`src/utils`).
+- `src/` holds core (`src/archi`), CLI (`src/cli`), ingestion (`src/data_manager`), interfaces (`src/interfaces`), and utilities (`src/utils`).
 - `tests/` includes `smoke/` and `pr_preview_config/`.
 - `docs/` contains the mkdocs site; `requirements/` and `src/cli/templates/dockerfiles/` store base image requirements; `examples/` has sample configs.
 
 ## Codebase Map
 - CLI entrypoint is `src/cli/cli_main.py`, with registries in `src/cli/service_registry.py` and `src/cli/source_registry.py`, and managers in `src/cli/managers/`.
 - Service entrypoints live in `src/bin/` and wire Flask apps from `src/interfaces/`.
-- Runtime config is loaded from `/root/A2rchi/configs/` by `src/utils/config_loader.py`; CLI deployments render under `~/.a2rchi/a2rchi-<name>` (override with `A2RCHI_DIR`).
-- Core orchestration lives in `src/a2rchi/a2rchi.py` with pipelines in `src/a2rchi/pipelines/`; ingestion is in `src/data_manager/`.
+- Runtime config is loaded from `/root/archi/configs/` by `src/utils/config_loader.py`; CLI deployments render under `~/.archi/archi-<name>` (override with `A2RCHI_DIR`).
+- Core orchestration lives in `src/archi/archi.py` with pipelines in `src/archi/pipelines/`; ingestion is in `src/data_manager/`.
 
 ## Build, Test, and Development Commands
 - `pip install -e .` installs the package in editable mode for local development.
-- `a2rchi --help` verifies the CLI entrypoint defined in `pyproject.toml`.
+- `archi --help` verifies the CLI entrypoint defined in `pyproject.toml`.
 - `cd docs && mkdocs serve` previews documentation locally.
 
 ## Coding Style & Naming Conventions

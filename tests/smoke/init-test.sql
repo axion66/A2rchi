@@ -1,4 +1,4 @@
--- A2rchi PostgreSQL Schema v2.0 (Test Version - Static)
+-- archi PostgreSQL Schema v2.0 (Test Version - Static)
 -- Consolidates: PostgreSQL (conversations), ChromaDB (vectors), SQLite (catalog)
 
 -- ============================================================================
@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS conversation_document_selection (
 
 CREATE TABLE IF NOT EXISTS conversations (
     message_id SERIAL PRIMARY KEY,
-    a2rchi_service TEXT NOT NULL,
+    archi_service TEXT NOT NULL,
     conversation_id INTEGER NOT NULL,
     sender TEXT NOT NULL,
     content TEXT NOT NULL,
@@ -301,7 +301,7 @@ BEGIN
     END IF;
 END $$;
 
-GRANT CONNECT ON DATABASE a2rchi TO grafana_reader;
+GRANT CONNECT ON DATABASE archi TO grafana_reader;
 GRANT USAGE ON SCHEMA public TO grafana_reader;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO grafana_reader;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO grafana_reader;

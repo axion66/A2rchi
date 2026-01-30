@@ -292,7 +292,7 @@ The init-v2.sql already creates a read-only user for Grafana:
 ```sql
 -- Created by init-v2.sql
 CREATE USER grafana_reader WITH PASSWORD 'your_secure_password';
-GRANT CONNECT ON DATABASE a2rchi TO grafana_reader;
+GRANT CONNECT ON DATABASE archi TO grafana_reader;
 GRANT USAGE ON SCHEMA public TO grafana_reader;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO grafana_reader;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO grafana_reader;
@@ -300,6 +300,6 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO grafana_read
 
 Configure your Grafana PostgreSQL datasource with:
 - Host: `postgres:5432` (or your PostgreSQL host)
-- Database: `a2rchi`
+- Database: `archi`
 - User: `grafana_reader`
 - SSL Mode: As appropriate for your environment

@@ -56,7 +56,7 @@ def pg_config():
     return {
         'host': 'localhost',
         'port': 5432,
-        'dbname': 'a2rchi_test',
+        'dbname': 'archi_test',
         'user': 'postgres',
         'password': 'testpass',
     }

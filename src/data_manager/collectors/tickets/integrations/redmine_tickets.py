@@ -40,7 +40,7 @@ class RedmineClient:
             self.redmine_pw = read_secret("REDMINE_PW")
         except FileNotFoundError as error:
             logger.warning(
-                "Redmine secrets couldn't be found. A2rchi will skip data fetching from Redmine.",
+                "Redmine secrets couldn't be found. archi will skip data fetching from Redmine.",
                 exc_info=error,
             )
             return

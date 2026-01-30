@@ -20,11 +20,11 @@ Provide a retrieval-augmented generation framework for research and education te
 - Import ordering typically handled with isort when formatting is applied
 
 ### Architecture Patterns
-- Core orchestration in `src/a2rchi/a2rchi.py` with pipelines in `src/a2rchi/pipelines/`
+- Core orchestration in `src/archi/archi.py` with pipelines in `src/archi/pipelines/`
 - CLI entrypoint in `src/cli/cli_main.py` with service/source registries in `src/cli/service_registry.py` and `src/cli/source_registry.py`
 - Service entrypoints in `src/bin/` wire interfaces from `src/interfaces/`
-- Runtime config loaded from `/root/A2rchi/configs/` via `src/utils/config_loader.py`
-- CLI deployments render to `~/.a2rchi/a2rchi-<name>` (override with `A2RCHI_DIR`)
+- Runtime config loaded from `/root/archi/configs/` via `src/utils/config_loader.py`
+- CLI deployments render to `~/.archi/archi-<name>` (override with `A2RCHI_DIR`)
 
 ### Testing Strategy
 - No formal testing setup yet; add tests as needed when introducing new behavior

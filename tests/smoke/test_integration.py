@@ -23,8 +23,8 @@ import psycopg2.extras
 PG_CONFIG = {
     "host": "localhost",
     "port": 5439,
-    "database": "a2rchi",
-    "user": "a2rchi",
+    "database": "archi",
+    "user": "archi",
     "password": "testpassword123",
 }
 
@@ -158,20 +158,20 @@ def test_conversation_service(test_user_id):
     # Create a test conversation ID
     test_conv_id = str(999999)
     
-    # Insert messages with model tracking (using correct field name: a2rchi_service)
+    # Insert messages with model tracking (using correct field name: archi_service)
     messages = [
         Message(
             sender=test_user_id,
             content="What is the capital of France?",
-            a2rchi_service="integration_test",
+            archi_service="integration_test",
             conversation_id=test_conv_id,
             model_used=None,
             pipeline_used=None,
         ),
         Message(
-            sender="A2rchi",
+            sender="archi",
             content="The capital of France is Paris.",
-            a2rchi_service="integration_test", 
+            archi_service="integration_test", 
             conversation_id=test_conv_id,
             link="https://example.com",
             context='{"test": true}',
@@ -189,11 +189,11 @@ def test_conversation_service(test_user_id):
     assert len(history) >= 2, "Expected at least 2 messages in history"
     print(f"✓ Retrieved {len(history)} messages from history")
     
-    # Find the A2rchi message and check model tracking
-    a2rchi_msgs = [m for m in history if m.sender == "A2rchi"]
-    assert len(a2rchi_msgs) > 0, "No A2rchi messages found"
+    # Find the archi message and check model tracking
+    archi_msgs = [m for m in history if m.sender == "archi"]
+    assert len(archi_msgs) > 0, "No archi messages found"
     
-    msg = a2rchi_msgs[-1]
+    msg = archi_msgs[-1]
     assert msg.model_used == "gpt-4o", f"Expected model_used='gpt-4o', got '{msg.model_used}'"
     assert msg.pipeline_used == "QAPipeline", f"Expected pipeline_used='QAPipeline', got '{msg.pipeline_used}'"
     print(f"✓ Model tracking verified: model_used={msg.model_used}, pipeline_used={msg.pipeline_used}")
@@ -216,21 +216,21 @@ def test_ab_comparison_v2(test_conv_id):
     prompt_msg = Message(
         sender="user",
         content="What is AI?",
-        a2rchi_service="integration_test",
+        archi_service="integration_test",
         conversation_id=test_conv_id,
     )
     response_a_msg = Message(
-        sender="A2rchi",
+        sender="archi",
         content="Response from GPT-4o",
-        a2rchi_service="integration_test",
+        archi_service="integration_test",
         conversation_id=test_conv_id,
         model_used="gpt-4o",
         pipeline_used="QAPipeline",
     )
     response_b_msg = Message(
-        sender="A2rchi",
+        sender="archi",
         content="Response from Claude",
-        a2rchi_service="integration_test",
+        archi_service="integration_test",
         conversation_id=test_conv_id,
         model_used="claude-3-5-sonnet",
         pipeline_used="QAPipeline",
@@ -327,7 +327,7 @@ def test_byok_resolver(test_user_id):
     # Set encryption key for BYOK
     os.environ["BYOK_ENCRYPTION_KEY"] = "test-encryption-key-32chars-ok"
     
-    from src.a2rchi.providers.byok_resolver import BYOKResolver
+    from src.archi.providers.byok_resolver import BYOKResolver
     from src.utils.user_service import UserService
     
     user_service = UserService(PG_CONFIG)

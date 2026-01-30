@@ -70,7 +70,7 @@ The remaining steps mirror the Podman flow. NOTE: this has not yet been fully te
 
 </details>
 
-Once these requirements are met, the `a2rchi create [...] --gpu-ids <gpus>` option will deploy A2RCHI across your GPUs.
+Once these requirements are met, the `archi create [...] --gpu-ids <gpus>` option will deploy A2RCHI across your GPUs.
 
 ## Helpful Notes for Production Deployments
 

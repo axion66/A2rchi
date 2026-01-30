@@ -6,14 +6,14 @@ from typing import Dict
 
 import yaml
 
-from src.a2rchi.pipelines.agents.tools import (
+from src.archi.pipelines.agents.tools import (
     RemoteCatalogClient,
     create_document_fetch_tool,
     create_file_search_tool,
     create_metadata_search_tool,
     create_retriever_tool,
 )
-from src.a2rchi.utils.vectorstore_connector import VectorstoreConnector
+from src.archi.utils.vectorstore_connector import VectorstoreConnector
 from src.data_manager.vectorstore.retrievers import HybridRetriever
 
 

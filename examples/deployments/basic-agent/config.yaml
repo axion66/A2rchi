@@ -4,11 +4,13 @@
 # The LLM is used through an existing Ollama server.
 #
 # run with:
-# a2rchi create --name my-a2rchi-agent --config examples/deployments/basic-agent/config.yaml --services chatbot --hostmode
+# archi create --name my-archi-agent --config examples/deployments/basic-agent/config.yaml --services chatbot --hostmode
 
-name: my_a2rchi
+name: my_archi
 
 services:
+  data_manager:
+    port: 7872
   chat_app:
     pipeline: CMSCompOpsAgent
     trained_on: "My data"
@@ -24,7 +26,7 @@ data_manager:
         - examples/deployments/basic-agent/miscellanea.list
   embedding_name: HuggingFaceEmbeddings
 
-a2rchi:
+archi:
   pipelines:
     - CMSCompOpsAgent
   pipeline_map:

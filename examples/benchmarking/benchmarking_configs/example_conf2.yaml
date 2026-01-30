@@ -9,7 +9,7 @@ data_manager:
   # Vector storage uses PostgreSQL with pgvector (only supported backend)
   embedding_name: OpenAIEmbeddings
 
-a2rchi:
+archi:
   pipelines: 
    - QAPipeline
   pipeline_map:

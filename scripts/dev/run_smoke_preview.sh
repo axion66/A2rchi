@@ -28,7 +28,7 @@ SMOKE_OLLAMA_MODEL="${SMOKE_OLLAMA_MODEL:-}"
 SMOKE_OLLAMA_URL="${SMOKE_OLLAMA_URL:-}"
 export USE_PODMAN
 
-A2RCHI_DIR="${A2RCHI_DIR:-${HOME}/.a2rchi}"
+A2RCHI_DIR="${A2RCHI_DIR:-${HOME}/.archi}"
 
 ENV_FILE_CREATED=0
 CONFIG_DEST_CREATED=0
@@ -69,9 +69,9 @@ cleanup() {
 
   if [[ -n "${DEPLOYMENT_NAME}" ]]; then
     if [[ "${USE_PODMAN,,}" == "true" ]]; then
-      yes | a2rchi delete --name "${DEPLOYMENT_NAME}" --podman --rmi --rmv || true
+      yes | archi delete --name "${DEPLOYMENT_NAME}" --podman --rmi --rmv || true
     else
-      yes | a2rchi delete --name "${DEPLOYMENT_NAME}" || true
+      yes | archi delete --name "${DEPLOYMENT_NAME}" || true
     fi
   fi
 
@@ -106,7 +106,7 @@ import yaml
 config_dest = os.environ.get("CONFIG_DEST")
 with open(config_dest, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
-ollama = ((cfg.get("a2rchi") or {}).get("model_class_map") or {}).get("OllamaInterface") or {}
+ollama = ((cfg.get("archi") or {}).get("model_class_map") or {}).get("OllamaInterface") or {}
 print((ollama.get("kwargs") or {}).get("base_model", ""))
 PY
 )"
@@ -119,7 +119,7 @@ import yaml
 config_dest = os.environ.get("CONFIG_DEST")
 with open(config_dest, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
-ollama = ((cfg.get("a2rchi") or {}).get("model_class_map") or {}).get("OllamaInterface") or {}
+ollama = ((cfg.get("archi") or {}).get("model_class_map") or {}).get("OllamaInterface") or {}
 print((ollama.get("kwargs") or {}).get("url", "http://localhost:11434"))
 PY
 )"
@@ -136,13 +136,13 @@ config_dest = os.environ.get("CONFIG_DEST")
 smoke_model = os.environ.get("SMOKE_OLLAMA_MODEL")
 with open(config_dest, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
-ollama = ((cfg.get("a2rchi") or {}).get("model_class_map") or {}).get("OllamaInterface") or {}
+ollama = ((cfg.get("archi") or {}).get("model_class_map") or {}).get("OllamaInterface") or {}
 kwargs = ollama.get("kwargs") or {}
 kwargs["base_model"] = smoke_model
 ollama["kwargs"] = kwargs
-model_map = (cfg.get("a2rchi") or {}).get("model_class_map") or {}
+model_map = (cfg.get("archi") or {}).get("model_class_map") or {}
 model_map["OllamaInterface"] = ollama
-cfg.setdefault("a2rchi", {})["model_class_map"] = model_map
+cfg.setdefault("archi", {})["model_class_map"] = model_map
 with open(config_dest, "w", encoding="utf-8") as handle:
     yaml.safe_dump(cfg, handle, sort_keys=False)
 PY
@@ -154,18 +154,18 @@ fi
 info "Ensuring Ollama model '${SMOKE_OLLAMA_MODEL}' is available..."
 OLLAMA_HOST="${SMOKE_OLLAMA_URL}" ollama pull "${SMOKE_OLLAMA_MODEL}"
 
-DEPLOYMENT_DIR="${A2RCHI_DIR}/a2rchi-${DEPLOYMENT_NAME}"
+DEPLOYMENT_DIR="${A2RCHI_DIR}/archi-${DEPLOYMENT_NAME}"
 if [[ -d "${DEPLOYMENT_DIR}" ]]; then
   if [[ "${SMOKE_FORCE_CREATE,,}" == "true" ]]; then
     info "Existing deployment found; deleting ${DEPLOYMENT_NAME}..."
     if [[ "${USE_PODMAN,,}" == "true" ]]; then
-      yes | a2rchi delete --name "${DEPLOYMENT_NAME}" --podman --rmi --rmv || true
+      yes | archi delete --name "${DEPLOYMENT_NAME}" --podman --rmi --rmv || true
     else
-      yes | a2rchi delete --name "${DEPLOYMENT_NAME}" || true
+      yes | archi delete --name "${DEPLOYMENT_NAME}" || true
     fi
   else
     echo "Deployment ${DEPLOYMENT_NAME} already exists at ${DEPLOYMENT_DIR}." >&2
-    echo "Set SMOKE_FORCE_CREATE=true or delete it with: a2rchi delete --name ${DEPLOYMENT_NAME}" >&2
+    echo "Set SMOKE_FORCE_CREATE=true or delete it with: archi delete --name ${DEPLOYMENT_NAME}" >&2
     exit 1
   fi
 fi
@@ -192,7 +192,7 @@ if [[ -z "${DM_CATALOG_SEED_FILE:-}" ]]; then
 fi
 
 info "Launching deployment..."
-CMD=(a2rchi create --name "${DEPLOYMENT_NAME}" --config "${CONFIG_DEST}" -v 4 --services "${SERVICES}" --env-file "${ENV_FILE}")
+CMD=(archi create --name "${DEPLOYMENT_NAME}" --config "${CONFIG_DEST}" -v 4 --services "${SERVICES}" --env-file "${ENV_FILE}")
 if [[ "${USE_PODMAN,,}" == "true" ]]; then
   CMD+=(--podman)
 fi
@@ -236,7 +236,7 @@ if [[ -z "${CONFIG_NAME}" ]]; then
   exit 1
 fi
 
-RENDERED_CONFIG="${A2RCHI_DIR}/a2rchi-${DEPLOYMENT_NAME}/configs/${CONFIG_NAME}.yaml"
+RENDERED_CONFIG="${A2RCHI_DIR}/archi-${DEPLOYMENT_NAME}/configs/${CONFIG_NAME}.yaml"
 if [[ ! -f "${RENDERED_CONFIG}" ]]; then
   echo "Rendered config not found at ${RENDERED_CONFIG}" >&2
   exit 1
@@ -251,7 +251,7 @@ import yaml
 rendered = os.environ.get("RENDERED_CONFIG")
 with open(rendered, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
-pipelines = (cfg.get("a2rchi") or {}).get("pipelines") or []
+pipelines = (cfg.get("archi") or {}).get("pipelines") or []
 print(pipelines[0] if pipelines else "")
 PY
 )"
@@ -283,7 +283,7 @@ import yaml
 rendered = os.environ.get("RENDERED_CONFIG")
 with open(rendered, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
-print(((cfg.get("services") or {}).get("postgres") or {}).get("user", "a2rchi"))
+print(((cfg.get("services") or {}).get("postgres") or {}).get("user", "archi"))
 PY
 )"
 export PGDATABASE="$(RENDERED_CONFIG="${RENDERED_CONFIG}" python - <<'PY'
@@ -293,7 +293,7 @@ import yaml
 rendered = os.environ.get("RENDERED_CONFIG")
 with open(rendered, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
-print(((cfg.get("services") or {}).get("postgres") or {}).get("database", "a2rchi-db"))
+print(((cfg.get("services") or {}).get("postgres") or {}).get("database", "archi-db"))
 PY
 )"
 export PGPASSWORD="$(ENV_FILE="${ENV_FILE}" python - <<'PY'
@@ -343,7 +343,7 @@ import yaml
 rendered = os.environ.get("RENDERED_CONFIG")
 with open(rendered, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
-ollama = ((cfg.get("a2rchi") or {}).get("model_class_map") or {}).get("OllamaInterface") or {}
+ollama = ((cfg.get("archi") or {}).get("model_class_map") or {}).get("OllamaInterface") or {}
 print((ollama.get("kwargs") or {}).get("url", "http://localhost:11434"))
 PY
 )"
@@ -354,7 +354,7 @@ import yaml
 rendered = os.environ.get("RENDERED_CONFIG")
 with open(rendered, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
-ollama = ((cfg.get("a2rchi") or {}).get("model_class_map") or {}).get("OllamaInterface") or {}
+ollama = ((cfg.get("archi") or {}).get("model_class_map") or {}).get("OllamaInterface") or {}
 print((ollama.get("kwargs") or {}).get("base_model", ""))
 PY
 )"

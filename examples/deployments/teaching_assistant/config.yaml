@@ -4,9 +4,9 @@
 # The LLM is a locally hosted VLLM instance on GPUs.
 #
 # run with:
-# a2rchi create --name my-a2rchi --config examples/deployments/teaching_assistant/config.yaml --podman --services chatbot --gpu-ids=all
+# archi create --name my-archi --config examples/deployments/teaching_assistant/config.yaml --podman --services chatbot --gpu-ids=all
 
-name: my_a2rchi
+name: my_archi
 
 services:
   chat_app:
@@ -21,7 +21,7 @@ data_manager:
         - examples/deployments/teaching_assistant/course_materials.list
   embedding_name: HuggingFaceEmbeddings
 
-a2rchi:
+archi:
   pipelines:
     - QAPipeline
   pipeline_map:

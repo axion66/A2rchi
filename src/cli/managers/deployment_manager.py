@@ -135,8 +135,8 @@ class DeploymentManager:
         import os
 
         from src.cli.managers.volume_manager import VolumeManager
-        A2RCHI_DIR = os.environ.get('A2RCHI_DIR', os.path.join(os.path.expanduser('~'), ".a2rchi"))
-        deployment_dir = Path(A2RCHI_DIR) / f"a2rchi-{deployment_name}"
+        A2RCHI_DIR = os.environ.get('A2RCHI_DIR', os.path.join(os.path.expanduser('~'), ".archi"))
+        deployment_dir = Path(A2RCHI_DIR) / f"archi-{deployment_name}"
         
         if deployment_dir.exists():
             # Stop deployment first

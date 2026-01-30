@@ -34,7 +34,7 @@ class JiraClient:
         self.jira_url = jira_config.get('url') or jira_config.get('JIRA_URL') # TODO at some point, could support multiple in the config
         if not self.jira_url:
             logger.info(
-                "JIRA configs couldn't be found. A2rchi will skip data fetching from JIRA"
+                "JIRA configs couldn't be found. archi will skip data fetching from JIRA"
             )
             return
 

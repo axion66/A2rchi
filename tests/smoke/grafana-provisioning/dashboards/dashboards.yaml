@@ -1,7 +1,7 @@
 apiVersion: 1
 
 providers:
-  - name: 'A2rchi Dashboards'
+  - name: 'archi Dashboards'
     orgId: 1
     folder: ''
     type: file

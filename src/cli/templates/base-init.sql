@@ -11,11 +11,11 @@ CREATE TABLE IF NOT EXISTS conversation_metadata (
     title TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     last_message_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    a2rchi_version VARCHAR(50),
+    archi_version VARCHAR(50),
     PRIMARY KEY (conversation_id)
 );
 CREATE TABLE IF NOT EXISTS conversations (
-    a2rchi_service TEXT NOT NULL,
+    archi_service TEXT NOT NULL,
     conversation_id INTEGER NOT NULL,
     message_id SERIAL,
     sender TEXT NOT NULL,
@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS timing (
     vectorstore_update_ts TIMESTAMP NOT NULL,
     query_convo_history_ts TIMESTAMP NOT NULL,
     chain_finished_ts TIMESTAMP NOT NULL,
-    a2rchi_message_ts TIMESTAMP NOT NULL,
+    archi_message_ts TIMESTAMP NOT NULL,
     insert_convo_ts TIMESTAMP NOT NULL,
     finish_call_ts TIMESTAMP NOT NULL,
     server_response_msg_ts TIMESTAMP NOT NULL,

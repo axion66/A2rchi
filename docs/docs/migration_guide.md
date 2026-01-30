@@ -1,10 +1,10 @@
 # Migration Guide: PostgreSQL Consolidation
 
-This guide covers migrating existing A2rchi deployments to the consolidated PostgreSQL storage architecture.
+This guide covers migrating existing archi deployments to the consolidated PostgreSQL storage architecture.
 
 ## Overview
 
-A2rchi v2.0 consolidates all storage to PostgreSQL:
+archi v2.0 consolidates all storage to PostgreSQL:
 
 | Component | Before (v1.x) | After (v2.0) |
 |-----------|---------------|--------------|
@@ -34,31 +34,31 @@ If you want to preserve your v1.x data:
 
 ```bash
 # Backup ChromaDB data
-cp -r ~/.a2rchi/a2rchi-mybot/chromadb ~/.a2rchi/a2rchi-mybot/chromadb.backup
+cp -r ~/.archi/archi-mybot/chromadb ~/.archi/archi-mybot/chromadb.backup
 
 # Export PostgreSQL conversations (if you want to keep history)
-pg_dump -h localhost -p 5432 -U a2rchi -t conversations a2rchi_db > conversations_backup.sql
+pg_dump -h localhost -p 5432 -U archi -t conversations archi_db > conversations_backup.sql
 ```
 
 ### 2. Create New v2.0 Deployment
 
 ```bash
 # Delete old deployment
-a2rchi delete --name mybot
+archi delete --name mybot
 
 # Create fresh deployment with your existing config
-a2rchi create --name mybot --config myconfig.yaml
+archi create --name mybot --config myconfig.yaml
 ```
 
 ### 3. Re-ingest Documents
 
 ```bash
 # Start the deployment
-a2rchi up --name mybot
+archi up --name mybot
 
 # The data manager will re-ingest documents from configured sources
 # Check the logs to monitor progress
-docker logs a2rchi-mybot-data-manager -f
+docker logs archi-mybot-data-manager -f
 ```
 
 ### 4. Verify Deployment
@@ -98,8 +98,8 @@ Instead of the previous `conf_id` foreign key.
 New deployments automatically use the consolidated PostgreSQL schema:
 
 ```bash
-a2rchi create --name mynewbot --config myconfig.yaml
-a2rchi up --name mynewbot
+archi create --name mynewbot --config myconfig.yaml
+archi up --name mynewbot
 ```
 
 ## Troubleshooting
@@ -108,14 +108,14 @@ a2rchi up --name mynewbot
 
 Ensure:
 1. PostgreSQL is running: `docker ps | grep postgres`
-2. Password is set in secrets: `cat ~/.a2rchi/a2rchi-mybot/secrets/PG_PASSWORD`
-3. Database exists: `a2rchi-db`
+2. Password is set in secrets: `cat ~/.archi/archi-mybot/secrets/PG_PASSWORD`
+3. Database exists: `archi-db`
 
 ### Documents Not Appearing
 
 Check data manager logs:
 ```bash
-docker logs a2rchi-mybot-data-manager -f
+docker logs archi-mybot-data-manager -f
 ```
 
 Common issues:
@@ -131,7 +131,7 @@ See `src/cli/templates/init-v2.sql` in the repository for the complete PostgreSQ
 
 ## Future: Automated Migration (Planned)
 
-An automated migration tool (`a2rchi migrate`) is planned for a future release to support:
+An automated migration tool (`archi migrate`) is planned for a future release to support:
 - ChromaDB → pgvector vector migration
 - SQLite catalog → PostgreSQL documents table
 - Conversation history preservation

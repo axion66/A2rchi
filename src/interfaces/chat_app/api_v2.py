@@ -670,7 +670,7 @@ def get_model_usage_stats():
         stats = services.conversation_service.get_model_usage_stats(
             start_date=start_date,
             end_date=end_date,
-            a2rchi_service=service,
+            archi_service=service,
         )
         
         return jsonify({

@@ -32,7 +32,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import \
     cosine_similarity as sklearn_cosine_similarity
 
-from src.a2rchi.a2rchi import A2rchi
+from src.archi.archi import archi
 from src.data_manager.data_manager import DataManager
 from src.utils.yaml_config import CONFIGS_PATH, load_yaml_config
 from src.utils.env import read_secret
@@ -62,7 +62,7 @@ class ImageToTextWrapper:
         self.lock = Lock()
 
         # initialize image processing chain
-        self.image_processor = A2rchi(pipeline="ImageProcessingPipeline")
+        self.image_processor = archi(pipeline="ImageProcessingPipeline")
 
     def __call__(self, images: List[str]) -> str:
         """
@@ -110,7 +110,7 @@ class GradingWrapper:
         self.lock = Lock()
 
         # initialize grading chain
-        self.grader = A2rchi(pipeline="GradingPipeline") # more similar to chatwrapper, just need to handle the successive prompts SOMEWHERE
+        self.grader = archi(pipeline="GradingPipeline") # more similar to chatwrapper, just need to handle the successive prompts SOMEWHERE
 
 
     ##################
@@ -167,7 +167,7 @@ class FlaskAppWrapper(object):
         self.login_manager.user_loader(self.load_user)
 
         # load users
-        self.csv_filename = "/root/A2rchi/users.csv" # or wherever you decide to put this file...
+        self.csv_filename = "/root/archi/users.csv" # or wherever you decide to put this file...
         self.users_db = self.load_users(self.csv_filename)
         
         # load admin password
@@ -776,7 +776,7 @@ class FlaskAppWrapper(object):
     @lru_cache(maxsize=None)
     @staticmethod
     def get_rubric(self, problem_number):
-        rubric_file = f"/root/A2rchi/solution_with_rubric_{problem_number}.txt"
+        rubric_file = f"/root/archi/solution_with_rubric_{problem_number}.txt"
         try:
             with open(rubric_file, "r") as f:
                 return f.read()

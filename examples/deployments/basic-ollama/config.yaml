@@ -4,34 +4,38 @@
 # The LLM is used through an existing Ollama server.
 #
 # run with:
-# a2rchi create --name my-a2rchi-ollama --config examples/deployments/basic-ollama/config.yaml --services chatbot --hostmode
+# archi create --name my-archi-ollama --config examples/deployments/basic-ollama/config.yaml --services chatbot --hostmode
 
-name: my_a2rchi
+name: my_archi
 
 services:
   chat_app:
     trained_on: "My data"
-    port: 7868
-    external_port: 7868
+    port: 7869
+    external_port: 7869
   vectorstore:
     backend: postgres  # PostgreSQL with pgvector (only supported backend)
+  data_manager:
+    port: 7889
+    external_port: 7889
 
 data_manager:
+  # port: 7888
+  # external_port: 7888
   sources:
     links:
       input_lists:
         - examples/deployments/basic-ollama/miscellanea.list
   embedding_name: HuggingFaceEmbeddings
 
-a2rchi:
+archi:
   pipelines:
-    - QAPipeline
+    - CMSCompOpsAgent
   pipeline_map:
-    QAPipeline:
+    CMSCompOpsAgent:
       prompts:
         required:
-          condense_prompt: examples/deployments/basic-ollama/condense.prompt
-          chat_prompt: examples/deployments/basic-ollama/qa.prompt
+          agent_prompt: examples/deployments/basic-ollama/qa.prompt
       models:
         required:
           chat_model: OllamaInterface

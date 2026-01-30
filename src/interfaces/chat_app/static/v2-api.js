@@ -1,5 +1,5 @@
 /**
- * V2 API Integration for A2rchi Chat UI
+ * V2 API Integration for archi Chat UI
  * 
  * Provides client-side utilities for interacting with the PostgreSQL-consolidated
  * V2 API endpoints for:
@@ -10,8 +10,8 @@
  */
 
 // Storage keys
-const USER_PREFERENCES_KEY = 'a2rchi_user_preferences';
-const THEME_KEY = 'a2rchi_theme';
+const USER_PREFERENCES_KEY = 'archi_user_preferences';
+const THEME_KEY = 'archi_theme';
 
 /**
  * V2 API client for user management
@@ -23,7 +23,7 @@ class V2ApiClient {
   }
 
   _getClientId() {
-    const CLIENT_ID_STORAGE_KEY = 'a2rchi_client_id';
+    const CLIENT_ID_STORAGE_KEY = 'archi_client_id';
     let existingId = localStorage.getItem(CLIENT_ID_STORAGE_KEY);
     if (!existingId) {
       existingId = this._generateClientId();

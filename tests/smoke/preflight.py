@@ -191,13 +191,13 @@ def _check_config_ollama(config_path: str, pipeline_name: str, ollama_model: str
     except Exception as exc:
         _fail(f"Failed to read config at {config_path}: {exc}")
 
-    pipeline_cfg = ((config.get("a2rchi") or {}).get("pipeline_map") or {}).get(pipeline_name) or {}
+    pipeline_cfg = ((config.get("archi") or {}).get("pipeline_map") or {}).get(pipeline_name) or {}
     required_models = (pipeline_cfg.get("models") or {}).get("required") or {}
     agent_model = required_models.get("agent_model")
     if agent_model != "OllamaInterface":
         _fail(f"Pipeline {pipeline_name} agent_model is '{agent_model}', expected 'OllamaInterface'")
 
-    model_map = (config.get("a2rchi") or {}).get("model_class_map") or {}
+    model_map = (config.get("archi") or {}).get("model_class_map") or {}
     ollama_cfg = (model_map.get("OllamaInterface") or {}).get("kwargs") or {}
     base_model = ollama_cfg.get("base_model")
     if base_model and base_model != ollama_model:

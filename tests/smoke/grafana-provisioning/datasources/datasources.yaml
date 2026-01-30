@@ -5,11 +5,11 @@ datasources:
     type: postgres
     uid: P44368ADAD746BC27
     url: postgres:5432
-    user: a2rchi
+    user: archi
     secureJsonData:
       password: testpassword123
     jsonData:
-      database: a2rchi
+      database: archi
       sslmode: 'disable'
       maxOpenConns: 100
       maxIdleConns: 100

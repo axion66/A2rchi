@@ -17,8 +17,8 @@ echo_status() { echo -e "${GREEN}[✓]${NC} $1"; }
 echo_warning() { echo -e "${YELLOW}[!]${NC} $1"; }
 echo_error() { echo -e "${RED}[✗]${NC} $1"; }
 
-CONTAINER_NAME="a2rchi-postgres-test-$$"
-IMAGE_NAME="a2rchi-postgres-test"
+CONTAINER_NAME="archi-postgres-test-$$"
+IMAGE_NAME="archi-postgres-test"
 TEMP_DIR=""
 
 cleanup() {
@@ -98,14 +98,14 @@ echo "Test 3: Starting PostgreSQL container..."
 docker run -d \
     --name "$CONTAINER_NAME" \
     -e POSTGRES_PASSWORD=testpass \
-    -e POSTGRES_USER=a2rchi \
-    -e POSTGRES_DB=a2rchi-db \
+    -e POSTGRES_USER=archi \
+    -e POSTGRES_DB=archi-db \
     -v "$TEMP_DIR/init.sql:/docker-entrypoint-initdb.d/init.sql:ro" \
     "$IMAGE_NAME"
 
 echo "Waiting for PostgreSQL to be ready..."
 for i in {1..30}; do
-    if docker exec "$CONTAINER_NAME" pg_isready -U a2rchi -d a2rchi-db > /dev/null 2>&1; then
+    if docker exec "$CONTAINER_NAME" pg_isready -U archi -d archi-db > /dev/null 2>&1; then
         echo_status "PostgreSQL is ready"
         break
     fi
@@ -124,7 +124,7 @@ echo "Test 4: Verifying PostgreSQL extensions..."
 check_extension() {
     local ext=$1
     local required=$2
-    if docker exec "$CONTAINER_NAME" psql -U a2rchi -d a2rchi-db -tAc \
+    if docker exec "$CONTAINER_NAME" psql -U archi -d archi-db -tAc \
         "SELECT 1 FROM pg_extension WHERE extname='$ext'" | grep -q 1; then
         echo_status "Extension '$ext' installed"
         return 0
@@ -167,7 +167,7 @@ REQUIRED_TABLES=(
 )
 
 for table in "${REQUIRED_TABLES[@]}"; do
-    if docker exec "$CONTAINER_NAME" psql -U a2rchi -d a2rchi-db -tAc \
+    if docker exec "$CONTAINER_NAME" psql -U archi -d archi-db -tAc \
         "SELECT 1 FROM information_schema.tables WHERE table_name='$table'" | grep -q 1; then
         echo_status "Table '$table' exists"
     else
@@ -179,7 +179,7 @@ done
 # Test 6: Verify vector column type
 echo ""
 echo "Test 6: Verifying vector column..."
-VECTOR_TYPE=$(docker exec "$CONTAINER_NAME" psql -U a2rchi -d a2rchi-db -tAc \
+VECTOR_TYPE=$(docker exec "$CONTAINER_NAME" psql -U archi -d archi-db -tAc \
     "SELECT udt_name FROM information_schema.columns WHERE table_name='document_chunks' AND column_name='embedding'")
 
 if [ "$VECTOR_TYPE" = "vector" ]; then
@@ -192,7 +192,7 @@ fi
 # Test 7: Test vector operations
 echo ""
 echo "Test 7: Testing vector operations..."
-docker exec "$CONTAINER_NAME" psql -U a2rchi -d a2rchi-db << 'EOSQL'
+docker exec "$CONTAINER_NAME" psql -U archi -d archi-db << 'EOSQL'
 -- Insert a test document
 INSERT INTO documents (resource_hash, file_path, display_name, source_type)
 VALUES ('test123', '/test/path', 'Test Doc', 'local_files');
@@ -233,7 +233,7 @@ EXPECTED_INDEXES=(
 )
 
 for idx in "${EXPECTED_INDEXES[@]}"; do
-    if docker exec "$CONTAINER_NAME" psql -U a2rchi -d a2rchi-db -tAc \
+    if docker exec "$CONTAINER_NAME" psql -U archi -d archi-db -tAc \
         "SELECT 1 FROM pg_indexes WHERE indexname='$idx'" | grep -q 1; then
         echo_status "Index '$idx' exists"
     else
@@ -244,7 +244,7 @@ done
 # Test 9: Check dynamic_config initialized
 echo ""
 echo "Test 9: Verifying dynamic_config defaults..."
-ROW_COUNT=$(docker exec "$CONTAINER_NAME" psql -U a2rchi -d a2rchi-db -tAc \
+ROW_COUNT=$(docker exec "$CONTAINER_NAME" psql -U archi -d archi-db -tAc \
     "SELECT COUNT(*) FROM dynamic_config")
 
 if [ "$ROW_COUNT" = "1" ]; then
@@ -257,7 +257,7 @@ fi
 # Test 10: PostgreSQL version check
 echo ""
 echo "Test 10: Verifying PostgreSQL version..."
-PG_VERSION=$(docker exec "$CONTAINER_NAME" psql -U a2rchi -d a2rchi-db -tAc "SHOW server_version")
+PG_VERSION=$(docker exec "$CONTAINER_NAME" psql -U archi -d archi-db -tAc "SHOW server_version")
 echo "PostgreSQL version: $PG_VERSION"
 
 if [[ "$PG_VERSION" == 17* ]]; then

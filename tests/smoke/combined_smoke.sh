@@ -45,9 +45,9 @@ if [[ -z "${config_name}" ]]; then
   echo "[combined-smoke] ERROR: A2RCHI_CONFIG_NAME is required for container tool checks" >&2
   exit 1
 fi
-"${tool}" exec -i -w /root/A2rchi \
+"${tool}" exec -i -w /root/archi \
   -e A2RCHI_CONFIG_NAME="${config_name}" \
-  -e A2RCHI_CONFIG_PATH="/root/A2rchi/configs/${config_name}.yaml" \
+  -e A2RCHI_CONFIG_PATH="/root/archi/configs/${config_name}.yaml" \
   -e DM_BASE_URL="${DM_BASE_URL}" \
   -e DM_API_TOKEN="${DM_API_TOKEN:-}" \
   -e OLLAMA_URL="${OLLAMA_URL}" \

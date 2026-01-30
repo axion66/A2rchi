@@ -19,9 +19,9 @@ Additionally, A2RCHI supports various **interfaces/services**, which are applica
 - **Document uploader**: web interface for uploading and managing documents
 - **Grader**: automated grading service for assignments with web interface
 
-Both data sources and interfaces/services are enabled via flags to the `a2rchi create` command,
+Both data sources and interfaces/services are enabled via flags to the `archi create` command,
 ```bash
-a2rchi create [...] --services=chatbot,piazza,... --sources jira,redmine,...
+archi create [...] --services=chatbot,piazza,... --sources jira,redmine,...
 ```
 The parameters of the services and sources are configured via the configuration file. See below for more details.
 
@@ -52,7 +52,7 @@ These tools are meant to be used together: search first, then fetch only the mos
 
 ### Optional command line options
 
-In addition to the required `--name`, `--config/--config-dir`, `--env-file`, and `--services` arguments, the `a2rchi create` command accepts several useful flags:
+In addition to the required `--name`, `--config/--config-dir`, `--env-file`, and `--services` arguments, the `archi create` command accepts several useful flags:
 
 1. **`--podman`**: Run the deployment with Podman instead of Docker.
 2. **`--sources` / `-src`**: Enable additional ingestion sources (`git`, `sso`, `jira`, `redmine`, ...). Provide a comma-separated list.
@@ -62,7 +62,7 @@ In addition to the required `--name`, `--config/--config-dir`, `--env-file`, and
 6. **`--verbosity` / `-v`**: Control CLI logging level (0 = quiet, 4 = debug).
 7. **`--force`** / **`--dry-run`**: Force recreation of an existing deployment and/or show what would happen without actually deploying.
 
-You can inspect the available services and sources, together with descriptions, using `a2rchi list-services`.
+You can inspect the available services and sources, together with descriptions, using `archi list-services`.
 The CLI checks that host ports are free before deploying; if a port is already in use, adjust `services.*.external_port` (or `services.*.port` in `--hostmode`) and retry.
 
 > **GPU helpers**
@@ -112,7 +112,7 @@ data_manager:
             headless: true
             max_depth: 2
 ```
-Then, run `a2rchi create ... --sources sso` to activate the SSO collector.
+Then, run `archi create ... --sources sso` to activate the SSO collector.
 
 You can customise the HTTP scraper behaviour (for example, to avoid SSL verification warnings):
 ```yaml
@@ -223,7 +223,7 @@ Add `JIRA_PAT=<token>` to your `.env` file before deploying with `--sources jira
 
 Enable the source at deploy time with:
 ```bash
-a2rchi create [...] --services=chatbot --sources jira
+archi create [...] --services=chatbot --sources jira
 ```
 
 ---
@@ -243,7 +243,7 @@ These methods are outlined below.
 
 In order to upload documents while A2RCHI is running via an easily accessible GUI, enable the uploader service when creating the deployment:
 ```bash
-a2rchi create [...] --services=chatbot,uploader
+archi create [...] --services=chatbot,uploader
 ```
 The exact port may vary based on configuration (default external port is `5003`).
 A quick `podman ps` or `docker ps` will show which port is exposed.
@@ -294,7 +294,7 @@ REDMINE_PW=...
 
 Enable the source at deploy time with:
 ```bash
-a2rchi create [...] --services=chatbot --sources redmine
+archi create [...] --services=chatbot --sources redmine
 ```
 
 > To automate email replies, also enable the `redmine-mailer` service (see the Services section below).
@@ -331,8 +331,8 @@ data_manager:
       input_lists:
         - class_info.list # class info links
 
-a2rchi:
-  [... a2rchi config ...]
+archi:
+  [... archi config ...]
 
 services:
   piazza:
@@ -358,7 +358,7 @@ The Slack webhook secret is described above. The Piazza email and password shoul
 To run the Piazza service, simply add the piazza flag. For example:
 
 ```bash
-a2rchi create [...] --services=chatbot,piazza
+archi create [...] --services=chatbot,piazza
 ```
 
 ---
@@ -399,7 +399,7 @@ SENDER_PW=...
 #### Running
 
 ```bash
-a2rchi create [...] --services=chatbot,redmine-mailer
+archi create [...] --services=chatbot,redmine-mailer
 ```
 
 ---
@@ -430,7 +430,7 @@ MATTERMOST_CHANNEL_ID_WRITE=...
 
 To run the Mattermost service, include it when selecting services. For example:
 ```bash
-a2rchi create [...] --services=chatbot,mattermost
+archi create [...] --services=chatbot,mattermost
 ```
 
 ---
@@ -461,14 +461,14 @@ GRAFANA_PG_PASSWORD=<grafana_db_password>
 
 Deploy Grafana alongside your other services:
 ```bash
-a2rchi create [...] --services=chatbot,grafana
+archi create [...] --services=chatbot,grafana
 ```
 and you should see something like this
 ```
 CONTAINER ID  IMAGE                                     COMMAND               CREATED        STATUS                  PORTS                             NAMES
 87f1c7289d29  docker.io/library/postgres:17             postgres              9 minutes ago  Up 9 minutes (healthy)  5432/tcp                          postgres-gtesting2
 40130e8e23de  docker.io/library/grafana-gtesting2:2000                        9 minutes ago  Up 9 minutes            0.0.0.0:3000->3000/tcp, 3000/tcp  grafana-gtesting2
-d6ce8a149439  localhost/chat-gtesting2:2000             python -u a2rchi/...  9 minutes ago  Up 9 minutes            0.0.0.0:7861->7861/tcp            chat-gtesting2
+d6ce8a149439  localhost/chat-gtesting2:2000             python -u archi/...  9 minutes ago  Up 9 minutes            0.0.0.0:7861->7861/tcp            chat-gtesting2
 ```
 where the grafana interface is accessible at `your-hostname:3000`. To change the external port from `3000`, you can do this in the config at `services.grafana.external_port`. The default login and password are both "admin", which you will be prompted to change should you want to after first logging in. Navigate to the A2RCHI dashboard from the home page by going to the menu > Dashboards > A2RCHI > A2RCHI Usage. Note, `your-hostname` here is the just name of the machine. Grafana uses its default configuration which is `localhost` but unlike the chat interface, there are no APIs where we template with a selected hostname, so the container networking handles this nicely.
 
@@ -525,7 +525,7 @@ The required fields in the configuration file are different from the rest of the
 ```yaml
 name: grading_test # REQUIRED
 
-a2rchi:
+archi:
   pipelines:
     - GradingPipeline
   pipeline_map:
@@ -557,23 +557,23 @@ data_manager:
 ```
 
 1. `name` -- The name of your configuration (required).
-2. `a2rchi.pipelines` -- List of pipelines to use (e.g., `GradingPipeline`, `ImageProcessingPipeline`).
-3. `a2rchi.pipeline_map` -- Mapping of pipelines to their required prompts and models.
-4. `a2rchi.pipeline_map.GradingPipeline.prompts.required.final_grade_prompt` -- Path to the grading prompt file for evaluating student solutions.
-5. `a2rchi.pipeline_map.GradingPipeline.models.required.final_grade_model` -- Model class for grading (e.g., `OllamaInterface`, `HuggingFaceOpenLLM`).
-6. `a2rchi.pipeline_map.ImageProcessingPipeline.prompts.required.image_processing_prompt` -- Path to the prompt file for image processing.
-7. `a2rchi.pipeline_map.ImageProcessingPipeline.models.required.image_processing_model` -- Model class for image processing (e.g., `OllamaInterface`, `HuggingFaceImageLLM`).
+2. `archi.pipelines` -- List of pipelines to use (e.g., `GradingPipeline`, `ImageProcessingPipeline`).
+3. `archi.pipeline_map` -- Mapping of pipelines to their required prompts and models.
+4. `archi.pipeline_map.GradingPipeline.prompts.required.final_grade_prompt` -- Path to the grading prompt file for evaluating student solutions.
+5. `archi.pipeline_map.GradingPipeline.models.required.final_grade_model` -- Model class for grading (e.g., `OllamaInterface`, `HuggingFaceOpenLLM`).
+6. `archi.pipeline_map.ImageProcessingPipeline.prompts.required.image_processing_prompt` -- Path to the prompt file for image processing.
+7. `archi.pipeline_map.ImageProcessingPipeline.models.required.image_processing_model` -- Model class for image processing (e.g., `OllamaInterface`, `HuggingFaceImageLLM`).
 8. `services.chat_app.trained_on` -- A brief description of the data or materials A2RCHI is trained on (required).
 9. `services.grader_app.num_problems` -- Number of problems the grading service should expect (must match the number of rubric files).
 10. `services.grader_app.local_rubric_dir` -- Directory containing the `solution_with_rubric_*.txt` files.
 11. `services.grader_app.local_users_csv_dir` -- Directory containing the `users.csv` file.
 
-For ReAct-style agents (e.g., `CMSCompOpsAgent`), you may optionally set `a2rchi.pipeline_map.<Agent>.recursion_limit` (default `100`) to control the LangGraph recursion cap; when the limit is hit, the agent returns a final wrap-up response using the collected context.
+For ReAct-style agents (e.g., `CMSCompOpsAgent`), you may optionally set `archi.pipeline_map.<Agent>.recursion_limit` (default `100`) to control the LangGraph recursion cap; when the limit is hit, the agent returns a final wrap-up response using the collected context.
 
 #### Running
 
 ```bash
-a2rchi create [...] --services=grader
+archi create [...] --services=grader
 ```
 
 ---
@@ -608,7 +608,7 @@ OpenRouter uses the OpenAI-compatible API. Configure it by setting `OpenRouterLL
 `OPENROUTER_API_KEY`. Optional attribution headers can be set via `OPENROUTER_SITE_URL` and `OPENROUTER_APP_NAME`.
 
 ```yaml
-a2rchi:
+archi:
   model_class_map:
     OpenRouterLLM:
       class: OpenRouterLLM
@@ -622,7 +622,7 @@ a2rchi:
 In order to use an Ollama server instance for the chatbot, it is possible to specify `OllamaInterface` for the model name. To then correctly use models on the Ollama server, in the keyword args, specify both the url of the server and the name of a model hosted on the server.
 
 ```yaml
-a2rchi:
+archi:
   model_class_map:
     OllamaInterface:
       kwargs:
@@ -846,7 +846,7 @@ services:
   postgres:
     host: postgres
     port: 5432
-    database: a2rchi
+    database: archi
   vectorstore:
     backend: postgres
 ```
@@ -858,10 +858,10 @@ PG_PASSWORD=your_secure_password
 
 ### Migrating from Legacy Backends
 
-If you have an existing deployment using ChromaDB (from older A2rchi versions), you can migrate your data to PostgreSQL:
+If you have an existing deployment using ChromaDB (from older archi versions), you can migrate your data to PostgreSQL:
 
 ```bash
-a2rchi migrate --name your-deployment --source chromadb
+archi migrate --name your-deployment --source chromadb
 ```
 
 This command:
@@ -967,12 +967,12 @@ Finally, before you run the command ensure `out_dir`, the output directory, both
 To run the benchmarking script simply run the following:
 
 ``` bash
-a2rchi evaluate -n <name> -e <env_file> -cd <configs_directory> <optionally use  -c <file1>,<file2>, ...> <OPTIONS>
+archi evaluate -n <name> -e <env_file> -cd <configs_directory> <optionally use  -c <file1>,<file2>, ...> <OPTIONS>
 ```
 
 Example:
 ```bash
-a2rchi evaluate -n benchmark -c examples/benchmarking/benchmark_configs/example_conf.yaml --gpu-ids all
+archi evaluate -n benchmark -c examples/benchmarking/benchmark_configs/example_conf.yaml --gpu-ids all
 ```
 
 ### Additional options
@@ -1063,7 +1063,7 @@ A2RCHI supports customizable prompts organized by type. Prompts are stored as fi
 
 After deployment, prompts are located at:
 ```
-~/.a2rchi/<deployment-name>/data/prompts/
+~/.archi/<deployment-name>/data/prompts/
 ```
 
 Default prompt templates are provided in the repository at `examples/defaults/prompts/` for reference.
@@ -1092,7 +1092,7 @@ data/prompts/
 
 ### Creating Custom Prompts
 
-1. Navigate to your deployment's prompt directory: `~/.a2rchi/<deployment-name>/data/prompts/`
+1. Navigate to your deployment's prompt directory: `~/.archi/<deployment-name>/data/prompts/`
 2. Create or edit a `.prompt` file in the appropriate subdirectory
 3. Use standard prompt template syntax with placeholders:
    - `{retriever_output}` - Retrieved documents

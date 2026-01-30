@@ -1,4 +1,4 @@
--- A2rchi PostgreSQL Schema v2.0
+-- archi PostgreSQL Schema v2.0
 -- Consolidates: PostgreSQL (conversations), ChromaDB (vectors), SQLite (catalog)
 -- Requires: PostgreSQL 17+ with pgvector, pg_textsearch (optional), pgcrypto, pg_trgm
 
@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS static_config (
     
     -- Paths
     data_path TEXT NOT NULL DEFAULT '/root/data/',
-    prompts_path TEXT NOT NULL DEFAULT '/root/A2rchi/data/prompts/',
+    prompts_path TEXT NOT NULL DEFAULT '/root/archi/data/prompts/',
     
     -- Embedding configuration (affects vector dimensions - can't change at runtime)
     embedding_model VARCHAR(200) NOT NULL,
@@ -346,7 +346,7 @@ CREATE TABLE IF NOT EXISTS conversation_metadata (
     title TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     last_message_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    a2rchi_version VARCHAR(50)
+    archi_version VARCHAR(50)
 );
 
 CREATE INDEX IF NOT EXISTS idx_conv_meta_user ON conversation_metadata(user_id);
@@ -363,7 +363,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     message_id SERIAL PRIMARY KEY,
     conversation_id INTEGER NOT NULL REFERENCES conversation_metadata(conversation_id) ON DELETE CASCADE,
     
-    a2rchi_service TEXT NOT NULL,
+    archi_service TEXT NOT NULL,
     sender TEXT NOT NULL,
     content TEXT NOT NULL,
     
@@ -409,7 +409,7 @@ CREATE TABLE IF NOT EXISTS timing (
     vectorstore_update_ts TIMESTAMP NOT NULL,
     query_convo_history_ts TIMESTAMP NOT NULL,
     chain_finished_ts TIMESTAMP NOT NULL,
-    a2rchi_message_ts TIMESTAMP NOT NULL,
+    archi_message_ts TIMESTAMP NOT NULL,
     insert_convo_ts TIMESTAMP NOT NULL,
     finish_call_ts TIMESTAMP NOT NULL,
     server_response_msg_ts TIMESTAMP NOT NULL,

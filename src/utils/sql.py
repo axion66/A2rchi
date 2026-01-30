@@ -1,9 +1,9 @@
-"""SQL queries used by A2rchi"""
+"""SQL queries used by archi"""
 
 # Legacy query (uses conf_id foreign key to configs table)
 SQL_INSERT_CONVO = """
 INSERT INTO conversations (
-    a2rchi_service, conversation_id, sender, content, link, context, ts, conf_id
+    archi_service, conversation_id, sender, content, link, context, ts, conf_id
 )
 VALUES %s
 RETURNING message_id;
@@ -12,7 +12,7 @@ RETURNING message_id;
 # V2 query: stores model/pipeline directly (no configs table dependency)
 SQL_INSERT_CONVO_V2 = """
 INSERT INTO conversations (
-    a2rchi_service, conversation_id, sender, content, link, context, ts,
+    archi_service, conversation_id, sender, content, link, context, ts,
     model_used, pipeline_used
 )
 VALUES %s
@@ -83,7 +83,7 @@ INSERT INTO timing (
     vectorstore_update_ts,
     query_convo_history_ts,
     chain_finished_ts,
-    a2rchi_message_ts,
+    archi_message_ts,
     insert_convo_ts,
     finish_call_ts,
     server_response_msg_ts,
@@ -94,7 +94,7 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
 
 SQL_CREATE_CONVERSATION = """
 INSERT INTO conversation_metadata (
-    title, created_at, last_message_at, client_id, a2rchi_version
+    title, created_at, last_message_at, client_id, archi_version
 )
 VALUES (%s, %s, %s, %s, %s)
 RETURNING conversation_id;
@@ -102,7 +102,7 @@ RETURNING conversation_id;
 
 SQL_UPSERT_CONVERSATION_METADATA = """
 INSERT INTO conversation_metadata (
-    conversation_id, title, created_at, last_message_at, client_id, a2rchi_version
+    conversation_id, title, created_at, last_message_at, client_id, archi_version
 )
 VALUES (%s, %s, %s, %s, %s, %s)
 ON CONFLICT (conversation_id) DO UPDATE

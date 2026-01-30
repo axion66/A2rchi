@@ -251,7 +251,7 @@ class TestModelRegistry:
         import importlib.util
         spec = importlib.util.spec_from_file_location(
             "registry", 
-            "/Users/jason/projects/A2rchi/src/a2rchi/models/registry.py"
+            "/Users/jason/projects/archi/src/archi/models/registry.py"
         )
         registry_module = importlib.util.module_from_spec(spec)
         
@@ -267,13 +267,13 @@ class TestModelRegistry:
         # Load registry directly without importing model classes
         spec = importlib.util.spec_from_file_location(
             "registry_test", 
-            "/Users/jason/projects/A2rchi/src/a2rchi/models/registry.py"
+            "/Users/jason/projects/archi/src/archi/models/registry.py"
         )
         module = importlib.util.module_from_spec(spec)
         
         # Don't execute - just check the file is valid Python
         import ast
-        with open("/Users/jason/projects/A2rchi/src/a2rchi/models/registry.py") as f:
+        with open("/Users/jason/projects/archi/src/archi/models/registry.py") as f:
             tree = ast.parse(f.read())
         
         # Check that ModelRegistry and EmbeddingRegistry classes exist

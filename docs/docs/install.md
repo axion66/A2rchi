@@ -14,13 +14,13 @@ A2RCHI is deployed using a Python-based CLI onto containers. It requires:
 Clone the A2RCHI repository:
 
 ```bash
-git clone https://github.com/mit-submit/A2rchi.git
+git clone https://github.com/mit-submit/archi.git
 ```
 
 Check out the latest stable tag:
 
 ```bash
-cd A2rchi
+cd archi
 git checkout $(git describe --tags $(git rev-list --tags --max-count=1))
 ```
 
@@ -33,33 +33,33 @@ pip install -e .
 This installs A2RCHI's dependencies and the CLI tool. Verify the installation with:
 
 ```bash
-which a2rchi
+which archi
 ```
 
-The command prints the path to the `a2rchi` executable.
+The command prints the path to the `archi` executable.
 
 <details>
 <summary>Show Full Installation Script</summary>
 
 ```bash
 # Clone the repository
-git clone https://github.com/mit-submit/A2rchi.git
-cd A2rchi
+git clone https://github.com/mit-submit/archi.git
+cd archi
 export A2RCHI_DIR=$(pwd)
 
 # (Optional) Checkout the latest stable tag
 git checkout $(git describe --tags $(git rev-list --tags --max-count=1))
 
 # (Optional) Create and activate a virtual environment
-python3 -m venv .a2rchi_venv
-source .a2rchi_venv/bin/activate
+python3 -m venv .archi_venv
+source .archi_venv/bin/activate
 
 # Install dependencies
 cd "$A2RCHI_DIR"
 pip install -e .
 
 # Verify installation
-which a2rchi
+which archi
 ```
 
 </details>

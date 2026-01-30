@@ -30,8 +30,8 @@ def get_pg_config():
     return {
         "host": os.environ.get("PG_HOST", "localhost"),
         "port": int(os.environ.get("PG_PORT", 5432)),
-        "database": os.environ.get("PG_DATABASE", "a2rchi"),
-        "user": os.environ.get("PG_USER", "a2rchi"),
+        "database": os.environ.get("PG_DATABASE", "archi"),
+        "user": os.environ.get("PG_USER", "archi"),
         "password": os.environ.get("PG_PASSWORD", ""),
     }
 
@@ -97,15 +97,15 @@ def test_conversation_service():
         Message(
             sender="user",
             content="What is the capital of France?",
-            a2rchi_service="test_service",
+            archi_service="test_service",
             conversation_id=str(test_conv_id),
             model_used=None,
             pipeline_used=None,
         ),
         Message(
-            sender="A2rchi",
+            sender="archi",
             content="The capital of France is Paris.",
-            a2rchi_service="test_service",
+            archi_service="test_service",
             conversation_id=str(test_conv_id),
             link="https://example.com",
             context='{"test": true}',
@@ -123,10 +123,10 @@ def test_conversation_service():
         history = service.get_conversation_history(test_conv_id)
         print(f"✓ Retrieved {len(history)} messages from history")
         
-        # Check model tracking on A2rchi message
-        a2rchi_msg = [m for m in history if m.sender == "A2rchi"]
-        if a2rchi_msg:
-            msg = a2rchi_msg[-1]
+        # Check model tracking on archi message
+        archi_msg = [m for m in history if m.sender == "archi"]
+        if archi_msg:
+            msg = archi_msg[-1]
             print(f"✓ Model tracking: model_used={msg.model_used}, pipeline_used={msg.pipeline_used}")
             assert msg.model_used == "gpt-4o"
             assert msg.pipeline_used == "QAPipeline"
@@ -181,7 +181,7 @@ def test_byok_resolver():
     """Test BYOK provider resolver."""
     print("\n=== Testing BYOK Resolver ===")
     
-    from src.a2rchi.providers.byok_resolver import BYOKResolver
+    from src.archi.providers.byok_resolver import BYOKResolver
     from src.utils.user_service import UserService
     
     pg_config = get_pg_config()
@@ -213,7 +213,7 @@ def test_model_factory():
     """Test BYOK-aware model factory."""
     print("\n=== Testing BYOK Model Factory ===")
     
-    from src.a2rchi.models.byok_factory import (
+    from src.archi.models.byok_factory import (
         set_current_user, 
         clear_current_user, 
         get_current_user_id,
@@ -282,7 +282,7 @@ def main():
         print("\n⚠ PG_PASSWORD not set. Set environment variables:")
         print("  export PG_PASSWORD=your_password")
         print("  export PG_HOST=localhost")
-        print("  export PG_DATABASE=a2rchi")
+        print("  export PG_DATABASE=archi")
         print("  export BYOK_ENCRYPTION_KEY=your_encryption_key")
         print("\nRunning tests that don't require database connection...")
     

@@ -29,7 +29,7 @@ test.describe('Sidebar Navigation', () => {
     await page.waitForLoadState('networkidle');
     
     const sidebar = page.getByRole('complementary');
-    await expect(sidebar.getByText('A2rchi')).toBeVisible();
+    await expect(sidebar.getByText('archi')).toBeVisible();
     await expect(sidebar.getByRole('button', { name: /new chat/i })).toBeVisible();
   });
 

@@ -17,15 +17,15 @@ from ragas.llms import LangchainLLMWrapper
 from ragas.metrics import (answer_relevancy, context_precision, context_recall,
                            faithfulness)
 
-from src.a2rchi.a2rchi import A2rchi
-from src.a2rchi.models import HuggingFaceOpenLLM
+from src.archi.archi import archi
+from src.archi.models import HuggingFaceOpenLLM
 from src.utils.env import read_secret
 from src.utils.logging import get_logger, setup_logging
 from src.utils.generate_benchmark_report import parse_benchmark_results, format_html_output
 
-CONFIG_PATH = "/root/A2rchi/config.yaml"
-OUTPUT_PATH = "/root/A2rchi/benchmarks"
-EXTRA_METADATA_PATH = "/root/A2rchi/git_info.yaml"
+CONFIG_PATH = "/root/archi/config.yaml"
+OUTPUT_PATH = "/root/archi/benchmarks"
+EXTRA_METADATA_PATH = "/root/archi/git_info.yaml"
 OUTPUT_DIR = Path(OUTPUT_PATH)
 
 setup_logging()
@@ -42,9 +42,9 @@ class ResultHandler:
 
     @staticmethod
     def map_prompts(config: Dict[str, Any]):
-        pipe = config.get('a2rchi', {}).get('pipelines')[0]
+        pipe = config.get('archi', {}).get('pipelines')[0]
 
-        prompts = config.get('a2rchi',{}).get('pipeline_map').get(pipe).get('prompts')
+        prompts = config.get('archi',{}).get('pipeline_map').get(pipe).get('prompts')
 
         for _, prompts in prompts.items():
             for prompt_name, file_path in prompts.items():
@@ -162,9 +162,9 @@ class Benchmarker:
 
         # for now it only uses one pipeline (the first one) but maybe later we make this work for mulitple
         logger.info(f"loaded new configuration: {self.current_config}")
-        pipeline = config.get('a2rchi').get('pipelines')[0]
+        pipeline = config.get('archi').get('pipelines')[0]
 
-        self.chain = A2rchi(pipeline) 
+        self.chain = archi(pipeline) 
 
 
     def get_ragas_llm_evaluator(self):

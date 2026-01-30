@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# PostgreSQL 17 with pgvector + pg_textsearch for A2rchi
+# PostgreSQL 17 with pgvector + pg_textsearch for archi
 # Uses official pgvector image which includes properly compiled pgvector
 # Provides: vector similarity search (pgvector), BM25 search (pg_textsearch), encryption (pgcrypto), fuzzy matching (pg_trgm)
 

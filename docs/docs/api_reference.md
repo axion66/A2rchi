@@ -14,7 +14,7 @@ Create a new A2RCHI deployment.
 
 **Usage:**
 ```sh
-a2rchi create --name <deployment_name> --config <config.yaml> --env-file <secrets.env> [OPTIONS]
+archi create --name <deployment_name> --config <config.yaml> --env-file <secrets.env> [OPTIONS]
 ```
 
 **Options:**
@@ -41,7 +41,7 @@ Delete an existing A2RCHI deployment.
 
 **Usage:**
 ```sh
-a2rchi delete --name <deployment_name> [OPTIONS]
+archi delete --name <deployment_name> [OPTIONS]
 ```
 
 **Options:**
@@ -60,7 +60,7 @@ Restart a specific service in an existing deployment without restarting the enti
 
 **Usage:**
 ```sh
-a2rchi restart --name <deployment_name> --service <service_name> [OPTIONS]
+archi restart --name <deployment_name> --service <service_name> [OPTIONS]
 ```
 
 **Options:**
@@ -79,28 +79,28 @@ a2rchi restart --name <deployment_name> --service <service_name> [OPTIONS]
 
 - **Configuration changes**: Restarting with `--no-build` will reflect changes to configuration files. If you've modified code, you must rebuild the image (omit the `--no-build` flag).
 - **Updating configuration**: If you provide `--config` or `--config-dir`, the command will update the deployment's configuration before restarting the service.
-- **Finding services**: Use `a2rchi list-deployments` to see existing deployments. If you specify an invalid service name, the restart command will display the available services for that deployment.
+- **Finding services**: Use `archi list-deployments` to see existing deployments. If you specify an invalid service name, the restart command will display the available services for that deployment.
 
 **Examples:**
 
 Quick config update without rebuilding:
 ```sh
-a2rchi restart -n mybot --service chatbot --no-build
+archi restart -n mybot --service chatbot --no-build
 ```
 
 Test new agent code (requires rebuild):
 ```sh
-a2rchi restart -n mybot --service chatbot -c updated_config.yaml
+archi restart -n mybot --service chatbot -c updated_config.yaml
 ```
 
 Restart with updated secrets:
 ```sh
-a2rchi restart -n mybot --service chatbot -e new_secrets.env --no-build
+archi restart -n mybot --service chatbot -e new_secrets.env --no-build
 ```
 
 Restart data_manager to re-scrape sources:
 ```sh
-a2rchi restart -n mybot --service data_manager
+archi restart -n mybot --service data_manager
 ```
 
 ---
@@ -111,7 +111,7 @@ List all available A2RCHI services and data sources.
 
 **Usage:**
 ```sh
-a2rchi list-services
+archi list-services
 ```
 
 ---
@@ -122,7 +122,7 @@ List all existing A2RCHI deployments.
 
 **Usage:**
 ```sh
-a2rchi list-deployments
+archi list-deployments
 ```
 
 ---
@@ -133,7 +133,7 @@ Launch the benchmarking runtime to evaluate one or more configurations against a
 
 **Usage:**
 ```sh
-a2rchi evaluate --name <run_name> --env-file <secrets.env> --config <file.yaml> [OPTIONS]
+archi evaluate --name <run_name> --env-file <secrets.env> --config <file.yaml> [OPTIONS]
 ```
 Use `--config-dir` if you want to point to a directory of configs instead.
 
@@ -148,27 +148,27 @@ Use `--config-dir` if you want to point to a directory of configs instead.
 
 **Create a deployment:**
 ```sh
-a2rchi create --name mybot --config my.yaml --env-file secrets.env --services chatbot,uploader
+archi create --name mybot --config my.yaml --env-file secrets.env --services chatbot,uploader
 ```
 
 **Delete a deployment and remove images/volumes:**
 ```sh
-a2rchi delete --name mybot --rmi --rmv
+archi delete --name mybot --rmi --rmv
 ```
 
 **Restart a service without rebuilding:**
 ```sh
-a2rchi restart --name mybot --service chatbot --no-build
+archi restart --name mybot --service chatbot --no-build
 ```
 
 **List all deployments:**
 ```sh
-a2rchi list-deployments
+archi list-deployments
 ```
 
 **List all services:**
 ```sh
-a2rchi list-services
+archi list-services
 ```
 
 ---
@@ -234,7 +234,7 @@ Controls ingestion sources and vector store behaviour.
 
 ---
 
-### `a2rchi`
+### `archi`
 
 Defines pipelines and model routing.
 
@@ -261,7 +261,7 @@ Some fields are required depending on enabled services and pipelines. For exampl
 
 - `name`
 - `data_manager.sources.links.input_lists` (or other source-specific configuration)
-- `a2rchi.pipelines` and matching `a2rchi.pipeline_map` entries
+- `archi.pipelines` and matching `archi.pipeline_map` entries
 - Service-specific fields (e.g., `services.piazza.network_id`, `services.grader_app.num_problems`)
 
 See the [User Guide](user_guide.md) for more configuration examples and explanations.
@@ -297,7 +297,7 @@ data_manager:
   chunk_overlap: 0
   num_documents_to_retrieve: 5
 
-a2rchi:
+archi:
   pipelines: ["QAPipeline"]
   pipeline_map:
     QAPipeline:
@@ -322,7 +322,7 @@ services:
     hostname: "example.mit.edu"
   postgres:
     port: 5432
-    database: "a2rchi"
+    database: "archi"
 ```
 
 ---
@@ -472,13 +472,13 @@ Get static (deploy-time) configuration.
 **Response:**
 ```json
 {
-  "deployment_name": "my-a2rchi",
+  "deployment_name": "my-archi",
   "embedding_model": "text-embedding-ada-002",
   "embedding_dimensions": 1536,
   "available_pipelines": ["QAPipeline", "AgentPipeline"],
   "available_models": ["gpt-4o", "claude-3-opus"],
   "auth_enabled": true,
-  "prompts_path": "/root/A2rchi/data/prompts/"
+  "prompts_path": "/root/archi/data/prompts/"
 }
 ```
 

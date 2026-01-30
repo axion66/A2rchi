@@ -2,9 +2,9 @@
 # Uses local Ollama server at localhost:11434
 #
 # Run with:
-# export A2RCHI_DIR=/tmp/a2rchi-test
+# export A2RCHI_DIR=/tmp/archi-test
 # echo "PG_PASSWORD=testpassword123" > /tmp/test-env
-# a2rchi create --name cms-agent --config examples/deployments/basic-agent/local-config.yaml --services chatbot --env-file /tmp/test-env
+# archi create --name cms-agent --config examples/deployments/basic-agent/local-config.yaml --services chatbot --env-file /tmp/test-env
 
 name: cms_agent_local
 
@@ -39,7 +39,7 @@ data_manager:
           normalize_embeddings: true
       similarity_score_reference: 10
 
-a2rchi:
+archi:
   pipelines:
     - CMSCompOpsAgent
   pipeline_map:

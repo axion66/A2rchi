@@ -32,7 +32,7 @@ Always open a PR to merge documentation changes into `main`. Do not edit files d
 If you want the full CI-like smoke run (create deployment, wait for readiness, run checks, and clean up) you can use the shared runner:
 
 ```bash
-export A2RCHI_DIR=~/.a2rchi
+export A2RCHI_DIR=~/.archi
 export DEPLOYMENT_NAME=local-smoke
 export USE_PODMAN=true
 export SMOKE_FORCE_CREATE=true
@@ -48,19 +48,19 @@ The shared runner performs these checks in order (ensuring the configured Ollama
 - Tool probes: catalog tools and vectorstore retriever (executed inside the chatbot container to match the agent runtime).
 - ReAct agent smoke: stream response and observe at least one tool call.
 
-The combined smoke workflow alone does not start A2rchi for you. Start a deployment first, then run the checks (it validates Postgres, ChromaDB, data-manager catalog, Ollama model availability, ReAct streaming, and direct tool probes inside the chatbot container):
+The combined smoke workflow alone does not start archi for you. Start a deployment first, then run the checks (it validates Postgres, ChromaDB, data-manager catalog, Ollama model availability, ReAct streaming, and direct tool probes inside the chatbot container):
 
 ```bash
-export A2RCHI_CONFIG_PATH=~/.a2rchi/a2rchi-<deployment-name>/configs/<config-name>.yaml
+export A2RCHI_CONFIG_PATH=~/.archi/archi-<deployment-name>/configs/<config-name>.yaml
 export A2RCHI_CONFIG_NAME=<config-name>
 export A2RCHI_PIPELINE_NAME=CMSCompOpsAgent
 export USE_PODMAN=true
 export OLLAMA_MODEL=<ollama-model-name>
 export PGHOST=localhost
 export PGPORT=<postgres-port>
-export PGUSER=a2rchi
+export PGUSER=archi
 export PGPASSWORD=<pg-password>
-export PGDATABASE=a2rchi-db
+export PGDATABASE=archi-db
 export BASE_URL=http://localhost:2786
 export DM_BASE_URL=http://localhost:<data-manager-port>  # from your deployment config
 export CHROMA_URL=http://localhost:<chroma-port>       # from your deployment config
@@ -99,8 +99,8 @@ A2RCHI loads different base images hosted on Docker Hub. The Python base image i
 
 Images are hosted at:
 
-- Python: <https://hub.docker.com/r/a2rchi/a2rchi-python-base>
-- PyTorch: <https://hub.docker.com/r/a2rchi/a2rchi-pytorch-base>
+- Python: <https://hub.docker.com/r/archi/archi-python-base>
+- PyTorch: <https://hub.docker.com/r/archi/archi-pytorch-base>
 
 To rebuild a base image, navigate to the relevant `base-xxx-image` directory under `src/cli/templates/dockerfiles/`. Each directory contains the Dockerfile, requirements, and license information.
 
@@ -117,7 +117,7 @@ cat requirements/gpu-requirementsHEADER.txt requirements/requirements-base.txt >
 Build the image:
 
 ```bash
-podman build -t a2rchi/<image-name>:<tag> .
+podman build -t archi/<image-name>:<tag> .
 ```
 
 After verifying the image, log in to Docker Hub (ask a senior developer for credentials):
@@ -129,7 +129,7 @@ podman login docker.io
 Push the image:
 
 ```bash
-podman push a2rchi/<image-name>:<tag>
+podman push archi/<image-name>:<tag>
 ```
 
 ## Data Ingestion Architecture

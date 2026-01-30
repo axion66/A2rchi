@@ -1,5 +1,5 @@
 /**
- * Shared test fixtures and utilities for A2rchi Chat UI tests
+ * Shared test fixtures and utilities for archi Chat UI tests
  */
 import { test as base, expect, Page } from '@playwright/test';
 
@@ -167,7 +167,7 @@ export async function setupStreamMock(page: Page, response: string, delay = 0) {
 export async function enableABMode(page: Page) {
   // Dismiss warning for session
   await page.evaluate(() => {
-    sessionStorage.setItem('a2rchi_ab_warning_dismissed', 'true');
+    sessionStorage.setItem('archi_ab_warning_dismissed', 'true');
   });
   
   // Open settings and enable A/B

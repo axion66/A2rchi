@@ -10,7 +10,7 @@ data_manager:
   chromadb_external_port: 8001
   embedding_name: HuggingFaceEmbeddings
 
-a2rchi:
+archi:
   pipeline: GradingPipeline
   pipeline_map:
     GradingPipeline:

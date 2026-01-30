@@ -23,7 +23,7 @@ BASE_COMPOSE_TEMPLATE = "base-compose.yaml"
 BASE_INIT_SQL_V2_TEMPLATE = "init-v2.sql"  # PostgreSQL + pgvector consolidated schema
 BASE_GRAFANA_DATASOURCES_TEMPLATE = "grafana/datasources.yaml"
 BASE_GRAFANA_DASHBOARDS_TEMPLATE = "grafana/dashboards.yaml"
-BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE = "grafana/a2rchi-default-dashboard.json"
+BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE = "grafana/archi-default-dashboard.json"
 BASE_GRAFANA_CONFIG_TEMPLATE = "grafana/grafana.ini"
 
 
@@ -227,9 +227,9 @@ class TemplateManager:
             name = config["name"]
             config_path = config.get("_config_path")
             config_dir = Path(config_path).expanduser().parent if config_path else None
-            pipeline_names = config.get("a2rchi", {}).get("pipelines") or []
+            pipeline_names = config.get("archi", {}).get("pipelines") or []
             for pipeline_name in pipeline_names:
-                pipeline_config = config.get("a2rchi", {}).get("pipeline_map", {}).get(pipeline_name, {})
+                pipeline_config = config.get("archi", {}).get("pipeline_map", {}).get(pipeline_name, {})
                 prompts_config = pipeline_config.get("prompts", {})
                 prompt_mappings[name] = self._copy_pipeline_prompts(
                     context.base_dir,
@@ -269,7 +269,7 @@ class TemplateManager:
                 target_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source_path, target_path)
 
-                prompt_mappings[prompt_key] = f"/root/A2rchi/data/prompts/{source_path.name}"
+                prompt_mappings[prompt_key] = f"/root/archi/data/prompts/{source_path.name}"
                 logger.debug(f"Copied prompt {prompt_key} to {target_path}")
 
         return prompt_mappings
@@ -279,17 +279,17 @@ class TemplateManager:
         configs_path = context.base_dir / "configs"
         configs_path.mkdir(exist_ok=True)
 
-        a2rchi_configs = context.config_manager.get_configs()
-        for a2rchi_config in a2rchi_configs:
-            name = a2rchi_config["name"]
-            updated_config = copy.deepcopy(a2rchi_config)
+        archi_configs = context.config_manager.get_configs()
+        for archi_config in archi_configs:
+            name = archi_config["name"]
+            updated_config = copy.deepcopy(archi_config)
 
             prompt_mapping = context.prompt_mappings.get(name, {})
-            pipeline_names = updated_config.get("a2rchi", {}).get("pipelines") or []
+            pipeline_names = updated_config.get("archi", {}).get("pipelines") or []
 
             for pipeline_name in pipeline_names:
                 pipeline_config = (
-                    updated_config.get("a2rchi", {}).get("pipeline_map", {}).get(pipeline_name, {})
+                    updated_config.get("archi", {}).get("pipeline_map", {}).get(pipeline_name, {})
                 )
                 prompts_config = pipeline_config.get("prompts", {})
 
@@ -345,7 +345,7 @@ class TemplateManager:
         dashboard = dashboard_template.render(
             feedback_palette=palette,
         )
-        with open(grafana_dir / "a2rchi-default-dashboard.json", "w") as f:
+        with open(grafana_dir / "archi-default-dashboard.json", "w") as f:
             f.write(dashboard)
 
         config_template = self.env.get_template(BASE_GRAFANA_CONFIG_TEMPLATE)
@@ -354,8 +354,8 @@ class TemplateManager:
             f.write(grafana_config)
 
     def _copy_grader_assets(self, context: TemplateContext) -> None:
-        a2rchi_config = context.config_manager.get_configs()[0]
-        grader_config = a2rchi_config.get("services", {}).get("grader_app", {})
+        archi_config = context.config_manager.get_configs()[0]
+        grader_config = archi_config.get("services", {}).get("grader_app", {})
 
         users_csv_dir = grader_config.get("local_users_csv_dir")
         if users_csv_dir:
@@ -557,8 +557,8 @@ class TemplateManager:
         return None
 
     def _get_grader_rubrics(self, config_manager) -> List[str]:
-        a2rchi_config = config_manager.get_configs()[0]
-        grader_config = a2rchi_config.get('services', {}).get('grader_app', {})
+        archi_config = config_manager.get_configs()[0]
+        grader_config = archi_config.get('services', {}).get('grader_app', {})
         num_problems = grader_config.get('num_problems', 1)
         return [f"solution_with_rubric_{i}" for i in range(1, num_problems + 1)]
 
@@ -631,7 +631,7 @@ class TemplateManager:
             repo_root = Path(__file__).resolve()
 
         source_files = [
-            ("src", "a2rchi_code"),
+            ("src", "archi_code"),
             ("pyproject.toml", "pyproject.toml"),
             ("LICENSE", "LICENSE"),
         ]

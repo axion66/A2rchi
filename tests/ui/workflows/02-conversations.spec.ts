@@ -41,7 +41,7 @@ test.describe('Conversation Management', () => {
         json: {
           messages: [
             { sender: 'User', content: 'Hello from history', message_id: 1 },
-            { sender: 'A2rchi', content: 'Hi there!', message_id: 2 },
+            { sender: 'archi', content: 'Hi there!', message_id: 2 },
           ]
         }
       });

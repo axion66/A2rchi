@@ -1,11 +1,11 @@
 :root {
-  --a2rchi-bg: #f7f7f8;
-  --a2rchi-panel: #ffffff;
-  --a2rchi-border: #e5e7eb;
-  --a2rchi-text: #0f172a;
-  --a2rchi-muted: #64748b;
-  --a2rchi-accent: #10a37f;
-  --a2rchi-code-bg: #f1f5f9;
+  --archi-bg: #f7f7f8;
+  --archi-panel: #ffffff;
+  --archi-border: #e5e7eb;
+  --archi-text: #0f172a;
+  --archi-muted: #64748b;
+  --archi-accent: #10a37f;
+  --archi-code-bg: #f1f5f9;
 }
 
 * {
@@ -15,17 +15,17 @@
 body {
   margin: 0;
   font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: var(--a2rchi-bg);
-  color: var(--a2rchi-text);
+  background: var(--archi-bg);
+  color: var(--archi-text);
 }
 
 .cs-main-container {
-  background: var(--a2rchi-bg);
+  background: var(--archi-bg);
 }
 
 .cs-sidebar {
-  background: var(--a2rchi-panel);
-  border-right: 1px solid var(--a2rchi-border);
+  background: var(--archi-panel);
+  border-right: 1px solid var(--archi-border);
 }
 
 .cs-conversation-list {
@@ -44,7 +44,7 @@ body {
 
 .cs-chat-container,
 .cs-message-list {
-  background: var(--a2rchi-bg);
+  background: var(--archi-bg);
 }
 
 .cs-message-list__scroll-wrapper {
@@ -58,7 +58,7 @@ body {
 
 .cs-message--incoming .cs-message__content {
   background: #ffffff;
-  border: 1px solid var(--a2rchi-border);
+  border: 1px solid var(--archi-border);
   border-radius: 12px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
@@ -75,13 +75,13 @@ body {
 }
 
 .cs-message-input {
-  border-top: 1px solid var(--a2rchi-border);
+  border-top: 1px solid var(--archi-border);
   background: #ffffff;
 }
 
 .cs-message-input__content-editor {
   background: #ffffff;
-  border: 1px solid var(--a2rchi-border);
+  border: 1px solid var(--archi-border);
   border-radius: 12px;
   min-height: 54px;
   padding: 10px 14px;
@@ -96,89 +96,89 @@ body {
 }
 
 .cs-message-input__send {
-  background: var(--a2rchi-accent);
+  background: var(--archi-accent);
   color: #fff;
   border-radius: 10px;
   padding: 8px 10px;
 }
 
 #root,
-.a2rchi-app {
+.archi-app {
   height: 100vh;
 }
 
-.a2rchi-sidebar {
-  background: var(--a2rchi-panel);
-  border-right: 1px solid var(--a2rchi-border);
+.archi-sidebar {
+  background: var(--archi-panel);
+  border-right: 1px solid var(--archi-border);
 }
 
-.a2rchi-header {
+.archi-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--a2rchi-border);
-  background: var(--a2rchi-panel);
+  border-bottom: 1px solid var(--archi-border);
+  background: var(--archi-panel);
 }
 
-.a2rchi-header-title {
+.archi-header-title {
   font-weight: 600;
   font-size: 1rem;
 }
 
-.a2rchi-controls {
+.archi-controls {
   display: flex;
   gap: 12px;
   align-items: center;
 }
 
-.a2rchi-select,
-.a2rchi-toggle {
-  border: 1px solid var(--a2rchi-border);
+.archi-select,
+.archi-toggle {
+  border: 1px solid var(--archi-border);
   border-radius: 8px;
   padding: 6px 8px;
   background: #fff;
-  color: var(--a2rchi-text);
+  color: var(--archi-text);
 }
 
-.a2rchi-toggle {
+.archi-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 0.85rem;
 }
 
-.a2rchi-main {
-  background: var(--a2rchi-bg);
+.archi-main {
+  background: var(--archi-bg);
 }
 
-.a2rchi-message {
+.archi-message {
   line-height: 1.6;
   font-size: 0.98rem;
 }
 
-.a2rchi-message pre {
-  background: var(--a2rchi-code-bg);
+.archi-message pre {
+  background: var(--archi-code-bg);
   border-radius: 8px;
   padding: 12px;
   overflow-x: auto;
 }
 
-.a2rchi-message code {
+.archi-message code {
   font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 0.9em;
 }
 
-.a2rchi-ab-label {
+.archi-ab-label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 0.75rem;
-  color: var(--a2rchi-muted);
+  color: var(--archi-muted);
   margin-bottom: 6px;
 }
 
-.a2rchi-ab-pill {
+.archi-ab-pill {
   background: #e2e8f0;
   padding: 2px 6px;
   border-radius: 999px;
@@ -186,14 +186,14 @@ body {
   color: #0f172a;
 }
 
-.a2rchi-empty {
-  color: var(--a2rchi-muted);
+.archi-empty {
+  color: var(--archi-muted);
   text-align: center;
   padding: 24px;
 }
 
-.a2rchi-new-chat {
-  background: var(--a2rchi-accent);
+.archi-new-chat {
+  background: var(--archi-accent);
   color: white;
   border: none;
   border-radius: 8px;
@@ -201,12 +201,12 @@ body {
   cursor: pointer;
 }
 
-.a2rchi-conversation-title {
+.archi-conversation-title {
   font-size: 0.9rem;
   font-weight: 600;
 }
 
-.a2rchi-conversation-date {
+.archi-conversation-date {
   font-size: 0.75rem;
-  color: var(--a2rchi-muted);
+  color: var(--archi-muted);
 }

@@ -3,7 +3,7 @@ import os
 import yaml
 
 # DEFINITIONS
-CONFIGS_PATH = "/root/A2rchi/configs/"
+CONFIGS_PATH = "/root/archi/configs/"
 
 def load_config(map: bool = False, name: str = None):
     """
@@ -25,7 +25,7 @@ def load_config(map: bool = False, name: str = None):
         from langchain_huggingface import HuggingFaceEmbeddings
         from langchain_openai import OpenAIEmbeddings
 
-        from src.a2rchi.models import (VLLM, AnthropicLLM, DumbLLM,
+        from src.archi.models import (VLLM, AnthropicLLM, DumbLLM,
                            HuggingFaceImageLLM, HuggingFaceOpenLLM,
                            LlamaLLM, OllamaInterface, OpenAILLM,
                            OpenRouterLLM)
@@ -44,8 +44,8 @@ def load_config(map: bool = False, name: str = None):
             "VLLM": VLLM,
             "OllamaInterface": OllamaInterface, 
         }
-        for model in config["a2rchi"]["model_class_map"].keys():
-            config["a2rchi"]["model_class_map"][model]["class"] = MODEL_MAPPING[model]
+        for model in config["archi"]["model_class_map"].keys():
+            config["archi"]["model_class_map"][model]["class"] = MODEL_MAPPING[model]
 
         EMBEDDING_MAPPING = {
             "OpenAIEmbeddings": OpenAIEmbeddings,

@@ -15,7 +15,7 @@
       }
     ]
   },
-  "description": "Charts tracking A2rchi's usage.",
+  "description": "Charts tracking archi's usage.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
@@ -27,7 +27,7 @@
         "type": "postgres",
         "uid": "P44368ADAD746BC27"
       },
-      "description": "Number of queries handled by A2rchi per-hour.",
+      "description": "Number of queries handled by archi per-hour.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -210,7 +210,7 @@
           "table": "timing"
         }
       ],
-      "title": "A2rchi Response Time Histogram",
+      "title": "archi Response Time Histogram",
       "type": "histogram"
     },
     {
@@ -604,7 +604,7 @@
           },
           "editorMode": "code",
           "rawQuery": true,
-          "rawSql": "WITH cleaned AS (\n  SELECT\n    a2rchi_service AS service,\n    conversation_id,\n    sender,\n    ts,\n    message_id,\n    regexp_replace(content, '<[^>]*>', '', 'g')::text AS clean_content,\n    link AS top_link,\n    context\n  FROM conversations\n)\nSELECT \n  service, \n  conversation_id, \n  sender, \n  ts, \n  CASE \n    WHEN service = 'Chatbot' THEN\n      clean_content || E'\\n\\n \\n\\nHistory:\\n\\n' ||\n      COALESCE((\n        SELECT string_agg(c2.sender || ': ' || c2.clean_content, E'\\n\\n' ORDER BY c2.message_id DESC)\n        FROM cleaned c2 \n        WHERE c2.conversation_id = cleaned.conversation_id \n        AND c2.message_id < cleaned.message_id\n      ), '')\n    ELSE clean_content\n  END AS message,\n  top_link, \n  context\nFROM cleaned\nWHERE ts >= $__timeFrom() AND ts < $__timeTo()\nORDER BY ts DESC\nLIMIT 100",
+          "rawSql": "WITH cleaned AS (\n  SELECT\n    archi_service AS service,\n    conversation_id,\n    sender,\n    ts,\n    message_id,\n    regexp_replace(content, '<[^>]*>', '', 'g')::text AS clean_content,\n    link AS top_link,\n    context\n  FROM conversations\n)\nSELECT \n  service, \n  conversation_id, \n  sender, \n  ts, \n  CASE \n    WHEN service = 'Chatbot' THEN\n      clean_content || E'\\n\\n \\n\\nHistory:\\n\\n' ||\n      COALESCE((\n        SELECT string_agg(c2.sender || ': ' || c2.clean_content, E'\\n\\n' ORDER BY c2.message_id DESC)\n        FROM cleaned c2 \n        WHERE c2.conversation_id = cleaned.conversation_id \n        AND c2.message_id < cleaned.message_id\n      ), '')\n    ELSE clean_content\n  END AS message,\n  top_link, \n  context\nFROM cleaned\nWHERE ts >= $__timeFrom() AND ts < $__timeTo()\nORDER BY ts DESC\nLIMIT 100",
           "sql": {
             "columns": [],
             "groupBy": [],
@@ -629,7 +629,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "A2rchi Usage",
+  "title": "archi Usage",
   "uid": "faf20efc-ffe5-48ae-9a26-debe655bf5a8",
   "version": 2,
   "weekStart": ""
