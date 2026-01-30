@@ -513,6 +513,110 @@ def test_vector_similarity():
     print("✓ Vector similarity search test passed")
 
 
+def test_catalog_service():
+    """Test PostgresCatalogService for document catalog operations."""
+    print("\n=== Test: PostgresCatalogService ===")
+    
+    import tempfile
+    from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
+    
+    with tempfile.TemporaryDirectory() as data_path:
+        catalog = PostgresCatalogService(data_path=data_path, pg_config=PG_CONFIG)
+        
+        # Test 1: Upsert a document
+        test_hash = f"test_doc_{uuid.uuid4().hex[:8]}"
+        doc_id = catalog.upsert_resource(
+            resource_hash=test_hash,
+            path="/fake/path/test.md",
+            metadata={
+                "display_name": "Test Document.md",
+                "source_type": "local_files",
+                "url": "file:///fake/path/test.md",
+                "size_bytes": 1234,
+            }
+        )
+        assert doc_id is not None, "Document ID should be returned"
+        print(f"✓ Upserted document: {test_hash} -> id={doc_id}")
+        
+        # Test 2: List documents
+        result = catalog.list_documents(conversation_id="test_conv_123")
+        assert "documents" in result, "list_documents should return 'documents' key"
+        docs = result["documents"]
+        found = any(d["hash"] == test_hash for d in docs)
+        assert found, f"Upserted document {test_hash} should be in list"
+        print(f"✓ Listed documents: found {len(docs)} documents, including test doc")
+        
+        # Test 3: Get document by hash
+        doc_meta = catalog.get_metadata_for_hash(test_hash)
+        assert doc_meta is not None, "Document metadata should be found"
+        assert doc_meta.get("display_name") == "Test Document.md", "Display name mismatch"
+        print(f"✓ Retrieved document metadata: {doc_meta.get('display_name')}")
+        
+        # Test 4: Get stats
+        stats = catalog.get_stats(conversation_id="test_conv_123")
+        assert stats["total_documents"] >= 1, "Should have at least 1 document"
+        print(f"✓ Stats: {stats['total_documents']} documents, {stats.get('total_size_bytes', 0)} bytes")
+        
+        # Test 5: Soft delete
+        catalog.delete_resource(test_hash)
+        doc_after = catalog.get_metadata_for_hash(test_hash)
+        assert doc_after is None, "Deleted document should not be found"
+        print(f"✓ Soft-deleted document: {test_hash}")
+    
+    print("✓ PostgresCatalogService test passed")
+    return True
+
+
+def test_data_viewer_service():
+    """Test DataViewerService for document viewing operations."""
+    print("\n=== Test: DataViewerService ===")
+    
+    import tempfile
+    from src.data_manager.data_viewer_service import DataViewerService
+    
+    with tempfile.TemporaryDirectory() as data_path:
+        service = DataViewerService(data_path=data_path, pg_config=PG_CONFIG)
+        
+        # Test 1: Insert a test document via catalog
+        test_hash = f"viewer_test_{uuid.uuid4().hex[:8]}"
+        service.catalog.upsert_resource(
+            resource_hash=test_hash,
+            path="/fake/docs/readme.md",
+            metadata={
+                "display_name": "README.md",
+                "source_type": "local_files",
+                "url": "file:///fake/docs/readme.md",
+                "size_bytes": 5678,
+            }
+        )
+        print(f"✓ Created test document: {test_hash}")
+        
+        # Test 2: List via DataViewerService
+        result = service.list_documents(conversation_id="viewer_test_conv")
+        docs = result.get("documents", [])
+        found = any(d["hash"] == test_hash for d in docs)
+        assert found, "Test document should be in list"
+        print(f"✓ DataViewerService.list_documents: found {len(docs)} documents")
+        
+        # Test 3: Enable/disable
+        enable_result = service.disable_document("viewer_test_conv", test_hash)
+        assert enable_result["success"], "Disable should succeed"
+        assert enable_result["enabled"] is False, "Should be disabled"
+        print(f"✓ Disabled document: {test_hash}")
+        
+        enable_result = service.enable_document("viewer_test_conv", test_hash)
+        assert enable_result["success"], "Enable should succeed"
+        assert enable_result["enabled"] is True, "Should be enabled"
+        print(f"✓ Enabled document: {test_hash}")
+        
+        # Cleanup
+        service.catalog.delete_resource(test_hash)
+        print(f"✓ Cleaned up test document")
+    
+    print("✓ DataViewerService test passed")
+    return True
+
+
 def run_all_tests():
     """Run all integration tests."""
     print("=" * 60)
@@ -544,6 +648,8 @@ def run_all_tests():
         ("A/B Comparison V2", lambda: test_ab_comparison_v2(test_conv_id)),
         ("Document Selection", lambda: test_document_selection_direct()),
         ("BYOK Resolver", lambda: test_byok_resolver(test_user_id)),
+        ("CatalogService", lambda: test_catalog_service()),
+        ("DataViewerService", lambda: test_data_viewer_service()),
         ("Vector Similarity", lambda: test_vector_similarity()),
         ("Grafana Queries", lambda: test_grafana_queries()),
     ]
