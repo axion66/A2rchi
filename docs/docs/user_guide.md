@@ -105,14 +105,19 @@ data_manager:
   sources:
     sso:
       enabled: true
-      sso_class: CERNSSOScraper  # or whichever class is appropriate
-      sso_class_map:
-        CERNSSOScraper:
-          kwargs:
-            headless: true
-            max_depth: 2
+    links:
+      selenium_scraper:
+        enabled: true
+        selenium_class: CERNSSOScraper  # or whichever class is appropriate
+        selenium_class_map:
+          CERNSSOScraper:
+            kwargs:
+              headless: true
+              max_depth: 2
 ```
 Then, run `archi create ... --sources sso` to activate the SSO collector.
+
+Note: source configuration is persisted to PostgreSQL `static_config` at deployment time and used at runtime.
 
 You can customise the HTTP scraper behaviour (for example, to avoid SSL verification warnings):
 ```yaml

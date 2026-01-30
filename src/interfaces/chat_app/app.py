@@ -53,7 +53,7 @@ QUERY_LIMIT = 10000 # max queries per conversation
 MAIN_PROMPT_FILE = "/root/archi/main.prompt"
 CONDENSE_PROMPT_FILE = "/root/archi/condense.prompt"
 SUMMARY_PROMPT_FILE = "/root/archi/summary.prompt"
-A2RCHI_SENDER = "archi"
+ARCHI_SENDER = "archi"
 
 
 class AnswerRenderer(mt.HTMLRenderer):
@@ -841,7 +841,7 @@ class ChatWrapper:
         # query conversation history
         cursor.execute(SQL_QUERY_CONVO, (conversation_id,))
         history = cursor.fetchall()
-        history = collapse_assistant_sequences(history, sender_name=A2RCHI_SENDER)
+        history = collapse_assistant_sequences(history, sender_name=ARCHI_SENDER)
 
         # clean up database connection state
         cursor.close()
@@ -933,7 +933,7 @@ class ChatWrapper:
         service = "Chatbot"
         # parse user message / archi message
         user_sender, user_content, user_msg_ts = user_message
-        archi_sender, archi_content, archi_msg_ts = archi_message
+        ARCHI_SENDER, archi_content, archi_msg_ts = archi_message
 
         user_content = _sanitize(user_content)
         archi_content = _sanitize(archi_content)
@@ -945,11 +945,11 @@ class ChatWrapper:
         insert_tups = (
             [
                 (service, conversation_id, user_sender, user_content, '', '', user_msg_ts, self.current_model_used, self.current_pipeline_used),
-                (service, conversation_id, archi_sender, archi_content, link, archi_context, archi_msg_ts, self.current_model_used, self.current_pipeline_used),
+                (service, conversation_id, ARCHI_SENDER, archi_content, link, archi_context, archi_msg_ts, self.current_model_used, self.current_pipeline_used),
             ]
             if not is_refresh
             else [
-                (service, conversation_id, archi_sender, archi_content, link, archi_context, archi_msg_ts, self.current_model_used, self.current_pipeline_used),
+                (service, conversation_id, ARCHI_SENDER, archi_content, link, archi_context, archi_msg_ts, self.current_model_used, self.current_pipeline_used),
             ]
         )
 
@@ -1122,7 +1122,7 @@ class ChatWrapper:
         timestamps["query_convo_history_ts"] = datetime.now()
 
         if is_refresh:
-            while history and history[-1][0] == A2RCHI_SENDER:
+            while history and history[-1][0] == ARCHI_SENDER:
                 _ = history.pop(-1)
 
         if server_received_msg_ts.timestamp() - client_sent_msg_ts > client_timeout:
@@ -1266,7 +1266,7 @@ class ChatWrapper:
             best_reference = primary_source["link"] or primary_source["display"]
 
         user_message = (context.sender, context.content, server_received_msg_ts)
-        archi_message = (A2RCHI_SENDER, output, timestamps["archi_message_ts"])
+        archi_message = (ARCHI_SENDER, output, timestamps["archi_message_ts"])
         message_ids = self.insert_conversation(
             context.conversation_id,
             user_message,
@@ -1276,7 +1276,7 @@ class ChatWrapper:
             context.is_refresh,
         )
         timestamps["insert_convo_ts"] = datetime.now()
-        context.history.append((A2RCHI_SENDER, result["answer"]))
+        context.history.append((ARCHI_SENDER, result["answer"]))
 
         agent_messages = getattr(result, "messages", []) or []
         if agent_messages:
@@ -1931,7 +1931,7 @@ class FlaskAppWrapper(object):
 
     def update_config(self):
         """
-        Updates the config used by A2rchi for responding to messages.
+        Updates the config used by archi for responding to messages.
         Reloads the config and updates the chat wrapper.
         """
         # parse config and write it out to CONFIGS_PATH
@@ -2819,7 +2819,7 @@ class FlaskAppWrapper(object):
             # get history of the conversation along with latest feedback state
             cursor.execute(SQL_QUERY_CONVO_WITH_FEEDBACK, (conversation_id, ))
             history_rows = cursor.fetchall()
-            history_rows = collapse_assistant_sequences(history_rows, sender_name=A2RCHI_SENDER, sender_index=0)
+            history_rows = collapse_assistant_sequences(history_rows, sender_name=ARCHI_SENDER, sender_index=0)
 
             conversation = {
                 'conversation_id': meta_row[0],

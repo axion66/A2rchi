@@ -110,12 +110,13 @@ class JiraClient:
                 "project": getattr(getattr(fields, "project", None), "key", None) if fields else None,
                 "url": f"{trimmed_url}/browse/{issue_key}" if trimmed_url else None,
                 "parent": getattr(getattr(fields, "project", None), "key", None) if fields else None,
+                "ticket_provider": "jira",
             }
 
             record = TicketResource(
                 ticket_id=str(issue_key),
                 content=content,
-                source_type="jira",
+                source_type="ticket",
                 created_at=created_at or None,
                 metadata={k: v for k, v in metadata.items() if v},
             )
