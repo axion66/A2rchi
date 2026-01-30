@@ -1,5 +1,5 @@
 """
-A2rchi utilities module.
+archi utilities module.
 
 Exports core utility services for PostgreSQL-consolidated architecture.
 """

@@ -12,7 +12,7 @@ jobs:
   publish:
     runs-on: [submit76-runner]
     env:
-      A2RCHI_DIR: ${{ github.workspace }}/a2rchi-local
+      ARCHI_DIR: ${{ github.workspace }}/archi-local
 
     steps:
       - name: Checkout

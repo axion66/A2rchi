@@ -420,7 +420,7 @@ class TestPostgresServiceFactory:
                 'postgres': {
                     'host': 'db.example.com',
                     'port': 5433,
-                    'database': 'a2rchi',
+                    'database': 'archi',
                     'user': 'app',
                     'password': 'secret',
                     'pool': {
@@ -490,7 +490,7 @@ class TestDataclasses:
         assert msg.message_id is None
         assert msg.conversation_id == ""
         assert msg.sender == ""
-        assert msg.a2rchi_service == "chat"
+        assert msg.archi_service == "chat"
     
     def test_ab_comparison_defaults(self):
         """Test ABComparison default values."""

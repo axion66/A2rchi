@@ -1,12 +1,12 @@
-# Basic configuration file for a A2RCHI deployment
+# Basic configuration file for a Archi deployment
 # with a chat app interface, a QA pipeline, and
 # PostgreSQL with pgvector for document storage.
 # The LLM is a locally hosted VLLM instance on GPUs.
 #
 # run with:
-# a2rchi create --name my-a2rchi --config examples/deployments/basic-gpu/config.yaml --services chatbot --gpu-ids=all
+# archi create --name my-archi --config examples/deployments/basic-gpu/config.yaml --services chatbot --gpu-ids=all
 
-name: my_a2rchi
+name: my_archi
 
 services:
   chat_app:
@@ -21,7 +21,7 @@ data_manager:
         - examples/deployments/basic-gpu/miscellanea.list
   embedding_name: HuggingFaceEmbeddings
 
-a2rchi:
+archi:
   pipelines:
     - QAPipeline
   pipeline_map:

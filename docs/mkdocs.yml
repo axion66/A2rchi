@@ -1,17 +1,15 @@
-site_name: A2RCHI Docs
+site_name: Archi Docs
 nav:
-  - A2RCHI: index.md
+  - Archi: index.md
   - Install: install.md
   - Quickstart: quickstart.md
   - User Guide: user_guide.md
   - Advanced Setup and Deployment: advanced_setup_deploy.md
   - API Reference: api_reference.md
-  - Migration Guide: migration_guide.md
-  - Grafana Migration: grafana_migration.md
   - Developer Guide: developer_guide.md
   - Local Dev Testing: local_dev_testing.md
 theme: readthedocs
-repo_url: https://github.com/mit-submit/A2rchi
+repo_url: https://github.com/mit-submit/archi
 repo_name: 'GitHub'
 extra:
   version: 1.2.4

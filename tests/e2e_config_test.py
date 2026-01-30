@@ -23,7 +23,7 @@ def test_yaml_config():
     print("\n[1/5] Testing yaml_config module...")
     
     with tempfile.TemporaryDirectory() as tmpdir:
-        os.environ['A2RCHI_CONFIGS_PATH'] = tmpdir
+        os.environ['ARCHI_CONFIGS_PATH'] = tmpdir
         
         config = {
             'name': 'test-deployment',
@@ -33,7 +33,7 @@ def test_yaml_config():
                 'ROLES': ['User', 'AI']
             },
             'services': {
-                'postgres': {'host': 'localhost', 'port': 5432, 'database': 'a2rchi'},
+                'postgres': {'host': 'localhost', 'port': 5432, 'database': 'archi'},
                 'chat_app': {'pipeline': 'QAPipeline', 'port': 7868}
             },
             'data_manager': {
@@ -41,7 +41,7 @@ def test_yaml_config():
                 'chunk_size': 1000,
                 'chunk_overlap': 150
             },
-            'a2rchi': {
+            'archi': {
                 'pipelines': ['QAPipeline', 'AgentPipeline'],
                 'model_class_map': {
                     'DumbLLM': {'kwargs': {}},
@@ -56,7 +56,7 @@ def test_yaml_config():
         
         from src.utils.yaml_config import (
             load_yaml_config, list_config_names, load_global_config,
-            load_services_config, load_data_manager_config, load_a2rchi_config
+            load_services_config, load_data_manager_config, load_archi_config
         )
         
         # Test list_config_names
@@ -82,13 +82,13 @@ def test_yaml_config():
         assert dm_cfg['embedding_name'] == 'HuggingFaceEmbeddings'
         print("   ✓ load_data_manager_config works")
         
-        a2rchi_cfg = load_a2rchi_config()
-        assert 'QAPipeline' in a2rchi_cfg['pipelines']
-        print("   ✓ load_a2rchi_config works")
+        archi_cfg = load_archi_config()
+        assert 'QAPipeline' in archi_cfg['pipelines']
+        print("   ✓ load_archi_config works")
     
     # Clean up env
-    if 'A2RCHI_CONFIGS_PATH' in os.environ:
-        del os.environ['A2RCHI_CONFIGS_PATH']
+    if 'ARCHI_CONFIGS_PATH' in os.environ:
+        del os.environ['ARCHI_CONFIGS_PATH']
     
     print("[1/5] PASSED ✓")
 
@@ -157,7 +157,7 @@ def test_model_registry():
     # Model imports trigger pipeline imports which call load_global_config()
     # at module load time, so we need a valid config directory
     with tempfile.TemporaryDirectory() as tmpdir:
-        os.environ['A2RCHI_CONFIGS_PATH'] = tmpdir
+        os.environ['ARCHI_CONFIGS_PATH'] = tmpdir
         
         # Create a minimal config for imports to succeed
         config = {
@@ -165,13 +165,13 @@ def test_model_registry():
             'global': {'DATA_PATH': '/tmp/data', 'verbosity': 3, 'ROLES': ['User', 'AI']},
             'services': {'postgres': {'host': 'localhost'}},
             'data_manager': {'embedding_name': 'HuggingFaceEmbeddings'},
-            'a2rchi': {'pipelines': ['QAPipeline'], 'model_class_map': {}}
+            'archi': {'pipelines': ['QAPipeline'], 'model_class_map': {}}
         }
         with open(os.path.join(tmpdir, 'test.yaml'), 'w') as f:
             yaml.dump(config, f)
         
         try:
-            from src.a2rchi.models.registry import ModelRegistry, EmbeddingRegistry
+            from src.archi.models.registry import ModelRegistry, EmbeddingRegistry
             
             # Force registry initialization (it's lazy)
             ModelRegistry._ensure_initialized()
@@ -200,8 +200,8 @@ def test_model_registry():
             print(f"   ⚠ Skipping: Missing optional dependency ({e})")
             print("[3/5] SKIPPED (missing deps)")
         finally:
-            if 'A2RCHI_CONFIGS_PATH' in os.environ:
-                del os.environ['A2RCHI_CONFIGS_PATH']
+            if 'ARCHI_CONFIGS_PATH' in os.environ:
+                del os.environ['ARCHI_CONFIGS_PATH']
 
 
 def test_config_service_dataclasses():
@@ -222,7 +222,7 @@ def test_config_service_dataclasses():
         distance_metric='cosine',
     )
     assert static.deployment_name == 'test'
-    assert static.prompts_path == '/root/A2rchi/data/prompts/'  # default
+    assert static.prompts_path == '/root/archi/data/prompts/'  # default
     print("   ✓ StaticConfig works with defaults")
     
     # Test DynamicConfig
@@ -306,17 +306,17 @@ def test_integration_flow():
             with open(os.path.join(prompts_dir, prompt_type, 'default.prompt'), 'w') as f:
                 f.write(f'Default {prompt_type} prompt')
         
-        os.environ['A2RCHI_CONFIGS_PATH'] = config_dir
+        os.environ['ARCHI_CONFIGS_PATH'] = config_dir
         
         config = {
             'name': 'integration-test',
             'global': {'DATA_PATH': '/tmp/data', 'verbosity': 3},
             'services': {
-                'postgres': {'host': 'localhost', 'port': 5432, 'database': 'a2rchi'},
+                'postgres': {'host': 'localhost', 'port': 5432, 'database': 'archi'},
                 'chat_app': {'pipeline': 'QAPipeline'}
             },
             'data_manager': {'embedding_name': 'HuggingFaceEmbeddings'},
-            'a2rchi': {
+            'archi': {
                 'pipelines': ['QAPipeline'],
                 'model_class_map': {'DumbLLM': {'kwargs': {}}}
             }
@@ -339,14 +339,14 @@ def test_integration_flow():
         
         # Verify model registry (skip if deps missing)
         try:
-            from src.a2rchi.models.registry import ModelRegistry
+            from src.archi.models.registry import ModelRegistry
             assert 'DumbLLM' in ModelRegistry._models
             print("   ✓ Model registry available")
         except ImportError:
             print("   ⚠ Model registry skipped (missing deps)")
         
         # Clean up
-        del os.environ['A2RCHI_CONFIGS_PATH']
+        del os.environ['ARCHI_CONFIGS_PATH']
     
     print("[INTEGRATION] PASSED ✓")
 

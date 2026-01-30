@@ -23,8 +23,8 @@ import psycopg2.extras
 PG_CONFIG = {
     "host": "localhost",
     "port": 5439,
-    "database": "a2rchi",
-    "user": "a2rchi",
+    "database": "archi",
+    "user": "archi",
     "password": "testpassword123",
 }
 
@@ -63,19 +63,19 @@ def test_schema_creation():
     assert "pg_trgm" in extensions, "pg_trgm not installed"
     print("✓ pg_trgm extension enabled")
     
-    # Check tables (updated for v2 schema)
+    # Check tables
     expected_tables = [
         "users",
         "static_config",
         "dynamic_config",
         "document_chunks",
-        "documents",
+        "resources",
         "conversations",
-        "user_document_defaults",
-        "conversation_document_overrides",
+        "user_document_selection",
+        "conversation_document_selection",
         "ab_comparisons",
         "feedback",
-        "timing",
+        "timings",
         "configs",
         "conversation_metadata",
         "agent_traces",
@@ -156,37 +156,23 @@ def test_conversation_service(test_user_id):
     service = ConversationService(connection_params=PG_CONFIG)
     
     # Create a test conversation ID
-    test_conv_id = 999999
+    test_conv_id = str(999999)
     
-    # First create conversation_metadata (required by FK constraint)
-    conn = psycopg2.connect(**PG_CONFIG)
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO conversation_metadata (conversation_id, user_id, title)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (conversation_id) DO NOTHING
-            """, (test_conv_id, test_user_id, "Test Conversation"))
-        conn.commit()
-    finally:
-        conn.close()
-    print(f"✓ Created conversation metadata: {test_conv_id}")
-    
-    # Insert messages with model tracking (using correct field name: a2rchi_service)
+    # Insert messages with model tracking (using correct field name: archi_service)
     messages = [
         Message(
             sender=test_user_id,
             content="What is the capital of France?",
-            a2rchi_service="integration_test",
-            conversation_id=str(test_conv_id),
+            archi_service="integration_test",
+            conversation_id=test_conv_id,
             model_used=None,
             pipeline_used=None,
         ),
         Message(
-            sender="A2rchi",
+            sender="archi",
             content="The capital of France is Paris.",
-            a2rchi_service="integration_test", 
-            conversation_id=str(test_conv_id),
+            archi_service="integration_test", 
+            conversation_id=test_conv_id,
             link="https://example.com",
             context='{"test": true}',
             model_used="gpt-4o",
@@ -199,15 +185,15 @@ def test_conversation_service(test_user_id):
     print(f"✓ Inserted messages with IDs: {message_ids}")
     
     # Query back and verify model tracking
-    history = service.get_conversation_history(str(test_conv_id))
+    history = service.get_conversation_history(test_conv_id)
     assert len(history) >= 2, "Expected at least 2 messages in history"
     print(f"✓ Retrieved {len(history)} messages from history")
     
-    # Find the A2rchi message and check model tracking
-    a2rchi_msgs = [m for m in history if m.sender == "A2rchi"]
-    assert len(a2rchi_msgs) > 0, "No A2rchi messages found"
+    # Find the archi message and check model tracking
+    archi_msgs = [m for m in history if m.sender == "archi"]
+    assert len(archi_msgs) > 0, "No archi messages found"
     
-    msg = a2rchi_msgs[-1]
+    msg = archi_msgs[-1]
     assert msg.model_used == "gpt-4o", f"Expected model_used='gpt-4o', got '{msg.model_used}'"
     assert msg.pipeline_used == "QAPipeline", f"Expected pipeline_used='QAPipeline', got '{msg.pipeline_used}'"
     print(f"✓ Model tracking verified: model_used={msg.model_used}, pipeline_used={msg.pipeline_used}")
@@ -230,21 +216,21 @@ def test_ab_comparison_v2(test_conv_id):
     prompt_msg = Message(
         sender="user",
         content="What is AI?",
-        a2rchi_service="integration_test",
+        archi_service="integration_test",
         conversation_id=test_conv_id,
     )
     response_a_msg = Message(
-        sender="A2rchi",
+        sender="archi",
         content="Response from GPT-4o",
-        a2rchi_service="integration_test",
+        archi_service="integration_test",
         conversation_id=test_conv_id,
         model_used="gpt-4o",
         pipeline_used="QAPipeline",
     )
     response_b_msg = Message(
-        sender="A2rchi",
+        sender="archi",
         content="Response from Claude",
-        a2rchi_service="integration_test",
+        archi_service="integration_test",
         conversation_id=test_conv_id,
         model_used="claude-3-5-sonnet",
         pipeline_used="QAPipeline",
@@ -278,7 +264,7 @@ def test_ab_comparison_v2(test_conv_id):
 
 
 def test_document_selection_direct():
-    """Test document selection tables directly with SQL (v2 schema)."""
+    """Test document selection tables directly with SQL."""
     print("\n=== Test: Document Selection (Direct SQL) ===")
     
     conn = psycopg2.connect(**PG_CONFIG)
@@ -294,68 +280,40 @@ def test_document_selection_direct():
     conn.commit()
     print(f"✓ Created test user: {test_user_id}")
     
-    # Create a test document first (required for FK)
-    test_doc_hash = f"doc_{uuid.uuid4().hex[:8]}"
+    # Test user document selection
     cursor.execute("""
-        INSERT INTO documents (resource_hash, file_path, display_name, source_type)
-        VALUES (%s, '/test/path.txt', 'Test Document', 'local_files')
-        RETURNING id
-    """, (test_doc_hash,))
-    doc_id = cursor.fetchone()[0]
+        INSERT INTO user_document_selection (user_id, selected_source_ids)
+        VALUES (%s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET selected_source_ids = EXCLUDED.selected_source_ids
+    """, (test_user_id, ["source1", "source2"]))
     conn.commit()
-    print(f"✓ Created test document with id: {doc_id}")
-    
-    # Test user document defaults (enable/disable per user)
-    cursor.execute("""
-        INSERT INTO user_document_defaults (user_id, document_id, enabled)
-        VALUES (%s, %s, FALSE)
-        ON CONFLICT (user_id, document_id) DO UPDATE SET enabled = EXCLUDED.enabled
-    """, (test_user_id, doc_id))
-    conn.commit()
-    print("✓ Set user document default (disabled)")
+    print("✓ Set user document selection")
     
     # Verify
     cursor.execute("""
-        SELECT enabled FROM user_document_defaults WHERE user_id = %s AND document_id = %s
-    """, (test_user_id, doc_id))
+        SELECT selected_source_ids FROM user_document_selection WHERE user_id = %s
+    """, (test_user_id,))
     row = cursor.fetchone()
-    assert row is not None, "User document default not found"
-    assert row[0] == False, f"Expected enabled=False, got {row[0]}"
-    print(f"✓ User document default retrieved: enabled={row[0]}")
+    assert row is not None, "User selection not found"
+    assert row[0] == ["source1", "source2"], f"Expected ['source1', 'source2'], got {row[0]}"
+    print(f"✓ User selection retrieved: {row[0]}")
     
-    # Test conversation document overrides
-    # First create conversation metadata
-    cursor.execute("""
-        INSERT INTO conversation_metadata (conversation_id, user_id, title)
-        VALUES (%s, %s, 'Test Conversation')
-        ON CONFLICT (conversation_id) DO NOTHING
-        RETURNING conversation_id
-    """, (888888, test_user_id))
+    # Test conversation document selection
     test_conv_id = 888888
+    cursor.execute("""
+        INSERT INTO conversation_document_selection (conversation_id, selected_source_ids)
+        VALUES (%s, %s)
+        ON CONFLICT (conversation_id) DO UPDATE SET selected_source_ids = EXCLUDED.selected_source_ids
+    """, (test_conv_id, ["source3", "source4"]))
     conn.commit()
-    print(f"✓ Created test conversation: {test_conv_id}")
+    print("✓ Set conversation document selection")
     
     cursor.execute("""
-        INSERT INTO conversation_document_overrides (conversation_id, document_id, enabled)
-        VALUES (%s, %s, TRUE)
-        ON CONFLICT (conversation_id, document_id) DO UPDATE SET enabled = EXCLUDED.enabled
-    """, (test_conv_id, doc_id))
-    conn.commit()
-    print("✓ Set conversation document override (enabled)")
-    
-    cursor.execute("""
-        SELECT enabled FROM conversation_document_overrides 
-        WHERE conversation_id = %s AND document_id = %s
-    """, (test_conv_id, doc_id))
+        SELECT selected_source_ids FROM conversation_document_selection WHERE conversation_id = %s
+    """, (test_conv_id,))
     row = cursor.fetchone()
-    assert row[0] == True, f"Expected enabled=True, got {row[0]}"
-    print(f"✓ Conversation override retrieved: enabled={row[0]}")
-    
-    # Clean up
-    cursor.execute("DELETE FROM conversation_document_overrides WHERE conversation_id = %s", (test_conv_id,))
-    cursor.execute("DELETE FROM user_document_defaults WHERE user_id = %s", (test_user_id,))
-    cursor.execute("DELETE FROM documents WHERE resource_hash = %s", (test_doc_hash,))
-    conn.commit()
+    assert row[0] == ["source3", "source4"], f"Expected ['source3', 'source4'], got {row[0]}"
+    print(f"✓ Conversation selection retrieved: {row[0]}")
     
     cursor.close()
     conn.close()
@@ -369,7 +327,7 @@ def test_byok_resolver(test_user_id):
     # Set encryption key for BYOK
     os.environ["BYOK_ENCRYPTION_KEY"] = "test-encryption-key-32chars-ok"
     
-    from src.a2rchi.providers.byok_resolver import BYOKResolver
+    from src.archi.providers.byok_resolver import BYOKResolver
     from src.utils.user_service import UserService
     
     user_service = UserService(PG_CONFIG)
@@ -491,142 +449,6 @@ def test_grafana_queries():
     print("✓ Grafana queries test passed")
 
 
-def test_catalog_ingestion():
-    """Test PostgresCatalogService ingestion workflow."""
-    print("\n=== Test: Catalog Ingestion ===")
-    
-    import tempfile
-    from pathlib import Path
-    from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
-    
-    # Create catalog service
-    with tempfile.TemporaryDirectory() as temp_dir:
-        catalog = PostgresCatalogService(
-            data_path=temp_dir,
-            pg_config=PG_CONFIG,
-        )
-        
-        # Initial state
-        initial_count = len(catalog.file_index)
-        print(f"✓ Catalog initialized with {initial_count} documents")
-        
-        # Add a test resource
-        test_hash = f"test_ingest_{uuid.uuid4().hex[:8]}"
-        test_path = "test_files/sample.txt"
-        test_metadata = {
-            "display_name": "Sample Test Document",
-            "source_type": "local_files",
-            "url": "https://example.com/sample.txt",
-        }
-        
-        catalog.upsert_resource(test_hash, test_path, test_metadata)
-        print(f"✓ Upserted resource: {test_hash}")
-        
-        # Refresh and verify it appears
-        catalog.refresh()
-        assert test_hash in catalog.file_index, "Resource not in file_index after refresh"
-        assert catalog.file_index[test_hash] == test_path, "Incorrect path in file_index"
-        print(f"✓ Resource in file_index: {catalog.file_index[test_hash]}")
-        
-        # Get document ID
-        doc_id = catalog.get_document_id(test_hash)
-        assert doc_id is not None, "Document ID should exist"
-        print(f"✓ Document ID: {doc_id}")
-        
-        # Test list_documents (returns dict with "documents" key)
-        result = catalog.list_documents()
-        documents = result.get("documents", [])
-        test_docs = [d for d in documents if d.get("hash") == test_hash]
-        assert len(test_docs) == 1, "Document should appear in list_documents"
-        print(f"✓ Document appears in list_documents: {test_docs[0].get('display_name')}")
-        
-        # Test update resource
-        updated_metadata = {
-            "display_name": "Updated Test Document",
-            "source_type": "local_files",
-        }
-        catalog.upsert_resource(test_hash, test_path, updated_metadata)
-        
-        result = catalog.list_documents()
-        documents = result.get("documents", [])
-        test_docs = [d for d in documents if d.get("hash") == test_hash]
-        assert test_docs[0].get("display_name") == "Updated Test Document"
-        print("✓ Resource metadata updated successfully")
-        
-        # Test delete
-        catalog.delete_resource(test_hash)
-        catalog.refresh()
-        assert test_hash not in catalog.file_index, "Resource should be deleted"
-        print("✓ Resource deleted successfully")
-        
-    print("✓ Catalog ingestion test passed")
-
-
-def test_data_viewer_service():
-    """Test DataViewerService returns documents from catalog."""
-    print("\n=== Test: DataViewerService ===")
-    
-    import tempfile
-    from pathlib import Path
-    from src.data_manager.data_viewer_service import DataViewerService
-    from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
-    
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_path = Path(temp_dir)
-        
-        # Create a real file for content retrieval test
-        test_file = temp_path / "test_files" / "viewer_sample.txt"
-        test_file.parent.mkdir(parents=True, exist_ok=True)
-        test_content = "This is test content for the data viewer service integration test."
-        test_file.write_text(test_content)
-        
-        # Add document to the catalog with relative path
-        catalog = PostgresCatalogService(data_path=temp_path, pg_config=PG_CONFIG)
-        test_hash = f"viewer_test_{uuid.uuid4().hex[:8]}"
-        relative_path = "test_files/viewer_sample.txt"
-        
-        catalog.upsert_resource(test_hash, relative_path, {
-            "display_name": "Viewer Test Document",
-            "source_type": "local_files",
-            "suffix": ".txt",
-            "size_bytes": len(test_content),
-        })
-        print(f"✓ Added test document: {test_hash}")
-        
-        # Now test the DataViewerService
-        viewer = DataViewerService(data_path=temp_path, pg_config=PG_CONFIG)
-        
-        # List documents (no conversation_id)
-        result = viewer.list_documents(conversation_id=None)
-        documents = result.get("documents", [])
-        test_docs = [d for d in documents if d.get("hash") == test_hash]
-        
-        assert len(test_docs) == 1, f"Document should appear in viewer list, got {len(documents)} docs"
-        print(f"✓ DataViewerService.list_documents() returned {len(documents)} documents")
-        print(f"✓ Test document found: {test_docs[0].get('display_name')}")
-        
-        # Test stats
-        stats = result
-        assert "total" in stats, "Stats should include total"
-        assert "enabled_count" in stats, "Stats should include enabled_count"
-        print(f"✓ Stats: total={stats['total']}, enabled_count={stats['enabled_count']}")
-        
-        # Test content retrieval
-        content_result = viewer.get_document_content(test_hash, max_size=1000)
-        assert content_result is not None, "Content retrieval should succeed"
-        assert content_result["content"] == test_content, "Content should match"
-        assert content_result["display_name"] == "Viewer Test Document"
-        assert content_result["content_type"] == "text/plain"
-        assert content_result["size_bytes"] == len(test_content)
-        assert content_result["truncated"] == False
-        print(f"✓ Content retrieval successful: {len(content_result['content'])} chars")
-        
-        # Clean up
-        catalog.delete_resource(test_hash)
-        
-    print("✓ DataViewerService test passed")
-
-
 def test_vector_similarity():
     """Test pgvector similarity search works."""
     print("\n=== Test: Vector Similarity Search ===")
@@ -634,16 +456,13 @@ def test_vector_similarity():
     conn = psycopg2.connect(**PG_CONFIG)
     cursor = conn.cursor()
     
-    # Create a test document first (v2 schema uses documents table)
+    # Create a test resource first
     test_hash = f"test_doc_{uuid.uuid4().hex[:8]}"
     cursor.execute("""
-        INSERT INTO documents (resource_hash, file_path, display_name, source_type)
-        VALUES (%s, '/test/vector_test.txt', 'Vector Test Doc', 'local_files')
-        RETURNING id
+        INSERT INTO resources (resource_hash, filename, doc_type)
+        VALUES (%s, 'test.txt', 'text')
+        ON CONFLICT DO NOTHING
     """, (test_hash,))
-    doc_id = cursor.fetchone()[0]
-    conn.commit()
-    print(f"✓ Created test document with id: {doc_id}")
     
     # Insert test vectors (384 dimensions as per schema)
     import random
@@ -655,7 +474,7 @@ def test_vector_similarity():
         cursor.execute("""
             INSERT INTO document_chunks (document_id, chunk_index, chunk_text, embedding)
             VALUES (%s, %s, %s, %s::vector)
-        """, (doc_id, i, f"Test chunk {i}", embedding_str))
+        """, (test_hash, i, f"Test chunk {i}", embedding_str))
     
     conn.commit()
     print(f"✓ Inserted 5 test chunks with embeddings")
@@ -673,7 +492,7 @@ def test_vector_similarity():
         WHERE document_id = %s
         ORDER BY embedding <=> %s::vector
         LIMIT 3
-    """, (query_str, doc_id, query_str))
+    """, (query_str, test_hash, query_str))
     
     results = cursor.fetchall()
     assert len(results) == 3, f"Expected 3 results, got {len(results)}"
@@ -684,8 +503,9 @@ def test_vector_similarity():
     assert distances == sorted(distances), "Results not ordered by distance"
     print(f"✓ Results correctly ordered by distance: {[round(d, 4) for d in distances]}")
     
-    # Clean up (cascade deletes chunks when document is deleted)
-    cursor.execute("DELETE FROM documents WHERE resource_hash = %s", (test_hash,))
+    # Clean up
+    cursor.execute("DELETE FROM document_chunks WHERE document_id = %s", (test_hash,))
+    cursor.execute("DELETE FROM resources WHERE resource_hash = %s", (test_hash,))
     conn.commit()
     
     cursor.close()
@@ -724,8 +544,6 @@ def run_all_tests():
         ("A/B Comparison V2", lambda: test_ab_comparison_v2(test_conv_id)),
         ("Document Selection", lambda: test_document_selection_direct()),
         ("BYOK Resolver", lambda: test_byok_resolver(test_user_id)),
-        ("Catalog Ingestion", lambda: test_catalog_ingestion()),
-        ("DataViewerService", lambda: test_data_viewer_service()),
         ("Vector Similarity", lambda: test_vector_similarity()),
         ("Grafana Queries", lambda: test_grafana_queries()),
     ]

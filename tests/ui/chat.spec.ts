@@ -12,7 +12,7 @@ test.describe('Chat UI', () => {
     await expect(page.getByRole('button', { name: 'New chat' })).toBeVisible();
     
     // Header
-    await expect(page.getByRole('heading', { name: 'A2rchi Chat' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'archi Chat' })).toBeVisible();
     await expect(page.locator('.header-tabs')).toBeVisible();
     
     // Input area
@@ -153,7 +153,7 @@ test.describe('Chat UI', () => {
     await page.locator('.settings-nav-item[data-section="advanced"]').click();
     await expect(page.locator('#settings-advanced')).toBeVisible();
     await page.evaluate(() => {
-      sessionStorage.setItem('a2rchi_ab_warning_dismissed', 'true');
+      sessionStorage.setItem('archi_ab_warning_dismissed', 'true');
     });
     await page.evaluate(() => {
       const checkbox = document.querySelector('#ab-checkbox');
@@ -280,7 +280,7 @@ test.describe('Chat UI', () => {
     
     // Clear any active conversation
     await page.evaluate(() => {
-      localStorage.removeItem('a2rchi_active_conversation');
+      localStorage.removeItem('archi_active_conversation');
     });
     await page.reload();
     

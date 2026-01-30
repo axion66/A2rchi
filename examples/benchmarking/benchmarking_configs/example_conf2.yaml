@@ -9,7 +9,7 @@ data_manager:
   # Vector storage uses PostgreSQL with pgvector (only supported backend)
   embedding_name: OpenAIEmbeddings
 
-a2rchi:
+archi:
   pipelines: 
    - QAPipeline
   pipeline_map:
@@ -20,8 +20,8 @@ a2rchi:
           chat_prompt: configs/prompts/submit.prompt  
       models:
         required:
-          chat_model: OpenAIGPT4
-          condense_model: OpenAIGPT4
+          chat_model: OpenAILLM
+          condense_model: OpenAILLM
 
 
 services:

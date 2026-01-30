@@ -1,20 +1,24 @@
-# Basic configuration file for a A2RCHI deployment
+# Basic configuration file for a Archi deployment
 # with a chat app interface, a QA pipeline, and
 # PostgreSQL with pgvector for document storage.
 # The LLM is used through an existing Ollama server.
 #
 # run with:
-# a2rchi create --name my-a2rchi-ollama --config examples/deployments/basic-ollama/config.yaml --services chatbot --hostmode
+# archi create --name my-archi-ollama --config examples/deployments/basic-ollama/config.yaml --services chatbot --hostmode
 
-name: my_a2rchi
+name: my_archi
 
 services:
   chat_app:
+    pipeline: CMSCompOpsAgent
     trained_on: "My data"
-    port: 7868
-    external_port: 7868
+    port: 7866
+    external_port: 7866
   vectorstore:
     backend: postgres  # PostgreSQL with pgvector (only supported backend)
+  data_manager:
+    port: 7889
+    external_port: 7889
 
 data_manager:
   sources:
@@ -23,21 +27,19 @@ data_manager:
         - examples/deployments/basic-ollama/miscellanea.list
   embedding_name: HuggingFaceEmbeddings
 
-a2rchi:
+archi:
   pipelines:
-    - QAPipeline
+    - CMSCompOpsAgent
   pipeline_map:
-    QAPipeline:
+    CMSCompOpsAgent:
       prompts:
         required:
-          condense_prompt: examples/deployments/basic-ollama/condense.prompt
-          chat_prompt: examples/deployments/basic-ollama/qa.prompt
+          agent_prompt: examples/deployments/basic-ollama/agent.prompt
       models:
         required:
           chat_model: OllamaInterface
-          condense_model: OllamaInterface
   model_class_map:
     OllamaInterface:
       kwargs:
         url: http://localhost:7870 # make sure this matches your ollama server URL!
-        base_model: "gemma3" # make sure this matches a model you have downloaded locally with ollama
+        base_model: "gpt-oss:120b" # make sure this matches a model you have downloaded locally with ollama

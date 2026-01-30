@@ -8,6 +8,7 @@ from src.data_manager.collectors.scrapers.scraped_resource import \
     ScrapedResource
 from src.data_manager.collectors.scrapers.scraper import LinkScraper
 from src.utils.yaml_config import load_global_config
+from src.utils.env import read_secret
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -28,6 +29,7 @@ class ScraperManager:
         selenium_config = links_config.get("selenium_scraper", {}) if isinstance(sources_config, dict) else {}
 
         git_config = sources_config.get("git", {}) if isinstance(sources_config, dict) else {}
+        sso_config = sources_config.get("sso", {}) if isinstance(sources_config, dict) else {}
         self.base_depth = links_config.get('base_source_depth', 5)
         logger.debug(f"Using base depth of {self.base_depth} for weblist URLs")
 
@@ -43,13 +45,14 @@ class ScraperManager:
             except (TypeError, ValueError):
                 logger.warning(f"Invalid max_pages value {raw_max_pages}; ignoring.")
 
-        self.links_enabled = links_config.get("enabled", True)
+        self.links_enabled = True
         self.git_enabled = git_config.get("enabled", False) if isinstance(git_config, dict) else True
         self.git_config = git_config if isinstance(git_config, dict) else {}
         self.selenium_config = selenium_config or {}
         self.selenium_enabled = self.selenium_config.get("enabled", False)
         self.scrape_with_selenium = self.selenium_config.get("use_for_scraping", False)
-        self.sso_enabled = self.selenium_enabled  # SSO uses selenium for authentication
+
+        self.sso_enabled = bool(sso_config.get("enabled", False))
 
         self.data_path = Path(global_config["DATA_PATH"])
         self.input_lists = links_config.get("input_lists", [])
@@ -68,6 +71,12 @@ class ScraperManager:
     ) -> None:
         """Run the configured scrapers and persist their output."""
         link_urls, git_urls, sso_urls = self._collect_urls_from_lists_by_type(self.input_lists)
+
+        if git_urls:
+            self.git_enabled = True
+        if sso_urls:
+            self.sso_enabled = True
+            self._ensure_sso_defaults()
 
         self.collect_links(persistence, link_urls=link_urls)
         self.collect_sso(persistence, sso_urls=sso_urls)
@@ -116,6 +125,7 @@ class ScraperManager:
         if not self.sso_enabled:
             logger.info("SSO disabled, skipping SSO scraping")
             return
+        self._ensure_sso_defaults()
         if not sso_urls:
             return
         sso_dir = persistence.data_path / "sso"
@@ -178,6 +188,12 @@ class ScraperManager:
         output_dir: Path,
     ) -> None:
         """Collect SSO-protected URLs using selenium for authentication."""
+        if not self.selenium_enabled:
+            logger.error("SSO scraping requires data_manager.sources.links.selenium_scraper.enabled")
+            return
+        if not read_secret("SSO_USERNAME") or not read_secret("SSO_PASSWORD"):
+            logger.error("SSO scraping requires SSO_USERNAME and SSO_PASSWORD secrets")
+            return
         authenticator = None
         if self.selenium_enabled:
             authenticator_class, kwargs = self._resolve_scraper()
@@ -185,7 +201,7 @@ class ScraperManager:
                 authenticator = authenticator_class(**kwargs)
         
         if authenticator is None:
-            logger.error("SSO collection requires selenium to be enabled")
+            logger.error("SSO collection requires a valid selenium scraper configuration")
             return
 
         try:
@@ -203,6 +219,27 @@ class ScraperManager:
         finally:
             if authenticator is not None:
                 authenticator.close()
+
+    def _ensure_sso_defaults(self) -> None:
+        if not self.selenium_config:
+            self.selenium_config = {}
+
+        if not self.selenium_enabled:
+            self.selenium_config["enabled"] = True
+            self.selenium_enabled = True
+
+        if not self.selenium_config.get("selenium_class"):
+            self.selenium_config["selenium_class"] = "CERNSSOScraper"
+
+        class_map = self.selenium_config.setdefault("selenium_class_map", {})
+        if "CERNSSOScraper" not in class_map:
+            class_map["CERNSSOScraper"] = {
+                "class": "CERNSSOScraper",
+                "kwargs": {
+                    "headless": True,
+                    "max_depth": 2,
+                },
+            }
 
     def _collect_urls_from_lists(self, input_lists) -> List[str]:
         """Collect URLs from the configured weblists."""
@@ -254,6 +291,7 @@ class ScraperManager:
             scraper_class = getattr(module, scraper_class)
         scraper_kwargs = entry.get("kwargs", {})
         return scraper_class, scraper_kwargs
+
 
     def _handle_standard_url(
             self, 

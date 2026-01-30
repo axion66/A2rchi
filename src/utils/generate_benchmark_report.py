@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Compare Expected vs Actual Outputs from A2rchi Benchmarking
+Compare Expected vs Actual Outputs from archi Benchmarking
 
 This script helps evaluate benchmarking results by showing:
 - The question asked
-- A2rchi's actual answer
+- archi's actual answer
 - The expected (reference) answer
 - Retrieved contexts
 - RAGAS scores (if available)
@@ -334,9 +334,9 @@ def format_html_output(config_data, config_name, timestamp,questions, total_resu
             html_parts.append(f'</div>')
 
 
-        # A2rchi's Answer
+        # archi's Answer
         html_parts.append(f'<div class="section">')
-        html_parts.append(f'<div class="section-title">🤖 A2rchi\'s Answer</div>')
+        html_parts.append(f'<div class="section-title">🤖 archi\'s Answer</div>')
         html_parts.append(f'<div class="answer-box">{q_data.get("answer", "N/A")}</div>')
         html_parts.append(f'</div>')
         
@@ -474,7 +474,7 @@ def format_html_output(config_data, config_name, timestamp,questions, total_resu
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Compare expected vs actual outputs from A2rchi benchmarking',
+        description='Compare expected vs actual outputs from archi benchmarking',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

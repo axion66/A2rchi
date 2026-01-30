@@ -28,6 +28,5 @@ openspec/changes/
 openspec/*/spec
 openspec/*/tasks.md
 openspec/*/proposal.md
-# Node modules and test results
 node_modules/
 test-results/

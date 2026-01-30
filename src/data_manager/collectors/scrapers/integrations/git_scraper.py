@@ -231,7 +231,6 @@ class GitScraper:
                     "repo_path": str(rel_path),
                     "parent": repo_name,
                     "ref": ref,
-                    "file_name": file_path.name,
                 },
                 file_name=file_path.name,
                 relative_path=str(relative_path),

@@ -14,7 +14,7 @@ Each section has a procedure and expected outcomes.
 ```
 
 **Expected Elements:**
-- [ ] Sidebar with "A2rchi" brand
+- [ ] Sidebar with "archi" brand
 - [ ] Header with "Chat" title
 - [ ] Header tabs: "Chat" (active), "Data"
 - [ ] Message input textbox

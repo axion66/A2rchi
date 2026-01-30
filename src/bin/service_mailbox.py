@@ -23,7 +23,7 @@ time.sleep(60)
 
 print("Starting Mailbox Service")
 mailbox_config = load_yaml_config()["services"]["redmine_mailbox"]
-redmine = redmine.Redmine('Redmine_Helpdesk_Mail') # this name tells redmine class to not initialize A2rchi() class
+redmine = redmine.Redmine('Redmine_Helpdesk_Mail') # this name tells redmine class to not initialize archi() class
 
 while True:
     mail = mailbox.Mailbox(user = user, password = password)

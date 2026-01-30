@@ -11,8 +11,8 @@ import psycopg2
 PG_CONFIG = {
     "host": "localhost",
     "port": 5439,
-    "database": "a2rchi",
-    "user": "a2rchi",
+    "database": "archi",
+    "user": "archi",
     "password": "testpassword123",
 }
 
@@ -56,7 +56,7 @@ def test_conv_id(test_user_id):
         conversation_id=str(conv_id),
         sender="user",
         content="Test message",
-        a2rchi_service="test",
+        archi_service="test",
     )
     service.insert_message(msg)
     

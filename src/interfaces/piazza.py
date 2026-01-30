@@ -7,7 +7,7 @@ import requests
 from flask import Flask
 from piazza_api import Piazza as PiazzaAPI
 
-from src.a2rchi.a2rchi import A2rchi
+from src.archi.archi import archi
 from src.data_manager.data_manager import DataManager
 from src.utils.yaml_config import load_yaml_config
 from src.utils.env import read_secret
@@ -21,7 +21,7 @@ class PiazzaAIWrapper:
         self.data_manager = DataManager(run_ingestion=False)
 
         # intialize chain
-        self.a2rchi = A2rchi(pipeline="QAPipeline")
+        self.archi = archi(pipeline="QAPipeline")
 
     def __call__(self, post):
 
@@ -29,7 +29,7 @@ class PiazzaAIWrapper:
         post_str = "SUBJECT: " + post['history'][-1]['subject'] + "\n\nCONTENT: " + post['history'][-1]['content']
         history = [("User", post_str)]
 
-        answer = self.a2rchi(history=history)["answer"]
+        answer = self.archi(history=history)["answer"]
 
         return answer, post_str
     
@@ -133,7 +133,7 @@ class Piazza:
 
                 logger.info(f"PROCESSING NEW POST: {post_nr}")
                 response, post_str = self.ai_wrapper(post)
-                response = f"====================\nReplying to Post @{post['nr']}\n==========\n\n{post_str}\n==========\n\nA2RCHI RESPONSE: {response}\n====================\n"
+                response = f"====================\nReplying to Post @{post['nr']}\n==========\n\n{post_str}\n==========\n\nARCHI RESPONSE: {response}\n====================\n"
 
                 # send response to Slack
                 r = requests.post(self.slack_url, data=json.dumps({"text": response}), headers=self.slack_headers)

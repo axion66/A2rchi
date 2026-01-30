@@ -20,23 +20,40 @@ version: "3.8"
 services:
   postgres:
     image: pgvector/pgvector:pg17
-    container_name: a2rchi-test-postgres
+    container_name: archi-test-postgres
     environment:
-      POSTGRES_USER: a2rchi
+      POSTGRES_USER: archi
       POSTGRES_PASSWORD: testpassword123
-      POSTGRES_DB: a2rchi
+      POSTGRES_DB: archi
     ports:
       - "5439:5432"  # Use non-standard port to avoid conflicts
     volumes:
       - ./init-test.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U a2rchi -d a2rchi"]
+      test: ["CMD-SHELL", "pg_isready -U archi -d archi"]
       interval: 5s
       timeout: 5s
       retries: 10
     networks:
-      - a2rchi-test
+      - archi-test
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: archi-test-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3001:3000"  # Use non-standard port to avoid conflicts
+    volumes:
+      - ./grafana-provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - archi-test
 
 networks:
-  a2rchi-test:
+  archi-test:
     driver: bridge

@@ -1,52 +1,17 @@
 services:
-  # Infrastructure services (always present when chromadb is enabled)
-  {% if chromadb_enabled -%}
-  chromadb:
-    image: {{ chromadb_image }}:{{ chromadb_tag }}
-    build:
-      context: .
-      dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-chroma
-      args:
-        CHROMA_PORT: {{ chromadb_port_container }}
-    container_name: {{ chromadb_container_name }}
-    ports:
-      - {{ chromadb_port_host }}:{{ chromadb_port_container }}
-    volumes:
-      - {{ chromadb_volume_name }}:/chroma/
-    logging:
-      options:
-        max-size: 10m
-    restart: always
-    {% if host_mode -%}
-    network_mode: host
-    {% endif %}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://0.0.0.0:{{ chromadb_port_container }}/api/v2/heartbeat"]
-      interval: 15s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-  {%- endif %}
-
   {% if data_manager_enabled -%}
   data-manager:
     image: {{ data_manager_image }}:{{ data_manager_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-data-manager
+      dockerfile: archi_code/cli/templates/dockerfiles/Dockerfile-data-manager
       args:
         APP_VERSION: {{ app_version }}
     container_name: {{ data_manager_container_name }}
-    {% if chromadb_enabled or postgres_enabled -%}
+    {% if postgres_enabled -%}
     depends_on:
-      {% if chromadb_enabled -%}
-      chromadb:
-        condition: service_healthy
-      {% endif -%}
-      {% if postgres_enabled -%}
       postgres:
         condition: service_healthy
-      {% endif %}
     {% endif -%}
     environment:
       {% for secret in required_secrets | default([]) -%}
@@ -60,8 +25,8 @@ services:
       {% endfor %}
     volumes:
       - {{ data_manager_volume_name }}:/root/data/
-      - ./configs:/root/A2rchi/configs
-      - ./weblists:/root/A2rchi/weblists
+      - ./configs:/root/archi/configs
+      - ./weblists:/root/archi/weblists
     logging:
       options:
         max-size: 10m
@@ -77,12 +42,12 @@ services:
   postgres:
     build:
       context: .
-      dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-postgres
+      dockerfile: archi_code/cli/templates/dockerfiles/Dockerfile-postgres
     container_name: {{ postgres_container_name }}
     environment:
       POSTGRES_PASSWORD: ${PG_PASSWORD}
-      POSTGRES_USER: a2rchi
-      POSTGRES_DB: a2rchi-db
+      POSTGRES_USER: archi
+      POSTGRES_DB: archi-db
       {% if host_mode -%}
       PGPORT: {{ postgres_port }}
       {% endif %}
@@ -99,7 +64,7 @@ services:
     network_mode: host
     {% endif %}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U a2rchi -d a2rchi-db"]
+      test: ["CMD-SHELL", "pg_isready -U archi -d archi-db"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -111,20 +76,14 @@ services:
     image: {{ chatbot_image }}:{{ chatbot_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-chat{{ '-gpu' if gpu_ids else '' }}
+      dockerfile: archi_code/cli/templates/dockerfiles/Dockerfile-chat{{ '-gpu' if gpu_ids else '' }}
       args:
         APP_VERSION: {{ app_version }}
     container_name: {{ chatbot_container_name }}
-    {% if chromadb_enabled or postgres_enabled -%}
+    {% if postgres_enabled -%}
     depends_on:
-      {% if chromadb_enabled -%}
-      chromadb:
-        condition: service_healthy
-      {% endif -%}
-      {% if postgres_enabled -%}
       postgres:
         condition: service_healthy
-      {% endif %}
     {% endif -%}
     environment:
       {% for secret in required_secrets | default([]) -%}
@@ -151,13 +110,13 @@ services:
       {% endfor %}
     volumes:
       - {{ chatbot_volume_name }}:/root/data/
-      - ./configs:/root/A2rchi/configs
-      - ./data/prompts:/root/A2rchi/data/prompts:ro
+      - ./configs:/root/archi/configs
+      - ./data/prompts:/root/archi/data/prompts:ro
       {% for prompt_file in prompt_files | default([]) -%}
-      - ./{{ prompt_file }}:/root/A2rchi/{{ prompt_file }}
+      - ./{{ prompt_file }}:/root/archi/{{ prompt_file }}
       {% endfor %}
       {% if gpu_ids -%}
-      - a2rchi-models:/root/models/
+      - archi-models:/root/models/
       {%- endif %}
     logging:
       options:
@@ -187,7 +146,7 @@ services:
     image: {{ grafana_image }}:{{ grafana_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-grafana
+      dockerfile: archi_code/cli/templates/dockerfiles/Dockerfile-grafana
     container_name: {{ grafana_container_name }}
     {% if postgres_enabled -%}
     depends_on:
@@ -198,7 +157,7 @@ services:
       - {{ grafana_port_host }}:3000
     volumes:
       - {{ grafana_volume_name }}:/var/lib/grafana
-      - ./grafana/a2rchi-default-dashboard.json:/var/lib/grafana/dashboards/a2rchi-default-dashboard.json
+      - ./grafana/archi-default-dashboard.json:/var/lib/grafana/dashboards/archi-default-dashboard.json
       - ./grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
       - ./grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
       - ./grafana/grafana.ini:/etc/grafana/grafana.ini
@@ -216,13 +175,9 @@ services:
     image: {{ grader_image }}:{{ grader_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-grader{{ '-gpu' if gpu_ids else '' }}
-    {% if chromadb_enabled or postgres_enabled -%}
+      dockerfile: archi_code/cli/templates/dockerfiles/Dockerfile-grader{{ '-gpu' if gpu_ids else '' }}
+    {% if postgres_enabled -%}
     depends_on:
-      {% if chromadb_enabled -%}
-      chromadb:
-        condition: service_healthy
-      {% endif -%}
       {% if postgres_enabled -%}
       postgres:
         condition: service_healthy
@@ -236,9 +191,9 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
-      USERS_FILE: /root/A2rchi/users.csv
+      USERS_FILE: /root/archi/users.csv
       {% for rubric in rubrics | default([]) -%}
-      {{ rubric.upper() }}_FILE: /root/A2rchi/{{ rubric }}.txt
+      {{ rubric.upper() }}_FILE: /root/archi/{{ rubric }}.txt
       {% endfor %}
     env_file:
       - .env
@@ -259,17 +214,17 @@ services:
       - {{ grader_port_host }}:{{ grader_port_container }}
     volumes:
       - {{ grader_volume_name }}:/root/data/
-      - ./configs:/root/A2rchi/configs
-      - ./data/prompts:/root/A2rchi/data/prompts:ro
+      - ./configs:/root/archi/configs
+      - ./data/prompts:/root/archi/data/prompts:ro
       {% for prompt_file in prompt_files | default([]) -%}
-      - ./{{ prompt_file }}:/root/A2rchi/{{ prompt_file }}
+      - ./{{ prompt_file }}:/root/archi/{{ prompt_file }}
       {% endfor %}
-      - ./users.csv:/root/A2rchi/users.csv
+      - ./users.csv:/root/archi/users.csv
       {%- for rubric in rubrics | default([]) %}
-      - ./{{ rubric }}.txt:/root/A2rchi/{{ rubric }}.txt
+      - ./{{ rubric }}.txt:/root/archi/{{ rubric }}.txt
       {%- endfor %}
       {% if gpu_ids -%}
-      - a2rchi-models:/root/models/
+      - archi-models:/root/models/
       {%- endif %}
     logging:
       options:
@@ -297,14 +252,10 @@ services:
     image: {{ piazza_image }}:{{ piazza_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-piazza
+      dockerfile: archi_code/cli/templates/dockerfiles/Dockerfile-piazza
     container_name: {{ piazza_container_name }}
-    {% if chromadb_enabled or postgres_enabled -%}
+    {% if postgres_enabled -%}
     depends_on:
-      {% if chromadb_enabled -%}
-      chromadb:
-        condition: service_healthy
-      {% endif -%}
       {% if postgres_enabled -%}
       postgres:
         condition: service_healthy
@@ -321,14 +272,14 @@ services:
       - {{ secret.lower() }}
       {% endfor %}
     volumes:
-      - {{ chromadb_volume_name }}:/root/data/
-      - ./configs:/root/A2rchi/configs
-      - ./data/prompts:/root/A2rchi/data/prompts:ro
+      - {{ data_volume_name }}:/root/data/
+      - ./configs:/root/archi/configs
+      - ./data/prompts:/root/archi/data/prompts:ro
       {% for prompt_file in prompt_files | default([]) -%}
-      - ./{{ prompt_file }}:/root/A2rchi/{{ prompt_file }}
+      - ./{{ prompt_file }}:/root/archi/{{ prompt_file }}
       {% endfor %}
       {% if gpu_ids -%}
-      - a2rchi-models:/root/models/
+      - archi-models:/root/models/
       {%- endif %}
     logging:
       options:
@@ -344,15 +295,11 @@ services:
     image: {{ mattermost_image }}:{{ mattermost_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-mattermost{{ '-gpu' if gpu_ids else '' }}
+      dockerfile: archi_code/cli/templates/dockerfiles/Dockerfile-mattermost{{ '-gpu' if gpu_ids else '' }}
       args:
         TAG: {{ mattermost_tag }}
-    {% if chromadb_enabled or postgres_enabled -%}
+    {% if postgres_enabled -%}
     depends_on:
-      {% if chromadb_enabled -%}
-      chromadb:
-        condition: service_healthy
-      {% endif -%}
       {% if postgres_enabled -%}
       postgres:
         condition: service_healthy
@@ -382,14 +329,14 @@ services:
       - {{ secret.lower() }}
       {% endfor %}
     volumes:
-      - {{ chromadb_volume_name }}:/root/data/
-      - ./configs:/root/A2rchi/configs
-      - ./data/prompts:/root/A2rchi/data/prompts:ro
+      - {{ data_volume_name }}:/root/data/
+      - ./configs:/root/archi/configs
+      - ./data/prompts:/root/archi/data/prompts:ro
       {% for prompt_file in prompt_files | default([]) -%}
-      - ./{{ prompt_file }}:/root/A2rchi/{{ prompt_file }}
+      - ./{{ prompt_file }}:/root/archi/{{ prompt_file }}
       {% endfor %}
       {% if gpu_ids -%}
-      - a2rchi-models:/root/models/
+      - archi-models:/root/models/
       {%- endif %}
     logging:
       options:
@@ -417,14 +364,10 @@ services:
     image: {{ redmine_mailer_image }}-redmine:{{ redmine_mailer_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-redmine{{ '-gpu' if gpu_ids else '' }}
+      dockerfile: archi_code/cli/templates/dockerfiles/Dockerfile-redmine{{ '-gpu' if gpu_ids else '' }}
     container_name: {{ redmine_mailer_container_name }}-redmine
-    {% if chromadb_enabled or postgres_enabled -%}
+    {% if postgres_enabled -%}
     depends_on:
-      {% if chromadb_enabled -%}
-      chromadb:
-        condition: service_healthy
-      {% endif -%}
       {% if postgres_enabled -%}
       postgres:
         condition: service_healthy
@@ -445,14 +388,14 @@ services:
       - {{ secret.lower() }}
       {% endfor %}
     volumes:
-      - {{ chromadb_volume_name }}:/root/data/
-      - ./configs:/root/A2rchi/configs
-      - ./data/prompts:/root/A2rchi/data/prompts:ro
+      - {{ data_volume_name }}:/root/data/
+      - ./configs:/root/archi/configs
+      - ./data/prompts:/root/archi/data/prompts:ro
       {% for prompt_file in prompt_files | default([]) -%}
-      - ./{{ prompt_file }}:/root/A2rchi/{{ prompt_file }}
+      - ./{{ prompt_file }}:/root/archi/{{ prompt_file }}
       {% endfor %}
       {% if gpu_ids -%}
-      - a2rchi-models:/root/models/
+      - archi-models:/root/models/
       {%- endif %}
     logging:
       options:
@@ -478,14 +421,10 @@ services:
     image: {{ redmine_mailer_image }}-mailer:{{ redmine_mailer_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-mailbox{{ '-gpu' if gpu_ids else '' }}
+      dockerfile: archi_code/cli/templates/dockerfiles/Dockerfile-mailbox{{ '-gpu' if gpu_ids else '' }}
     container_name: {{ redmine_mailer_container_name }}-mailer
-    {% if chromadb_enabled or postgres_enabled -%}
+    {% if postgres_enabled -%}
     depends_on:
-      {% if chromadb_enabled -%}
-      chromadb:
-        condition: service_healthy
-      {% endif -%}
       {% if postgres_enabled -%}
       postgres:
         condition: service_healthy
@@ -506,13 +445,13 @@ services:
       - {{ secret.lower() }}
       {% endfor %}
     volumes:
-      - ./config.yaml:/root/A2rchi/config.yaml
-      - ./data/prompts:/root/A2rchi/data/prompts:ro
+      - ./config.yaml:/root/archi/config.yaml
+      - ./data/prompts:/root/archi/data/prompts:ro
       {% for prompt_file in prompt_files | default([]) -%}
-      - ./{{ prompt_file }}:/root/A2rchi/{{ prompt_file }}
+      - ./{{ prompt_file }}:/root/archi/{{ prompt_file }}
       {% endfor %}
       {% if gpu_ids -%}
-      - a2rchi-models:/root/models/
+      - archi-models:/root/models/
       {%- endif %}
     logging:
       options:
@@ -540,7 +479,7 @@ services:
     image: {{ benchmarking_image }}:{{ benchmarking_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-benchmarks{{ '-gpu' if gpu_ids else '' }}
+      dockerfile: archi_code/cli/templates/dockerfiles/Dockerfile-benchmarks{{ '-gpu' if gpu_ids else '' }}
     container_name: {{ benchmarking_container_name }}
     environment:
       {% for secret in required_secrets | default([]) -%}
@@ -568,14 +507,14 @@ services:
       {% endfor %}
     volumes:
       - {{ benchmarking_volume_name }}:/root/data/
-      - ./queries.txt:/root/A2rchi/QandA.txt
-      - {{ benchmarking_dest }}:/root/A2rchi/benchmarks
-      - ./data/prompts:/root/A2rchi/data/prompts:ro
+      - ./queries.txt:/root/archi/QandA.txt
+      - {{ benchmarking_dest }}:/root/archi/benchmarks
+      - ./data/prompts:/root/archi/data/prompts:ro
       {% for prompt_file in prompt_files | default([]) -%}
-      - ./{{ prompt_file }}:/root/A2rchi/{{ prompt_file }}
+      - ./{{ prompt_file }}:/root/archi/{{ prompt_file }}
       {% endfor %}
       {% if gpu_ids -%}
-      - a2rchi-models:/root/models/
+      - archi-models:/root/models/
       {%- endif %}
     logging:
       options:

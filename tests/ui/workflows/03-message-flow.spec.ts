@@ -138,7 +138,7 @@ test.describe('Message Flow', () => {
     await expect(userMsg.locator('.message-sender')).toContainText('You');
   });
 
-  test('assistant message shows sender as "A2rchi"', async ({ page }) => {
+  test('assistant message shows sender as "archi"', async ({ page }) => {
     await page.route('**/api/get_chat_response_stream', async (route) => {
       await route.fulfill({
         status: 200,
@@ -153,7 +153,7 @@ test.describe('Message Flow', () => {
     await page.getByRole('button', { name: 'Send message' }).click();
     
     const assistantMsg = page.locator('.message.assistant');
-    await expect(assistantMsg.locator('.message-sender')).toContainText('A2rchi');
+    await expect(assistantMsg.locator('.message-sender')).toContainText('archi');
   });
 
   test('markdown is rendered in responses', async ({ page }) => {

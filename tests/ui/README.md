@@ -1,6 +1,6 @@
 # UI Testing Guide
 
-This document describes how to run UI tests for the A2rchi chat interface.
+This document describes how to run UI tests for the archi chat interface.
 
 ## Test Structure
 
@@ -40,7 +40,7 @@ tests/ui/
 
 2. **Local deployment running**:
    ```bash
-   a2rchi start <deployment-name>
+   archi start <deployment-name>
    ```
    The tests expect the chat app at `http://localhost:7861`.
 

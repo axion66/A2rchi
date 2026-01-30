@@ -18,10 +18,10 @@ logger = get_logger(__name__)
 TEMPLATE_COMPARISON_PATHS = (
     "base-config.yaml",
     "base-compose.yaml",
-    "init-v2.sql",  # PostgreSQL + pgvector consolidated schema
+    "init.sql",  # PostgreSQL + pgvector schema
     "grafana/datasources.yaml",
     "grafana/dashboards.yaml",
-    "grafana/a2rchi-default-dashboard.json",
+    "grafana/archi-default-dashboard.json",
     "grafana/grafana.ini",
 )
 
@@ -186,7 +186,7 @@ def _infer_gpu_ids_from_compose(compose_data: Dict[str, Any]) -> Optional[object
                     continue
 
         for volume in svc.get("volumes", []) or []:
-            if isinstance(volume, str) and volume.startswith("a2rchi-models"):
+            if isinstance(volume, str) and volume.startswith("archi-models"):
                 return "all"
 
     return sorted(set(gpu_ids)) if gpu_ids else None
@@ -320,7 +320,7 @@ def handle_existing_deployment(base_dir: Path, name: str, force: bool, dry: bool
         else:
             raise click.ClickException(
                 f"Deployment '{name}' already exists at {base_dir}.\n"
-                f"Use --force to overwrite, or delete it first with: a2rchi delete --name {name}"
+                f"Use --force to overwrite, or delete it first with: archi delete --name {name}"
             )
 
 
@@ -347,7 +347,7 @@ def print_dry_run_summary(name: str, services: List[str], service_only_resolved:
     logger.info(f"[DRY RUN] Configuration and secrets are valid. Run without --dry to deploy.\n")
 
 
-def show_service_urls(services: List[str], a2rchi_config: Dict[str, Any], host_mode: bool) -> None:
+def show_service_urls(services: List[str], archi_config: Dict[str, Any], host_mode: bool) -> None:
     """Show service URLs using registry configuration"""
     for service_name in services:
         if service_name not in service_registry.get_all_services():
@@ -359,7 +359,7 @@ def show_service_urls(services: List[str], a2rchi_config: Dict[str, Any], host_m
             
         try:
             # Navigate config path to get port
-            config_value = a2rchi_config
+            config_value = archi_config
             for key in service_def.port_config_path.split('.'):
                 config_value = config_value[key]
                 
@@ -393,8 +393,8 @@ def log_deployment_start(name: str, services: List[str], sources: List[str], dry
 def log_deployment_success(name: str, service_only_resolved: List[str], services: List[str], 
                           config_manager, host_mode) -> None:
     """Log successful deployment and show service URLs"""
-    print(f"\nA2RCHI deployment '{name}' created successfully!")
+    print(f"\nARCHI deployment '{name}' created successfully!")
     print(f"Services running: {', '.join(service_only_resolved)}")
     #All services are part of static configuration and equal for all configs
-    a2rchi_config = config_manager.get_configs()[0]
-    show_service_urls(service_only_resolved, a2rchi_config, host_mode=host_mode)
+    archi_config = config_manager.get_configs()[0]
+    show_service_urls(service_only_resolved, archi_config, host_mode=host_mode)

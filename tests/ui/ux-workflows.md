@@ -1,4 +1,4 @@
-# A2rchi Chat UI - UX Workflows
+# archi Chat UI - UX Workflows
 
 A living document defining all user experience workflows in the chat interface, with MCP verification checklists and Playwright test specifications.
 
@@ -68,7 +68,7 @@ When a user navigates to `/chat`, the page should load all necessary UI componen
 test('page loads with all required elements', async ({ page }) => {
   await page.goto('/chat');
   await expect(page.locator('.sidebar')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'A2rchi Chat' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'archi Chat' })).toBeVisible();
   await expect(page.getByLabel('Message input')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();
 });
@@ -90,7 +90,7 @@ test('restores active conversation on reload', async ({ page }) => {
   // Setup: create a conversation
   await page.goto('/chat');
   await page.evaluate(() => {
-    localStorage.setItem('a2rchi_active_conversation_id', '1');
+    localStorage.setItem('archi_active_conversation_id', '1');
   });
   await page.route('**/api/load_conversation', async (route) => {
     await route.fulfill({
@@ -235,7 +235,7 @@ Users can type messages, send them, and receive AI responses with proper renderi
    - [ ] Input clears
 3. Wait for response:
    - [ ] Streaming cursor visible during response
-   - [ ] A2rchi message appears with avatar
+   - [ ] archi message appears with avatar
 4. Verify markdown rendering:
    - [ ] Code blocks have syntax highlighting
    - [ ] Lists render correctly
@@ -513,7 +513,7 @@ test('A/B toggle shows warning modal on first enable', async ({ page }) => {
   await page.locator('.settings-nav-item[data-section="advanced"]').click();
   
   // Clear any previous dismissal
-  await page.evaluate(() => sessionStorage.removeItem('a2rchi_ab_warning_dismissed'));
+  await page.evaluate(() => sessionStorage.removeItem('archi_ab_warning_dismissed'));
   
   await page.locator('#ab-checkbox').click();
   
@@ -525,7 +525,7 @@ test('A/B mode shows two response columns', async ({ page }) => {
   await page.goto('/chat');
   
   // Enable A/B mode (skip warning)
-  await page.evaluate(() => sessionStorage.setItem('a2rchi_ab_warning_dismissed', 'true'));
+  await page.evaluate(() => sessionStorage.setItem('archi_ab_warning_dismissed', 'true'));
   await page.getByRole('button', { name: 'Settings' }).click();
   await page.locator('.settings-nav-item[data-section="advanced"]').click();
   await page.locator('#ab-checkbox').check();
@@ -553,7 +553,7 @@ test('A/B mode shows two response columns', async ({ page }) => {
 test('A/B comparison hides message meta', async ({ page }) => {
   // Similar setup as above...
   await page.goto('/chat');
-  await page.evaluate(() => sessionStorage.setItem('a2rchi_ab_warning_dismissed', 'true'));
+  await page.evaluate(() => sessionStorage.setItem('archi_ab_warning_dismissed', 'true'));
   
   // Enable A/B and send message...
   // Verify no .message-meta inside .ab-comparison
@@ -980,7 +980,7 @@ test('Data tab with conversation navigates', async ({ page }) => {
   
   // Set up active conversation
   await page.evaluate(() => {
-    localStorage.setItem('a2rchi_active_conversation_id', '123');
+    localStorage.setItem('archi_active_conversation_id', '123');
   });
   
   // Mock the conversation load

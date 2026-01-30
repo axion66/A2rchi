@@ -38,7 +38,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}       A2rchi Full CI - Local Runner${NC}"
+echo -e "${BLUE}       archi Full CI - Local Runner${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
@@ -90,21 +90,21 @@ if ! $SKIP_BUILD; then
   echo -e "${YELLOW}Step 3: Building Base Images (this may take 10-15 minutes)...${NC}"
   
   # Build python base (use --no-cache if FORCE_REBUILD is set)
-  echo "  Building a2rchi-python-base..."
+  echo "  Building archi-python-base..."
   CACHE_FLAG=""
   if [[ "${FORCE_REBUILD:-}" == "1" ]]; then
     CACHE_FLAG="--no-cache"
     echo "  (--no-cache enabled via FORCE_REBUILD=1)"
   fi
   docker build $CACHE_FLAG \
-    -t "localhost/a2rchi/a2rchi-python-base:${TAG}" \
-    -t "localhost/a2rchi/a2rchi-python-base:latest" \
-    -t "a2rchi/a2rchi-python-base:${TAG}" \
-    -t "a2rchi/a2rchi-python-base:latest" \
+    -t "localhost/archi/archi-python-base:${TAG}" \
+    -t "localhost/archi/archi-python-base:latest" \
+    -t "archi/archi-python-base:${TAG}" \
+    -t "archi/archi-python-base:latest" \
     -f src/cli/templates/dockerfiles/base-python-image/Dockerfile \
     src/cli/templates/dockerfiles/base-python-image/ 2>&1 | tail -5
   
-  echo -e "${GREEN}✓${NC} a2rchi-python-base built"
+  echo -e "${GREEN}✓${NC} archi-python-base built"
   
   # Check if pytorch base is needed (skip for faster CI)
   echo "  Skipping pytorch base (not needed for smoke test)"
@@ -116,8 +116,8 @@ fi
 # Step 4: Clean up any previous test deployment
 echo ""
 echo -e "${YELLOW}Step 4: Cleaning up previous test deployments...${NC}"
-docker rm -f chatbot-manual-1 chromadb-manual-1 data-manager-manual-1 postgres-manual-1 2>/dev/null || true
-docker volume rm a2rchi-chroma-manual-1 a2rchi-data-manual-1 a2rchi-manual-1 a2rchi-pg-manual-1 2>/dev/null || true
+docker rm -f chatbot-manual-1 data-manager-manual-1 postgres-manual-1 2>/dev/null || true
+docker volume rm a2rchi-data-manual-1 a2rchi-manual-1 a2rchi-pg-manual-1 2>/dev/null || true
 rm -rf a2rchi-local/a2rchi-manual-1 2>/dev/null || true
 echo -e "${GREEN}✓${NC} Cleanup complete"
 

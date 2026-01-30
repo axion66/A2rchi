@@ -6,14 +6,14 @@ from typing import Dict
 
 import yaml
 
-from src.a2rchi.pipelines.agents.tools import (
+from src.archi.pipelines.agents.tools import (
     RemoteCatalogClient,
     create_document_fetch_tool,
     create_file_search_tool,
     create_metadata_search_tool,
     create_retriever_tool,
 )
-from src.a2rchi.utils.vectorstore_connector import VectorstoreConnector
+from src.archi.utils.vectorstore_connector import VectorstoreConnector
 from src.data_manager.vectorstore.retrievers import HybridRetriever
 
 
@@ -35,9 +35,9 @@ def _invoke_tool(tool, payload: Dict[str, object]) -> str:
 
 
 def _load_config() -> Dict:
-    config_path = os.getenv("A2RCHI_CONFIG_PATH")
+    config_path = os.getenv("ARCHI_CONFIG_PATH")
     if not config_path:
-        _fail("A2RCHI_CONFIG_PATH is required for tool smoke checks")
+        _fail("ARCHI_CONFIG_PATH is required for tool smoke checks")
     try:
         with open(config_path, "r", encoding="utf-8") as handle:
             return yaml.safe_load(handle) or {}

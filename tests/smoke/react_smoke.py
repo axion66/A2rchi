@@ -52,7 +52,7 @@ def main() -> None:
         "Use the search_local_files tool to find the phrase "
         "'Smoke test seed document' and summarize the result.",
     )
-    config_name = os.getenv("A2RCHI_CONFIG_NAME")
+    config_name = os.getenv("ARCHI_CONFIG_NAME")
 
     _info(f"Waiting for {base_url}/api/health (timeout {timeout}s) ...")
     start_ts = time.time()

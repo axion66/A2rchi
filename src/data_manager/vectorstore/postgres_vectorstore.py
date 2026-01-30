@@ -1,7 +1,7 @@
 """
 PostgresVectorStore - A LangChain-compatible vector store using PostgreSQL + pgvector.
 
-This replaces ChromaDB for vector similarity search in A2rchi.
+This replaces ChromaDB for vector similarity search in archi.
 Implements the langchain_core.vectorstores.VectorStore interface.
 """
 
@@ -37,7 +37,7 @@ class PostgresVectorStore(VectorStore):
     
     Example:
         >>> store = PostgresVectorStore(
-        ...     pg_config={"host": "localhost", "port": 5432, "user": "postgres", "password": "...", "dbname": "a2rchi"},
+        ...     pg_config={"host": "localhost", "port": 5432, "user": "postgres", "password": "...", "dbname": "archi"},
         ...     embedding_function=HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2"),
         ...     collection_name="my_collection",
         ... )
@@ -394,12 +394,30 @@ class PostgresVectorStore(VectorStore):
         conn = self._get_connection()
         try:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-                # Check if pg_textsearch BM25 index exists
+                # Check if pg_textsearch BM25 index exists on document_chunks.chunk_text
+                # This is a strict check that verifies:
+                # - Index is on the correct table (document_chunks)
+                # - Index uses BM25 access method
+                # - Index is in the public schema
                 cursor.execute("""
-                    SELECT 1 FROM pg_indexes 
-                    WHERE indexname = 'idx_chunks_bm25'
+                    SELECT 1
+                    FROM pg_class t
+                    JOIN pg_index i ON t.oid = i.indrelid
+                    JOIN pg_class idx ON idx.oid = i.indexrelid
+                    JOIN pg_am am ON am.oid = idx.relam
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                    WHERE t.relname = 'document_chunks'
+                      AND n.nspname = 'public'
+                      AND am.amname = 'bm25'
                 """)
                 has_bm25_index = cursor.fetchone() is not None
+
+                cursor.execute("""
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'document_chunks'
+                      AND column_name = 'chunk_tsv'
+                """)
+                has_chunk_tsv = cursor.fetchone() is not None
                 
                 where_clauses = ["(c.metadata->>'collection' = %s OR c.metadata->>'collection' IS NULL)"]
                 params: List[Any] = [self._collection_name]
@@ -414,21 +432,26 @@ class PostgresVectorStore(VectorStore):
                 where_sql = " AND ".join(where_clauses)
                 
                 if has_bm25_index:
-                    # Use pg_textsearch BM25
-                    bm25_score = "c.chunk_text <@> %s"
-                    params_with_query = [embedding_str, query] + params + [k]
+                    # Use pg_textsearch BM25 - must be computed on base table where index exists
+                    # The <@> operator requires the BM25 index on the actual table being queried
+                    bm25_score_expr = "c.chunk_text <@> %s"
+                    tsv_column = ""
                 else:
-                    # Fallback to ts_rank with GIN index
-                    bm25_score = "ts_rank(c.chunk_tsv, plainto_tsquery('english', %s))"
-                    params_with_query = [embedding_str, query] + params + [k]
+                    # Fallback to ts_rank with GIN index - needs chunk_tsv
+                    bm25_score_expr = "ts_rank(c.chunk_tsv, plainto_tsquery('english', %s))"
+                    tsv_column = "c.chunk_tsv,"
                 
+                # BM25 score must be computed in the base query (not a CTE) because
+                # the <@> operator requires direct access to the indexed table
                 query_sql = f"""
-                    WITH semantic AS (
+                    WITH scored AS (
                         SELECT 
                             c.id,
                             c.chunk_text,
+                            {tsv_column}
                             c.metadata,
                             1.0 - (c.embedding {self._distance_op} %s::vector) AS semantic_score,
+                            {bm25_score_expr} AS bm25_score,
                             d.resource_hash,
                             d.display_name,
                             d.source_type,
@@ -436,22 +459,17 @@ class PostgresVectorStore(VectorStore):
                         FROM document_chunks c
                         LEFT JOIN documents d ON c.document_id = d.id
                         WHERE {where_sql}
-                    ),
-                    ranked AS (
-                        SELECT 
-                            *,
-                            {bm25_score} AS bm25_score
-                        FROM semantic
                     )
                     SELECT 
                         *,
                         (semantic_score * %s + COALESCE(bm25_score, 0) * %s) AS combined_score
-                    FROM ranked
+                    FROM scored
                     ORDER BY combined_score DESC
                     LIMIT %s
                 """
                 
-                all_params = params_with_query[:-1] + [semantic_weight, bm25_weight, k]
+                # Params order: embedding, collection (+ any filters), query, semantic_weight, bm25_weight, k
+                all_params = [embedding_str] + params + [query, semantic_weight, bm25_weight, k]
                 cursor.execute(query_sql, all_params)
                 rows = cursor.fetchall()
         finally:

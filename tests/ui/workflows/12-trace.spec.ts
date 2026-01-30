@@ -100,6 +100,6 @@ test.describe('Agent Trace Visualization', () => {
     await page.getByRole('button', { name: 'Send message' }).click();
     
     // Should show agent name in the message area (not header/sidebar)
-    await expect(page.getByRole('main').getByText('A2rchi').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('main').getByText('archi').first()).toBeVisible({ timeout: 5000 });
   });
 });

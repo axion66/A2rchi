@@ -47,10 +47,10 @@ langchain-text-splitters==1.0.0
 langchain-huggingface==1.0.0
 langchain-anthropic==1.0.0
 langchain-classic==1.0.0
+unstructured==0.18.2
 openai==2.2.0
 pydantic==2.11.7
 pydantic-core==2.33.2
-chroma-hnswlib==0.7.3
 anthropic==0.71.0
 scipy==1.13.1
 urllib3==2.3.0

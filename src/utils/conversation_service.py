@@ -13,13 +13,13 @@ import psycopg2
 from psycopg2.extras import execute_values
 
 from src.utils.sql import (
-    SQL_INSERT_CONVO_V2,
-    SQL_INSERT_AB_COMPARISON_V2,
+    SQL_INSERT_CONVO,
+    SQL_INSERT_AB_COMPARISON,
     SQL_UPDATE_AB_PREFERENCE,
-    SQL_GET_AB_COMPARISON_V2,
-    SQL_GET_PENDING_AB_COMPARISON_V2,
+    SQL_GET_AB_COMPARISON,
+    SQL_GET_PENDING_AB_COMPARISON,
     SQL_DELETE_AB_COMPARISON,
-    SQL_GET_AB_COMPARISONS_BY_CONVERSATION_V2,
+    SQL_GET_AB_COMPARISONS_BY_CONVERSATION,
 )
 
 
@@ -35,7 +35,7 @@ class Message:
     ts: Optional[datetime] = None
     model_used: Optional[str] = None
     pipeline_used: Optional[str] = None
-    a2rchi_service: str = "chat"
+    archi_service: str = "chat"
 
 
 @dataclass
@@ -128,7 +128,7 @@ class ConversationService:
             with conn.cursor() as cur:
                 values = [
                     (
-                        m.a2rchi_service,
+                        m.archi_service,
                         m.conversation_id,
                         m.sender,
                         m.content,
@@ -142,7 +142,7 @@ class ConversationService:
                 ]
                 result = execute_values(
                     cur,
-                    SQL_INSERT_CONVO_V2,
+                    SQL_INSERT_CONVO,
                     values,
                     fetch=True
                 )
@@ -173,7 +173,7 @@ class ConversationService:
         """
         query = """
             SELECT message_id, conversation_id, sender, content, link, context, 
-                   ts, model_used, pipeline_used, a2rchi_service
+                   ts, model_used, pipeline_used, archi_service
             FROM conversations
             WHERE conversation_id = %s
             ORDER BY ts ASC
@@ -197,7 +197,7 @@ class ConversationService:
                         ts=row[6],
                         model_used=row[7],
                         pipeline_used=row[8],
-                        a2rchi_service=row[9],
+                        archi_service=row[9],
                     )
                     for row in rows
                 ]
@@ -207,7 +207,7 @@ class ConversationService:
     def get_user_conversations(
         self,
         user_id: str,
-        a2rchi_service: str = "chat",
+        archi_service: str = "chat",
         limit: int = 50,
     ) -> List[Dict[str, Any]]:
         """
@@ -215,7 +215,7 @@ class ConversationService:
         
         Args:
             user_id: User identifier (stored in conversation_id prefix)
-            a2rchi_service: Service filter
+            archi_service: Service filter
             limit: Max conversations to return
             
         Returns:
@@ -229,7 +229,7 @@ class ConversationService:
                 COUNT(*) as message_count
             FROM conversations
             WHERE conversation_id LIKE %s
-              AND a2rchi_service = %s
+              AND archi_service = %s
             GROUP BY conversation_id
             ORDER BY conversation_id, last_message_at DESC
             LIMIT %s;
@@ -238,7 +238,7 @@ class ConversationService:
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute(query, (f"user_{user_id}_%", a2rchi_service, limit))
+                cur.execute(query, (f"user_{user_id}_%", archi_service, limit))
                 rows = cur.fetchall()
                 
                 return [
@@ -289,7 +289,7 @@ class ConversationService:
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    SQL_INSERT_AB_COMPARISON_V2,
+                    SQL_INSERT_AB_COMPARISON,
                     (
                         conversation_id,
                         user_prompt_mid,
@@ -353,7 +353,7 @@ class ConversationService:
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute(SQL_GET_AB_COMPARISON_V2, (comparison_id,))
+                cur.execute(SQL_GET_AB_COMPARISON, (comparison_id,))
                 row = cur.fetchone()
                 
                 if not row:
@@ -393,7 +393,7 @@ class ConversationService:
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute(SQL_GET_PENDING_AB_COMPARISON_V2, (conversation_id,))
+                cur.execute(SQL_GET_PENDING_AB_COMPARISON, (conversation_id,))
                 row = cur.fetchone()
                 
                 if not row:
@@ -434,7 +434,7 @@ class ConversationService:
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    SQL_GET_AB_COMPARISONS_BY_CONVERSATION_V2,
+                    SQL_GET_AB_COMPARISONS_BY_CONVERSATION,
                     (conversation_id,)
                 )
                 rows = cur.fetchall()
@@ -565,7 +565,7 @@ class ConversationService:
         self,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
-        a2rchi_service: Optional[str] = None,
+        archi_service: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Get model usage statistics from conversations.
@@ -573,7 +573,7 @@ class ConversationService:
         Args:
             start_date: Start of time range (optional)
             end_date: End of time range (optional)
-            a2rchi_service: Service filter (optional)
+            archi_service: Service filter (optional)
             
         Returns:
             List of model usage stats
@@ -596,9 +596,9 @@ class ConversationService:
         if end_date:
             query += " AND ts <= %s"
             params.append(end_date)
-        if a2rchi_service:
-            query += " AND a2rchi_service = %s"
-            params.append(a2rchi_service)
+        if archi_service:
+            query += " AND archi_service = %s"
+            params.append(archi_service)
         
         query += " GROUP BY model_used, pipeline_used ORDER BY message_count DESC"
         

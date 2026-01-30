@@ -153,7 +153,7 @@ class FlaskAppWrapper:
             token = auth_header.split(" ", 1)[1].strip()
             return token or None
         token = (
-            request.headers.get("X-A2RCHI-API-TOKEN")
+            request.headers.get("X-ARCHI-API-TOKEN")
             or request.headers.get("X-API-Token")
             or request.headers.get("X-API-Key")
         )

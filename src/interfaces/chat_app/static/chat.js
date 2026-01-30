@@ -1,5 +1,5 @@
 /* =============================================================================
-   A2rchi Chat UI - Professional AI Assistant Interface
+   archi Chat UI - Professional AI Assistant Interface
    Version: 2.0.0
    
    Modular vanilla JavaScript chat application.
@@ -12,15 +12,15 @@
 
 const CONFIG = {
   STORAGE_KEYS: {
-    CLIENT_ID: 'a2rchi_client_id',
-    ACTIVE_CONVERSATION: 'a2rchi_active_conversation_id',
-    AB_WARNING_DISMISSED: 'a2rchi_ab_warning_dismissed',
-    TRACE_VERBOSE_MODE: 'a2rchi_trace_verbose_mode',
-    SELECTED_PROVIDER: 'a2rchi_selected_provider',
-    SELECTED_MODEL: 'a2rchi_selected_model',
-    SELECTED_MODEL_CUSTOM: 'a2rchi_selected_model_custom',
-    SELECTED_PROVIDER_B: 'a2rchi_selected_provider_b',
-    SELECTED_MODEL_B: 'a2rchi_selected_model_b',
+    CLIENT_ID: 'archi_client_id',
+    ACTIVE_CONVERSATION: 'archi_active_conversation_id',
+    AB_WARNING_DISMISSED: 'archi_ab_warning_dismissed',
+    TRACE_VERBOSE_MODE: 'archi_trace_verbose_mode',
+    SELECTED_PROVIDER: 'archi_selected_provider',
+    SELECTED_MODEL: 'archi_selected_model',
+    SELECTED_MODEL_CUSTOM: 'archi_selected_model_custom',
+    SELECTED_PROVIDER_B: 'archi_selected_provider_b',
+    SELECTED_MODEL_B: 'archi_selected_model_b',
   },
   ENDPOINTS: {
     STREAM: '/api/get_chat_response_stream',
@@ -1143,7 +1143,7 @@ const UI = {
     const avatar = isUser 
       ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>'
       : '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2z"/></svg>';
-    const senderName = isUser ? 'You' : 'A2rchi';
+    const senderName = isUser ? 'You' : 'archi';
     const roleClass = isUser ? 'user' : 'assistant';
     
     let labelHtml = '';
@@ -1408,7 +1408,7 @@ const UI = {
       return;
     }
 
-    // Replace the entire comparison with a normal A2rchi message (matching createMessageHTML format)
+    // Replace the entire comparison with a normal archi message (matching createMessageHTML format)
     // Include the trace container from the winning response
     const metaLabel = Chat.getEntryMetaLabel();
     const metaHtml = metaLabel
@@ -1420,7 +1420,7 @@ const UI = {
         <div class="message-inner">
           <div class="message-header">
             <div class="message-avatar">✦</div>
-            <span class="message-sender">A2rchi</span>
+            <span class="message-sender">archi</span>
           </div>
           ${winnerTrace}
           <div class="message-content">${winnerContent}</div>
@@ -2119,7 +2119,7 @@ const Chat = {
     const msgId = `${Date.now()}-assistant`;
     const assistantMsg = {
       id: msgId,
-      sender: 'A2rchi',
+      sender: 'archi',
       html: '',
       meta: this.getEntryMetaLabel(),
     };
@@ -2270,9 +2270,14 @@ const Chat = {
           const toolData = toolCalls.get(event.tool_call_id);
           if (toolData) {
             toolData.output = event.output;
+            toolData.status = 'success';
           }
           if (showTrace) {
             UI.renderToolOutput(elementId, event);
+            UI.renderToolEnd(elementId, {
+              tool_call_id: event.tool_call_id,
+              status: 'success',
+            });
           }
         } else if (event.type === 'tool_end') {
           const toolData = toolCalls.get(event.tool_call_id);
@@ -2284,7 +2289,11 @@ const Chat = {
             UI.renderToolEnd(elementId, event);
           }
         } else if (event.type === 'chunk') {
-          streamedText += event.content || '';
+          if (event.accumulated) {
+            streamedText = event.content || '';
+          } else {
+            streamedText += event.content || '';
+          }
           UI.updateABResponse(elementId, Markdown.render(streamedText), true);
         } else if (event.type === 'step' && event.step_type === 'agent') {
           const content = event.content || '';
@@ -2357,7 +2366,7 @@ const Chat = {
         preference === 'b'
           ? this.state.activeABComparison.responseBText
           : this.state.activeABComparison.responseAText;
-      this.state.history.push(['A2rchi', winningText]);
+      this.state.history.push(['archi', winningText]);
 
       // Clear A/B state
       this.state.activeABComparison = null;
@@ -2376,7 +2385,7 @@ const Chat = {
 
     // Add response A to history as default
     if (this.state.activeABComparison?.responseAText) {
-      this.state.history.push(['A2rchi', this.state.activeABComparison.responseAText]);
+      this.state.history.push(['archi', this.state.activeABComparison.responseAText]);
     }
 
     // Mark as tie/skipped visually
@@ -2438,10 +2447,15 @@ const Chat = {
           const toolData = this.state.activeTrace.toolCalls.get(event.tool_call_id);
           if (toolData) {
             toolData.output = event.output;
+            toolData.status = 'success';
           }
           this.state.activeTrace.events.push(event);
           if (showTrace) {
             UI.renderToolOutput(messageId, event);
+            UI.renderToolEnd(messageId, {
+              tool_call_id: event.tool_call_id,
+              status: 'success',
+            });
           }
         } else if (event.type === 'tool_end') {
           const toolData = this.state.activeTrace.toolCalls.get(event.tool_call_id);
@@ -2454,8 +2468,12 @@ const Chat = {
             UI.renderToolEnd(messageId, event);
           }
         } else if (event.type === 'chunk') {
-          // Chunks are individual tokens - concatenate them
-          streamedText += event.content || '';
+          // Chunks may be accumulated or delta content
+          if (event.accumulated) {
+            streamedText = event.content || '';
+          } else {
+            streamedText += event.content || '';
+          }
           UI.updateMessage(messageId, {
             html: Markdown.render(streamedText),
             streaming: true,
@@ -2493,7 +2511,7 @@ const Chat = {
             Storage.setActiveConversationId(event.conversation_id);
           }
           
-          this.state.history.push(['A2rchi', finalText]);
+          this.state.history.push(['archi', finalText]);
           
           // Re-highlight code blocks
           if (typeof hljs !== 'undefined') {

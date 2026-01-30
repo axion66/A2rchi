@@ -32,15 +32,15 @@ env = Environment(
     autoescape=select_autoescape(),
     undefined=ChainableUndefined,
 )
-A2RCHI_DIR = os.environ.get('A2RCHI_DIR',os.path.join(os.path.expanduser('~'), ".a2rchi"))
+ARCHI_DIR = os.environ.get('ARCHI_DIR',os.path.join(os.path.expanduser('~'), ".archi"))
 
 @click.group()
 def cli():
     pass
 
 @click.command()
-@click.option('--name', '-n', type=str, required=True, help="Name of the a2rchi deployment")
-@click.option('--config', '-c', 'config_files', type=str, multiple=True, help="Path to .yaml a2rchi configuration")
+@click.option('--name', '-n', type=str, required=True, help="Name of the archi deployment")
+@click.option('--config', '-c', 'config_files', type=str, multiple=True, help="Path to .yaml archi configuration")
 @click.option('--config-dir', '-cd', 'config_dir', type=str, help="Path to configs directory")
 @click.option('--env-file', '-e', type=str, required=False, help="Path to .env file with secrets")
 @click.option('--services', '-s', callback=parse_services_option, 
@@ -56,7 +56,7 @@ def cli():
 @click.option('--dry', '--dry-run', is_flag=True, help="Validate configuration and show what would be created without actually deploying")
 def create(name: str, config_files: list, config_dir: str, env_file: str, services: list, sources: list, 
            force: bool, dry: bool, verbosity: int, **other_flags):
-    """Create an A2RCHI deployment with selected services and data sources."""
+    """Create an ARCHI deployment with selected services and data sources."""
 
     if not (bool(config_files) ^ bool(config_dir)): 
         raise click.ClickException(f"Must specify only one of config files or config dir")
@@ -64,7 +64,7 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
         config_path = Path(config_dir)
         config_files = [item for item in config_path.iterdir() if item.is_file()]
 
-    print("Starting A2RCHI deployment process...")
+    print("Starting ARCHI deployment process...")
     setup_cli_logging(verbosity=verbosity)
     logger = get_logger(__name__)
 
@@ -75,7 +75,7 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
         raise click.ClickException(
             "Docker is not available on this system. "
             "Please install Docker or use the '--podman' option to use Podman instead.\n"
-            "Example: a2rchi create --name mybot --podman ..."
+            "Example: archi create --name mybot --podman ..."
         )
     
     try:
@@ -90,7 +90,7 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
         
         
         # Handle existing deployment
-        base_dir = Path(A2RCHI_DIR) / f"a2rchi-{name}"
+        base_dir = Path(ARCHI_DIR) / f"archi-{name}"
         handle_existing_deployment(base_dir, name, force, dry, other_flags.get('podman', False))
         
         # Initialize managers
@@ -169,7 +169,7 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
     
 
 @click.command()
-@click.option('--name', '-n', type=str, help="Name of the a2rchi deployment to delete")
+@click.option('--name', '-n', type=str, help="Name of the archi deployment to delete")
 @click.option('--rmi', is_flag=True, help="Remove images (--rmi all)")
 @click.option('--rmv', is_flag=True, help="Remove volumes (--volumes)")
 @click.option('--keep-files', is_flag=True, help="Keep deployment files (don't remove directory)")
@@ -178,26 +178,26 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
 @click.option('--podman', '-p', is_flag=True, default=False, help="specify if podman is being used")
 def delete(name: str, rmi: bool, rmv: bool, keep_files: bool, list_deployments: bool, verbosity: int, podman: bool):
     """
-    Delete an A2RCHI deployment with the specified name.
+    Delete an ARCHI deployment with the specified name.
     
     This command stops containers and optionally removes images, volumes, and files.
     
     Examples:
     
     # List available deployments
-    a2rchi delete --list
+    archi delete --list
     
     # Delete deployment (keep images and volumes)
-    a2rchi delete --name mybot
+    archi delete --name mybot
     
     # Delete deployment and remove images
-    a2rchi delete --name mybot --rmi
+    archi delete --name mybot --rmi
     
     # Complete cleanup (remove everything)
-    a2rchi delete --name mybot --rmi --rmv
+    archi delete --name mybot --rmi --rmv
     
     # Stop deployment but keep files for debugging
-    a2rchi delete --name mybot --keep-files
+    archi delete --name mybot --keep-files
     """
     
     setup_cli_logging(verbosity=verbosity)
@@ -226,12 +226,12 @@ def delete(name: str, rmi: bool, rmv: bool, keep_files: bool, list_deployments: 
                 raise click.ClickException(
                     f"Please provide a deployment name using --name.\n"
                     f"Available deployments: {available_str}\n"
-                    f"Use 'a2rchi delete --list' to see all deployments."
+                    f"Use 'archi delete --list' to see all deployments."
                 )
             else:
                 raise click.ClickException(
                     "Please provide a deployment name using --name.\n"
-                    "No deployments found. Use 'a2rchi create' to create one."
+                    "No deployments found. Use 'archi create' to create one."
                 )
         
         # Clean the name
@@ -257,9 +257,9 @@ def delete(name: str, rmi: bool, rmv: bool, keep_files: bool, list_deployments: 
         raise click.ClickException(str(e))
 
 @click.command()
-@click.option('--name', '-n', type=str, required=True, help="Name of the a2rchi deployment")
+@click.option('--name', '-n', type=str, required=True, help="Name of the archi deployment")
 @click.option('--service', '-s', type=str, default="chatbot", help="Service to restart (default: chatbot)")
-@click.option('--config', '-c', 'config_files', type=str, multiple=True, help="Path to .yaml a2rchi configuration")
+@click.option('--config', '-c', 'config_files', type=str, multiple=True, help="Path to .yaml archi configuration")
 @click.option('--config-dir', '-cd', 'config_dir', type=str, help="Path to configs directory")
 @click.option('--env-file', '-e', type=str, required=False, help="Path to .env file with secrets")
 @click.option('--no-build', is_flag=True, help="Restart without rebuilding the image")
@@ -284,15 +284,15 @@ def restart(
         raise click.ClickException(
             "Docker is not available on this system. "
             "Please install Docker or use the '--podman' option to use Podman instead.\n"
-            "Example: a2rchi restart --name mybot --podman ..."
+            "Example: archi restart --name mybot --podman ..."
         )
 
-    deployment_dir = Path(A2RCHI_DIR) / f"a2rchi-{name}"
+    deployment_dir = Path(ARCHI_DIR) / f"archi-{name}"
     compose_file = deployment_dir / "compose.yaml"
     if not compose_file.exists():
         raise click.ClickException(
             f"Deployment '{name}' not found at {deployment_dir}. "
-            "Use 'a2rchi list-deployments' to see available deployments."
+            "Use 'archi list-deployments' to see available deployments."
         )
 
     try:
@@ -397,7 +397,7 @@ def restart(
 def list_services():
     """List all available services"""
     
-    click.echo("Available A2RCHI services:\n")
+    click.echo("Available ARCHI services:\n")
     
     # Application services
     app_services = service_registry.get_application_services()
@@ -428,14 +428,14 @@ def list_services():
 def list_deployments():
     """List all existing deployments"""
     
-    a2rchi_dir = Path(A2RCHI_DIR)
+    archi_dir = Path(ARCHI_DIR)
 
-    if not a2rchi_dir.exists():
+    if not archi_dir.exists():
         click.echo("No deployments found")
         return
     
-    deployments = [d for d in a2rchi_dir.iterdir() 
-                  if d.is_dir() and d.name.startswith('a2rchi-')]
+    deployments = [d for d in archi_dir.iterdir() 
+                  if d.is_dir() and d.name.startswith('archi-')]
     
     if not deployments:
         click.echo("No deployments found")
@@ -443,7 +443,7 @@ def list_deployments():
     
     click.echo("Existing deployments:")
     for deployment in deployments:
-        name = deployment.name.replace('a2rchi-', '')
+        name = deployment.name.replace('archi-', '')
         
         # Try to get running status
         try:
@@ -457,8 +457,8 @@ def list_deployments():
 
 
 @click.command()
-@click.option('--name', '-n', type=str, required=True, help="Name of the a2rchi deployment")
-@click.option('--config', '-c', 'config_file', type=str, help="Path to .yaml a2rchi configuration")
+@click.option('--name', '-n', type=str, required=True, help="Name of the archi deployment")
+@click.option('--config', '-c', 'config_file', type=str, help="Path to .yaml archi configuration")
 @click.option('--config-dir', '-cd', 'config_dir', type=str, help="Path to configs directory")
 @click.option('--env-file', '-e', type=str, required=False, help="Path to .env file with 'secrets")
 @click.option('--hostmode', 'host_mode', is_flag=True, help="Use host network mode")
@@ -471,7 +471,7 @@ def list_deployments():
 @click.option('--verbosity', '-v', type=int, default=3, help="Logging verbosity level (0-4)")
 def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_mode: bool, sources: list, 
              force: bool, verbosity: int, **other_flags):
-    """Create an A2RCHI deployment with selected services and data sources."""
+    """Create an ARCHI deployment with selected services and data sources."""
     if not (bool(config_file) ^ bool(config_dir)): 
         raise click.ClickException(f"Must specify only one of config files or config dir")
     if config_dir: 
@@ -480,7 +480,7 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_m
     else: 
         config_files = [item for item in config_file.split(",")]
 
-    print("Starting A2RCHI benchmarking process...")
+    print("Starting ARCHI benchmarking process...")
     setup_cli_logging(verbosity=verbosity)
     logger = get_logger(__name__)
 
@@ -489,13 +489,13 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_m
         raise click.ClickException(
             "Docker is not available on this system. "
             "Please install Docker or use the '--podman' option to use Podman instead.\n"
-            "Example: a2rchi evaluate --name mybot --podman ..."
+            "Example: archi evaluate --name mybot --podman ..."
         )
 
     gpu = other_flags.get("gpu-ids") != None
 
     try: 
-        base_dir = Path(A2RCHI_DIR) / f"a2rchi-{name}"
+        base_dir = Path(ARCHI_DIR) / f"archi-{name}"
         handle_existing_deployment(base_dir, name, force, False, other_flags.get('podman', False))
 
         requested_sources = ['links']
@@ -567,7 +567,7 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_m
 
 def main():
     """
-    Entrypoint for a2rchi cli tool implemented using Click.
+    Entrypoint for archi cli tool implemented using Click.
     """
     # cli.add_command(help)
     cli.add_command(create)

@@ -19,7 +19,7 @@ test.describe('Page Load & Initialization', () => {
     await expect(page.getByRole('button', { name: 'New chat' })).toBeVisible();
     
     // Header
-    await expect(page.getByRole('heading', { name: 'A2rchi Chat' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'archi Chat' })).toBeVisible();
     await expect(page.locator('.header-tabs')).toBeVisible();
     
     // Input area
@@ -82,7 +82,7 @@ test.describe('Page Load & Initialization', () => {
         json: {
           messages: [
             { sender: 'User', content: 'Previous message', message_id: 1 },
-            { sender: 'A2rchi', content: 'Previous response', message_id: 2 },
+            { sender: 'archi', content: 'Previous response', message_id: 2 },
           ]
         }
       });
@@ -92,7 +92,7 @@ test.describe('Page Load & Initialization', () => {
     
     // Set active conversation
     await page.evaluate(() => {
-      localStorage.setItem('a2rchi_active_conversation_id', '1');
+      localStorage.setItem('archi_active_conversation_id', '1');
     });
     
     await page.reload();

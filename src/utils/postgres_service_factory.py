@@ -21,7 +21,7 @@ class PostgresServiceFactory:
         factory = PostgresServiceFactory.from_config({
             'host': 'localhost',
             'port': 5432,
-            'database': 'a2rchi',
+            'database': 'archi',
             'user': 'postgres',
             'password': 'secret',
         })
@@ -101,7 +101,7 @@ class PostgresServiceFactory:
         encryption_key: Optional[str] = None,
     ) -> 'PostgresServiceFactory':
         """
-        Create factory from A2rchi YAML config structure.
+        Create factory from archi YAML config structure.
         
         Args:
             config: Parsed YAML config with 'database' section
@@ -115,7 +115,7 @@ class PostgresServiceFactory:
         connection_params = {
             'host': db_config.get('host', 'localhost'),
             'port': db_config.get('port', 5432),
-            'database': db_config.get('database', 'a2rchi'),
+            'database': db_config.get('database', 'archi'),
             'user': db_config.get('user', 'postgres'),
             'password': db_config.get('password', ''),
         }
@@ -211,7 +211,7 @@ class PostgresServiceFactory:
 def create_services(
     host: str = 'localhost',
     port: int = 5432,
-    database: str = 'a2rchi',
+    database: str = 'archi',
     user: str = 'postgres',
     password: str = '',
     encryption_key: Optional[str] = None,

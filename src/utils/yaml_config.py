@@ -1,5 +1,5 @@
 """
-Simple YAML configuration loader for A2rchi.
+Simple YAML configuration loader for archi.
 
 This module provides direct YAML access for:
 1. CLI commands that run before PostgreSQL exists
@@ -17,13 +17,13 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 
-# Default config path - can be overridden with A2RCHI_CONFIGS_PATH env var
-CONFIGS_PATH = os.environ.get("A2RCHI_CONFIGS_PATH", "/root/A2rchi/configs/")
+# Default config path - can be overridden with ARCHI_CONFIGS_PATH env var
+CONFIGS_PATH = os.environ.get("ARCHI_CONFIGS_PATH", "/root/archi/configs/")
 
 
 def _get_configs_path() -> str:
     """Get the configs path, with environment override support."""
-    return os.environ.get("A2RCHI_CONFIGS_PATH", CONFIGS_PATH)
+    return os.environ.get("ARCHI_CONFIGS_PATH", CONFIGS_PATH)
 
 
 def list_config_names() -> List[str]:
@@ -112,18 +112,18 @@ def load_data_manager_config(name: Optional[str] = None) -> Dict[str, Any]:
     return config.get("data_manager", {})
 
 
-def load_a2rchi_config(name: Optional[str] = None) -> Dict[str, Any]:
+def load_archi_config(name: Optional[str] = None) -> Dict[str, Any]:
     """
-    Load the 'a2rchi' section of the config.
+    Load the 'archi' section of the config.
     
     Args:
         name: Config name (without .yaml extension).
         
     Returns:
-        Dictionary containing a2rchi configuration.
+        Dictionary containing archi configuration.
     """
     config = load_yaml_config(name)
-    return config.get("a2rchi", {})
+    return config.get("archi", {})
 
 
 def get_model_class_map(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
@@ -138,9 +138,9 @@ def get_model_class_map(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     Returns:
         Model class map with 'class' values resolved to actual Python classes.
     """
-    from src.a2rchi.models.registry import ModelRegistry
+    from src.archi.models.registry import ModelRegistry
     
-    model_class_map = config.get("a2rchi", {}).get("model_class_map", {})
+    model_class_map = config.get("archi", {}).get("model_class_map", {})
     result = {}
     
     for model_name, model_config in model_class_map.items():
@@ -165,7 +165,7 @@ def get_embedding_class_map(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]
     Returns:
         Embedding class map with 'class' values resolved to actual Python classes.
     """
-    from src.a2rchi.models.registry import EmbeddingRegistry
+    from src.archi.models.registry import EmbeddingRegistry
     
     embedding_class_map = config.get("data_manager", {}).get("embedding_class_map", {})
     result = {}
@@ -195,8 +195,8 @@ def load_config_with_class_mapping(name: Optional[str] = None) -> Dict[str, Any]
     config = load_yaml_config(name)
     
     # Resolve model classes
-    if "a2rchi" in config and "model_class_map" in config["a2rchi"]:
-        config["a2rchi"]["model_class_map"] = get_model_class_map(config)
+    if "archi" in config and "model_class_map" in config["archi"]:
+        config["archi"]["model_class_map"] = get_model_class_map(config)
         
     # Resolve embedding classes
     if "data_manager" in config and "embedding_class_map" in config["data_manager"]:

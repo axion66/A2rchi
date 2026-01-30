@@ -12,7 +12,7 @@ data_manager:
         - examples/benchmarking/ppc.list 
   embedding_name: HuggingFaceEmbeddings
 
-a2rchi:
+archi:
   pipelines: 
    - QAPipeline
   pipeline_map:

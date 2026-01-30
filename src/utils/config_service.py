@@ -38,7 +38,7 @@ class StaticConfig:
     distance_metric: str
     
     # Paths with defaults
-    prompts_path: str = "/root/A2rchi/data/prompts/"
+    prompts_path: str = "/root/archi/data/prompts/"
     
     # Available options
     available_pipelines: List[str] = field(default_factory=list)
@@ -48,6 +48,9 @@ class StaticConfig:
     # Auth
     auth_enabled: bool = False
     session_lifetime_days: int = 30
+
+    # Sources configuration (deploy-time)
+    sources_config: Dict[str, Any] = field(default_factory=dict)
     
     created_at: Optional[str] = None
 
@@ -143,6 +146,16 @@ class ConfigService:
             self._pool.release_connection(conn)
         else:
             conn.close()
+
+    @staticmethod
+    def _normalize_sources_config(sources_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        if not isinstance(sources_config, dict):
+            return {}
+        normalized = dict(sources_config)
+        for key, value in list(normalized.items()):
+            if not isinstance(value, dict):
+                normalized[key] = {}
+        return normalized
     
     # =========================================================================
     # Static Configuration
@@ -172,7 +185,7 @@ class ConfigService:
                            embedding_model, embedding_dimensions,
                            chunk_size, chunk_overlap, distance_metric,
                            available_pipelines, available_models, available_providers,
-                           auth_enabled, session_lifetime_days, created_at
+                           auth_enabled, session_lifetime_days, sources_config, created_at
                     FROM static_config
                     WHERE id = 1
                     """
@@ -186,7 +199,7 @@ class ConfigService:
                     deployment_name=row["deployment_name"],
                     config_version=row["config_version"],
                     data_path=row["data_path"],
-                    prompts_path=row.get("prompts_path", "/root/A2rchi/data/prompts/"),
+                    prompts_path=row.get("prompts_path", "/root/archi/data/prompts/"),
                     embedding_model=row["embedding_model"],
                     embedding_dimensions=row["embedding_dimensions"],
                     chunk_size=row["chunk_size"],
@@ -197,6 +210,7 @@ class ConfigService:
                     available_providers=row["available_providers"] or [],
                     auth_enabled=row["auth_enabled"],
                     session_lifetime_days=row.get("session_lifetime_days", 30),
+                    sources_config=row.get("sources_config") or {},
                     created_at=str(row["created_at"]) if row["created_at"] else None,
                 )
                 
@@ -219,6 +233,7 @@ class ConfigService:
         available_models: Optional[List[str]] = None,
         available_providers: Optional[List[str]] = None,
         auth_enabled: bool = False,
+        sources_config: Optional[Dict[str, Any]] = None,
     ) -> StaticConfig:
         """
         Initialize static configuration (typically called once at deployment).
@@ -246,6 +261,7 @@ class ConfigService:
         Raises:
             psycopg2.IntegrityError: If static config already exists
         """
+        normalized_sources = self._normalize_sources_config(sources_config)
         conn = self._get_connection()
         try:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
@@ -256,9 +272,9 @@ class ConfigService:
                         embedding_model, embedding_dimensions,
                         chunk_size, chunk_overlap, distance_metric,
                         available_pipelines, available_models, available_providers,
-                        auth_enabled
+                        auth_enabled, sources_config
                     )
-                    VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO UPDATE SET
                         deployment_name = EXCLUDED.deployment_name,
                         config_version = EXCLUDED.config_version,
@@ -271,12 +287,13 @@ class ConfigService:
                         available_pipelines = EXCLUDED.available_pipelines,
                         available_models = EXCLUDED.available_models,
                         available_providers = EXCLUDED.available_providers,
-                        auth_enabled = EXCLUDED.auth_enabled
+                        auth_enabled = EXCLUDED.auth_enabled,
+                        sources_config = EXCLUDED.sources_config
                     RETURNING deployment_name, config_version, data_path,
                               embedding_model, embedding_dimensions,
                               chunk_size, chunk_overlap, distance_metric,
                               available_pipelines, available_models, available_providers,
-                              auth_enabled, created_at
+                              auth_enabled, sources_config, created_at
                     """,
                     (
                         deployment_name, config_version, data_path,
@@ -286,6 +303,7 @@ class ConfigService:
                         available_models or [],
                         available_providers or [],
                         auth_enabled,
+                        psycopg2.extras.Json(normalized_sources),
                     )
                 )
                 row = cursor.fetchone()
@@ -304,6 +322,7 @@ class ConfigService:
                     available_models=row["available_models"] or [],
                     available_providers=row["available_providers"] or [],
                     auth_enabled=row["auth_enabled"],
+                    sources_config=row.get("sources_config") or {},
                     created_at=str(row["created_at"]) if row["created_at"] else None,
                 )
                 
@@ -645,6 +664,7 @@ class ConfigService:
             available_models=available_models,
             available_providers=config.get("providers", {}).keys() if config.get("providers") else [],
             auth_enabled=config.get("services", {}).get("chat_app", {}).get("auth", {}).get("enabled", False),
+            sources_config=data_manager.get("sources", {}),
         )
         
         # Initialize dynamic config from data_manager settings
@@ -688,12 +708,17 @@ class ConfigService:
             )
         
         # Get available models from model_class_map
-        model_class_map = config.get("a2rchi", {}).get("model_class_map", {})
+        model_class_map = config.get("archi", {}).get("model_class_map", {})
         available_models = list(model_class_map.keys())
         
         # Get available pipelines
-        available_pipelines = config.get("a2rchi", {}).get("pipelines", [])
+        available_pipelines = config.get("archi", {}).get("pipelines", [])
         
+        existing_static = self.get_static_config()
+        sources_config = data_manager.get("sources", {})
+        if existing_static and existing_static.sources_config:
+            sources_config = existing_static.sources_config
+
         # Initialize static config (uses UPSERT - won't fail if exists)
         self.initialize_static_config(
             deployment_name=config.get("name", "default"),
@@ -707,6 +732,7 @@ class ConfigService:
             available_models=available_models,
             available_providers=[],  # Can be extended later
             auth_enabled=config.get("services", {}).get("chat_app", {}).get("auth", {}).get("enabled", False),
+            sources_config=sources_config,
         )
         
         # Initialize dynamic config from data_manager settings

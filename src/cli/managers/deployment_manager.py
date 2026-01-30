@@ -42,7 +42,7 @@ class DeploymentManager:
         except Exception as e:
             raise DeploymentError(f"Invalid compose file: {e}", 1)
         
-        flags = os.environ.get("A2RCHI_COMPOSE_UP_FLAGS", "--build --force-recreate --always-recreate-deps")
+        flags = os.environ.get("ARCHI_COMPOSE_UP_FLAGS", "--build --force-recreate --always-recreate-deps")
         compose_cmd = f"{self.compose_tool} -f {compose_file} up -d {flags}"
         
         try:
@@ -135,8 +135,8 @@ class DeploymentManager:
         import os
 
         from src.cli.managers.volume_manager import VolumeManager
-        A2RCHI_DIR = os.environ.get('A2RCHI_DIR', os.path.join(os.path.expanduser('~'), ".a2rchi"))
-        deployment_dir = Path(A2RCHI_DIR) / f"a2rchi-{deployment_name}"
+        ARCHI_DIR = os.environ.get('ARCHI_DIR', os.path.join(os.path.expanduser('~'), ".archi"))
+        deployment_dir = Path(ARCHI_DIR) / f"archi-{deployment_name}"
         
         if deployment_dir.exists():
             # Stop deployment first

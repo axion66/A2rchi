@@ -2,14 +2,14 @@
 
 ## Overview
 
-A2RCHI supports various **data sources** as easy ways to ingest your data into the vector store databased used for document retrieval. These include:
+Archi supports various **data sources** as easy ways to ingest your data into the vector store databased used for document retrieval. These include:
 
 - **Links lists (even behind SSO)**: automatically scrape and ingest documents from a list of URLs
 - **Git scraping**: git mkdocs repositories
 - **Ticketing systems**: JIRA, Redmine, Piazza
 - **Local documents**
 
-Additionally, A2RCHI supports various **interfaces/services**, which are applications that interact with the RAG system. These include:
+Additionally, Archi supports various **interfaces/services**, which are applications that interact with the RAG system. These include:
 
 - **Chat interface**: a web-based chat application
 - **Piazza integration**: read posts from Piazza and post draft responses to a Slack channel
@@ -19,9 +19,9 @@ Additionally, A2RCHI supports various **interfaces/services**, which are applica
 - **Document uploader**: web interface for uploading and managing documents
 - **Grader**: automated grading service for assignments with web interface
 
-Both data sources and interfaces/services are enabled via flags to the `a2rchi create` command,
+Both data sources and interfaces/services are enabled via flags to the `archi create` command,
 ```bash
-a2rchi create [...] --services=chatbot,piazza,... --sources jira,redmine,...
+archi create [...] --services=chatbot,piazza,... --sources jira,redmine,...
 ```
 The parameters of the services and sources are configured via the configuration file. See below for more details.
 
@@ -52,7 +52,7 @@ These tools are meant to be used together: search first, then fetch only the mos
 
 ### Optional command line options
 
-In addition to the required `--name`, `--config/--config-dir`, `--env-file`, and `--services` arguments, the `a2rchi create` command accepts several useful flags:
+In addition to the required `--name`, `--config/--config-dir`, `--env-file`, and `--services` arguments, the `archi create` command accepts several useful flags:
 
 1. **`--podman`**: Run the deployment with Podman instead of Docker.
 2. **`--sources` / `-src`**: Enable additional ingestion sources (`git`, `sso`, `jira`, `redmine`, ...). Provide a comma-separated list.
@@ -62,7 +62,7 @@ In addition to the required `--name`, `--config/--config-dir`, `--env-file`, and
 6. **`--verbosity` / `-v`**: Control CLI logging level (0 = quiet, 4 = debug).
 7. **`--force`** / **`--dry-run`**: Force recreation of an existing deployment and/or show what would happen without actually deploying.
 
-You can inspect the available services and sources, together with descriptions, using `a2rchi list-services`.
+You can inspect the available services and sources, together with descriptions, using `archi list-services`.
 The CLI checks that host ports are free before deploying; if a port is already in use, adjust `services.*.external_port` (or `services.*.port` in `--hostmode`) and retry.
 
 > **GPU helpers**
@@ -78,11 +78,11 @@ These are the different ways to ingest data into the vector store used for docum
 ### Web Link Lists
 
 A web link list is a simple text file containing a list of URLs, one per line.
-A2RCHI will fetch the content from each URL and add it to the vector store, using the `Scraper` class.
+Archi will fetch the content from each URL and add it to the vector store, using the `Scraper` class.
 
 #### Configuration
 
-You can define which lists of links A2RCHI will ingest in the configuration file as follows:
+You can define which lists of links Archi will ingest in the configuration file as follows:
 ```yaml
 data_manager:
   sources:
@@ -105,14 +105,19 @@ data_manager:
   sources:
     sso:
       enabled: true
-      sso_class: CERNSSOScraper  # or whichever class is appropriate
-      sso_class_map:
-        CERNSSOScraper:
-          kwargs:
-            headless: true
-            max_depth: 2
+    links:
+      selenium_scraper:
+        enabled: true
+        selenium_class: CERNSSOScraper  # or whichever class is appropriate
+        selenium_class_map:
+          CERNSSOScraper:
+            kwargs:
+              headless: true
+              max_depth: 2
 ```
-Then, run `a2rchi create ... --sources sso` to activate the SSO collector.
+Then, run `archi create ... --sources sso` to activate the SSO collector.
+
+Note: source configuration is persisted to PostgreSQL `static_config` at deployment time and used at runtime.
 
 You can customise the HTTP scraper behaviour (for example, to avoid SSL verification warnings):
 ```yaml
@@ -139,7 +144,7 @@ sso-https://example.com/protected/page
 
 #### Running
 
-Link scraping is automatically enabled in A2RCHI, you don't need to add any arguments to the `create` command unless the links are sso protected.
+Link scraping is automatically enabled in Archi, you don't need to add any arguments to the `create` command unless the links are sso protected.
 
 ---
 
@@ -178,7 +183,7 @@ Enable the git source during deployment with `--sources git`.
 
 ### JIRA
 
-The JIRA integration allows A2RCHI to fetch issues and comments from specified JIRA projects and add them to the vector store, using the `JiraClient` class.
+The JIRA integration allows Archi to fetch issues and comments from specified JIRA projects and add them to the vector store, using the `JiraClient` class.
 
 #### Configuration
 
@@ -223,7 +228,7 @@ Add `JIRA_PAT=<token>` to your `.env` file before deploying with `--sources jira
 
 Enable the source at deploy time with:
 ```bash
-a2rchi create [...] --services=chatbot --sources jira
+archi create [...] --services=chatbot --sources jira
 ```
 
 ---
@@ -232,7 +237,7 @@ a2rchi create [...] --services=chatbot --sources jira
 
 #### Adding Documents
 
-There are two main ways to add documents to A2RCHI's vector database. They are:
+There are two main ways to add documents to Archi's vector database. They are:
 
 - Manually adding files while the service is running via the uploader GUI
 - Directly copying files into the container
@@ -241,9 +246,9 @@ These methods are outlined below.
 
 #### Manual Uploader
 
-In order to upload documents while A2RCHI is running via an easily accessible GUI, enable the uploader service when creating the deployment:
+In order to upload documents while Archi is running via an easily accessible GUI, enable the uploader service when creating the deployment:
 ```bash
-a2rchi create [...] --services=chatbot,uploader
+archi create [...] --services=chatbot,uploader
 ```
 The exact port may vary based on configuration (default external port is `5003`).
 A quick `podman ps` or `docker ps` will show which port is exposed.
@@ -256,14 +261,38 @@ Run the bundled helper:
 ```
 python -u src/bin/service_create_account.py
 ```
-from the `/root/A2RCHI` directory inside the container. This script will guide you through creating an account; never reuse sensitive passwords here.
+from the `/root/Archi` directory inside the container. This script will guide you through creating an account; never reuse sensitive passwords here.
 
 Once you have created an account, visit the outgoing port of the data manager docker service and then log in.
-The GUI will then allow you to upload documents while A2RCHI is still running. Note that it may take a few minutes for all the documents to upload.
+The GUI will then allow you to upload documents while Archi is still running. Note that it may take a few minutes for all the documents to upload.
 
 #### Directly copying files to the container
 
 The documents used for RAG live in the chat container at `/root/data/<directory>/<files>`. Thus, in a pinch, you can `docker/podman cp` a file at this directory level, e.g., `podman/docker cp myfile.pdf <container name or ID>:/root/data/<new_dir>/`. If you need to make a new directory in the container, you can do `podman exec -it <container name or ID> mkdir /root/data/<new_dir>`.
+
+#### Data Viewer
+
+The chat interface includes a built-in Data Viewer for browsing and managing ingested documents. Access it at `/data` on your chat app (e.g., `http://localhost:7861/data`).
+
+**Features:**
+
+- **Browse documents**: View all ingested documents with metadata (source, file type, chunk count)
+- **Search and filter**: Filter documents by name or source type
+- **View content**: Click on a document to see its full content and individual chunks
+- **Enable/disable documents**: Toggle whether specific documents are included in RAG retrieval
+- **Bulk operations**: Enable or disable multiple documents at once
+
+**Document States:**
+
+| State | Description |
+|-------|-------------|
+| Enabled | Document chunks are included in retrieval (default) |
+| Disabled | Document is excluded from retrieval but remains in the database |
+
+Disabling documents is useful for:
+- Temporarily excluding outdated content
+- Testing retrieval with specific document subsets
+- Hiding sensitive documents from certain users
 
 ---
 
@@ -294,7 +323,7 @@ REDMINE_PW=...
 
 Enable the source at deploy time with:
 ```bash
-a2rchi create [...] --services=chatbot --sources redmine
+archi create [...] --services=chatbot --sources redmine
 ```
 
 > To automate email replies, also enable the `redmine-mailer` service (see the Services section below).
@@ -303,17 +332,17 @@ a2rchi create [...] --services=chatbot --sources redmine
 
 ## Interfaces/Services
 
-These are the different apps that A2RCHI supports, which allow you to interact with the AI pipelines.
+These are the different apps that Archi supports, which allow you to interact with the AI pipelines.
 
 ### Piazza Interface
 
-Set up A2RCHI to read posts from your Piazza forum and post draft responses to a specified Slack channel. To do this, a Piazza login (email and password) is required, plus the network ID of your Piazza channel, and lastly, a Webhook for the slack channel A2RCHI will post to. See below for a step-by-step description of this.
+Set up Archi to read posts from your Piazza forum and post draft responses to a specified Slack channel. To do this, a Piazza login (email and password) is required, plus the network ID of your Piazza channel, and lastly, a Webhook for the slack channel Archi will post to. See below for a step-by-step description of this.
 
-1. Go to [https://api.slack.com/apps](https://api.slack.com/apps) and sign in to workspace where you will eventually want A2RCHI to post to (note doing this in a business workspace like the MIT one will require approval of the app/bot).
+1. Go to [https://api.slack.com/apps](https://api.slack.com/apps) and sign in to workspace where you will eventually want Archi to post to (note doing this in a business workspace like the MIT one will require approval of the app/bot).
 2. Click 'Create New App', and then 'From scratch'. Name your app and again select the correct workspace. Then hit 'Create App'
-3. Now you have your app, and there are a few things to configure before you can launch A2RCHI:
+3. Now you have your app, and there are a few things to configure before you can launch Archi:
 4. Go to Incoming Webhooks under Features, and toggle it on.
-5. Click 'Add New Webhook', and select the channel you want A2RCHI to post to.
+5. Click 'Add New Webhook', and select the channel you want Archi to post to.
 6. Now, copy the 'Webhook URL' and paste it into the secrets file, and handle it like any other secret!
 
 #### Configuration
@@ -331,8 +360,8 @@ data_manager:
       input_lists:
         - class_info.list # class info links
 
-a2rchi:
-  [... a2rchi config ...]
+archi:
+  [... archi config ...]
 
 services:
   piazza:
@@ -358,16 +387,16 @@ The Slack webhook secret is described above. The Piazza email and password shoul
 To run the Piazza service, simply add the piazza flag. For example:
 
 ```bash
-a2rchi create [...] --services=chatbot,piazza
+archi create [...] --services=chatbot,piazza
 ```
 
 ---
 
 ### Redmine/Mailbox Interface
 
-A2RCHI will read all new tickets in a Redmine project, and draft a response as a comment to the ticket.
-Once the ticket is updated to the "Resolved" status by an admin, A2RCHI will send the response as an email to the user who opened the ticket.
-The admin can modify A2RCHI's response before sending it out.
+Archi will read all new tickets in a Redmine project, and draft a response as a comment to the ticket.
+Once the ticket is updated to the "Resolved" status by an admin, Archi will send the response as an email to the user who opened the ticket.
+The admin can modify Archi's response before sending it out.
 
 #### Configuration
 
@@ -378,7 +407,7 @@ services:
     project: my-project
     redmine_update_time: 10
     mailbox_update_time: 10
-    answer_tag: "-- A2RCHI -- Resolving email was sent"
+    answer_tag: "-- Archi -- Resolving email was sent"
 ```
 
 #### Secrets
@@ -399,14 +428,14 @@ SENDER_PW=...
 #### Running
 
 ```bash
-a2rchi create [...] --services=chatbot,redmine-mailer
+archi create [...] --services=chatbot,redmine-mailer
 ```
 
 ---
 
 ### Mattermost Interface
 
-Set up A2RCHI to read posts from your Mattermost forum and post draft responses to a specified Mattermost channel.
+Set up Archi to read posts from your Mattermost forum and post draft responses to a specified Mattermost channel.
 
 #### Configuration
 
@@ -430,16 +459,16 @@ MATTERMOST_CHANNEL_ID_WRITE=...
 
 To run the Mattermost service, include it when selecting services. For example:
 ```bash
-a2rchi create [...] --services=chatbot,mattermost
+archi create [...] --services=chatbot,mattermost
 ```
 
 ---
 
 ### Grafana Interface
 
-Monitor the performance of your A2RCHI instance with the Grafana interface. This service provides a web-based dashboard to visualize various metrics related to system performance, LLM usage, and more.
+Monitor the performance of your Archi instance with the Grafana interface. This service provides a web-based dashboard to visualize various metrics related to system performance, LLM usage, and more.
 
-> Note, if you are deploying a version of A2RCHI you have already used (i.e., you haven't removed the images/volumes for a given `--name`), the postgres will have already been created without the Grafana user created, and it will not work, so make sure to deploy a fresh instance.
+> Note, if you are deploying a version of Archi you have already used (i.e., you haven't removed the images/volumes for a given `--name`), the postgres will have already been created without the Grafana user created, and it will not work, so make sure to deploy a fresh instance.
 
 #### Configuration
 
@@ -461,16 +490,16 @@ GRAFANA_PG_PASSWORD=<grafana_db_password>
 
 Deploy Grafana alongside your other services:
 ```bash
-a2rchi create [...] --services=chatbot,grafana
+archi create [...] --services=chatbot,grafana
 ```
 and you should see something like this
 ```
 CONTAINER ID  IMAGE                                     COMMAND               CREATED        STATUS                  PORTS                             NAMES
 87f1c7289d29  docker.io/library/postgres:17             postgres              9 minutes ago  Up 9 minutes (healthy)  5432/tcp                          postgres-gtesting2
 40130e8e23de  docker.io/library/grafana-gtesting2:2000                        9 minutes ago  Up 9 minutes            0.0.0.0:3000->3000/tcp, 3000/tcp  grafana-gtesting2
-d6ce8a149439  localhost/chat-gtesting2:2000             python -u a2rchi/...  9 minutes ago  Up 9 minutes            0.0.0.0:7861->7861/tcp            chat-gtesting2
+d6ce8a149439  localhost/chat-gtesting2:2000             python -u archi/...  9 minutes ago  Up 9 minutes            0.0.0.0:7861->7861/tcp            chat-gtesting2
 ```
-where the grafana interface is accessible at `your-hostname:3000`. To change the external port from `3000`, you can do this in the config at `services.grafana.external_port`. The default login and password are both "admin", which you will be prompted to change should you want to after first logging in. Navigate to the A2RCHI dashboard from the home page by going to the menu > Dashboards > A2RCHI > A2RCHI Usage. Note, `your-hostname` here is the just name of the machine. Grafana uses its default configuration which is `localhost` but unlike the chat interface, there are no APIs where we template with a selected hostname, so the container networking handles this nicely.
+where the grafana interface is accessible at `your-hostname:3000`. To change the external port from `3000`, you can do this in the config at `services.grafana.external_port`. The default login and password are both "admin", which you will be prompted to change should you want to after first logging in. Navigate to the Archi dashboard from the home page by going to the menu > Dashboards > Archi > Archi Usage. Note, `your-hostname` here is the just name of the machine. Grafana uses its default configuration which is `localhost` but unlike the chat interface, there are no APIs where we template with a selected hostname, so the container networking handles this nicely.
 
 > Pro tip: once at the web interface, for the "Recent Conversation Messages (Clean Text + Link)" panel, click the three little dots in the top right hand corner of the panel, click "Edit", and on the right, go to e.g., "Override 4" (should have Fields with name: clean text, also Override 7 for context column) and override property "Cell options > Cell value inspect". This will allow you to expand the text boxes with messages longer than can fit. Make sure you click apply to keep the changes.
 
@@ -504,7 +533,7 @@ Anti-Helmholtz Coils
 ---------------------------------------------------
 ```
 
-These files should live in a directory which you will pass to the config, and A2RCHI will handle the rest.
+These files should live in a directory which you will pass to the config, and Archi will handle the rest.
 
 - `admin_password.txt`. This file will be passed as a secret and be the admin code to login in to the page where you can reset attempts for students.
 
@@ -520,12 +549,12 @@ Then it behaves like any other secret.
 
 #### Configuration
 
-The required fields in the configuration file are different from the rest of the A2RCHI services. Below is an example:
+The required fields in the configuration file are different from the rest of the Archi services. Below is an example:
 
 ```yaml
 name: grading_test # REQUIRED
 
-a2rchi:
+archi:
   pipelines:
     - GradingPipeline
   pipeline_map:
@@ -557,23 +586,23 @@ data_manager:
 ```
 
 1. `name` -- The name of your configuration (required).
-2. `a2rchi.pipelines` -- List of pipelines to use (e.g., `GradingPipeline`, `ImageProcessingPipeline`).
-3. `a2rchi.pipeline_map` -- Mapping of pipelines to their required prompts and models.
-4. `a2rchi.pipeline_map.GradingPipeline.prompts.required.final_grade_prompt` -- Path to the grading prompt file for evaluating student solutions.
-5. `a2rchi.pipeline_map.GradingPipeline.models.required.final_grade_model` -- Model class for grading (e.g., `OllamaInterface`, `HuggingFaceOpenLLM`).
-6. `a2rchi.pipeline_map.ImageProcessingPipeline.prompts.required.image_processing_prompt` -- Path to the prompt file for image processing.
-7. `a2rchi.pipeline_map.ImageProcessingPipeline.models.required.image_processing_model` -- Model class for image processing (e.g., `OllamaInterface`, `HuggingFaceImageLLM`).
-8. `services.chat_app.trained_on` -- A brief description of the data or materials A2RCHI is trained on (required).
+2. `archi.pipelines` -- List of pipelines to use (e.g., `GradingPipeline`, `ImageProcessingPipeline`).
+3. `archi.pipeline_map` -- Mapping of pipelines to their required prompts and models.
+4. `archi.pipeline_map.GradingPipeline.prompts.required.final_grade_prompt` -- Path to the grading prompt file for evaluating student solutions.
+5. `archi.pipeline_map.GradingPipeline.models.required.final_grade_model` -- Model class for grading (e.g., `OllamaInterface`, `HuggingFaceOpenLLM`).
+6. `archi.pipeline_map.ImageProcessingPipeline.prompts.required.image_processing_prompt` -- Path to the prompt file for image processing.
+7. `archi.pipeline_map.ImageProcessingPipeline.models.required.image_processing_model` -- Model class for image processing (e.g., `OllamaInterface`, `HuggingFaceImageLLM`).
+8. `services.chat_app.trained_on` -- A brief description of the data or materials Archi is trained on (required).
 9. `services.grader_app.num_problems` -- Number of problems the grading service should expect (must match the number of rubric files).
 10. `services.grader_app.local_rubric_dir` -- Directory containing the `solution_with_rubric_*.txt` files.
 11. `services.grader_app.local_users_csv_dir` -- Directory containing the `users.csv` file.
 
-For ReAct-style agents (e.g., `CMSCompOpsAgent`), you may optionally set `a2rchi.pipeline_map.<Agent>.recursion_limit` (default `100`) to control the LangGraph recursion cap; when the limit is hit, the agent returns a final wrap-up response using the collected context.
+For ReAct-style agents (e.g., `CMSCompOpsAgent`), you may optionally set `archi.pipeline_map.<Agent>.recursion_limit` (default `100`) to control the LangGraph recursion cap; when the limit is hit, the agent returns a final wrap-up response using the collected context.
 
 #### Running
 
 ```bash
-a2rchi create [...] --services=grader
+archi create [...] --services=grader
 ```
 
 ---
@@ -608,7 +637,7 @@ OpenRouter uses the OpenAI-compatible API. Configure it by setting `OpenRouterLL
 `OPENROUTER_API_KEY`. Optional attribution headers can be set via `OPENROUTER_SITE_URL` and `OPENROUTER_APP_NAME`.
 
 ```yaml
-a2rchi:
+archi:
   model_class_map:
     OpenRouterLLM:
       class: OpenRouterLLM
@@ -622,7 +651,7 @@ a2rchi:
 In order to use an Ollama server instance for the chatbot, it is possible to specify `OllamaInterface` for the model name. To then correctly use models on the Ollama server, in the keyword args, specify both the url of the server and the name of a model hosted on the server.
 
 ```yaml
-a2rchi:
+archi:
   model_class_map:
     OllamaInterface:
       kwargs:
@@ -635,7 +664,7 @@ In this case, the `gemma3` model is hosted on the Ollama server at `url-for-serv
 
 ### Bring Your Own Key (BYOK)
 
-A2RCHI supports Bring Your Own Key (BYOK), allowing users to provide their own API keys for LLM providers at runtime. This enables:
+Archi supports Bring Your Own Key (BYOK), allowing users to provide their own API keys for LLM providers at runtime. This enables:
 
 - **Cost attribution**: Users pay for their own API usage
 - **Provider flexibility**: Switch between providers without admin intervention
@@ -700,11 +729,11 @@ For programmatic access, the following endpoints are available:
 
 ## Vector Store
 
-The vector store is a database that stores document embeddings, enabling semantic and/or lexical search over your knowledge base. A2RCHI uses PostgreSQL with pgvector as the default vector store backend to index and retrieve relevant documents based on similarity to user queries.
+The vector store is a database that stores document embeddings, enabling semantic and/or lexical search over your knowledge base. Archi uses PostgreSQL with pgvector as the default vector store backend to index and retrieve relevant documents based on similarity to user queries.
 
 ### Backend Selection
 
-A2RCHI uses PostgreSQL with the pgvector extension as its vector store backend. This provides production-grade vector similarity search integrated with your existing PostgreSQL database.
+Archi uses PostgreSQL with the pgvector extension as its vector store backend. This provides production-grade vector similarity search integrated with your existing PostgreSQL database.
 
 Configure vector store settings in your configuration file:
 
@@ -752,7 +781,7 @@ data_manager:
 
 ### Embedding Models
 
-Embeddings convert text into numerical vectors. A2RCHI supports multiple embedding providers:
+Embeddings convert text into numerical vectors. Archi supports multiple embedding providers:
 
 #### OpenAI Embeddings
 
@@ -799,7 +828,7 @@ Documents are automatically loaded with the appropriate parser based on file ext
 
 ### Document Synchronization
 
-A2RCHI automatically synchronizes your data directory with the vector store:
+Archi automatically synchronizes your data directory with the vector store:
 
 1. **Adding documents**: New files in the data directory are automatically chunked, embedded, and added to the collection
 2. **Removing documents**: Files deleted from the data directory are removed from the collection
@@ -827,7 +856,7 @@ data_manager:
 
 ### Stemming
 
-By specifying the stemming option within your configuration, stemming functionality for the documents in A2RCHI will be enabled. By doing so, documents inserted into the retrieval pipeline, as well as the query that is matched with them, will be stemmed and simplified for faster and more accurate lookup.
+By specifying the stemming option within your configuration, stemming functionality for the documents in Archi will be enabled. By doing so, documents inserted into the retrieval pipeline, as well as the query that is matched with them, will be stemmed and simplified for faster and more accurate lookup.
 
 ```yaml
 data_manager:
@@ -839,14 +868,14 @@ When enabled, both documents and queries are processed using the Porter Stemmer 
 
 ### PostgreSQL Backend (Default)
 
-A2RCHI uses PostgreSQL with pgvector for vector storage by default. The PostgreSQL service is automatically started when you deploy with the chatbot service.
+Archi uses PostgreSQL with pgvector for vector storage by default. The PostgreSQL service is automatically started when you deploy with the chatbot service.
 
 ```yaml
 services:
   postgres:
     host: postgres
     port: 5432
-    database: a2rchi
+    database: archi
   vectorstore:
     backend: postgres
 ```
@@ -856,27 +885,11 @@ Required secrets for PostgreSQL:
 PG_PASSWORD=your_secure_password
 ```
 
-### Migrating from Legacy Backends
-
-If you have an existing deployment using ChromaDB (from older A2rchi versions), you can migrate your data to PostgreSQL:
-
-```bash
-a2rchi migrate --name your-deployment --source chromadb
-```
-
-This command:
-1. Analyzes your existing ChromaDB data
-2. Exports embeddings and metadata
-3. Imports into the PostgreSQL vector store with pgvector
-4. Verifies the migration
-
-> **Note:** ChromaDB support has been removed in current versions. The migration command is retained for users upgrading from older deployments.
-
 ---
 
 ## Benchmarking
 
-A2RCHI has benchmarking functionality provided by the `evaluate` CLI command. We currently support two modes:
+Archi has benchmarking functionality provided by the `evaluate` CLI command. We currently support two modes:
 
 1. `SOURCES`: given a user question and a list of correct sources, check if the retrieved documents contain any of the correct sources.
 2. `RAGAS`: use the Ragas RAG evaluator module to return numerical values judging by 4 of their provided metrics the quality of the answer: `answer_relevancy`, `faithfulness`, `context precision`, and `context relevancy`.
@@ -899,7 +912,7 @@ Provide your list of questions, answers, and relevant sources in JSON format as 
 ```
 
 Explanation of fields:
-- `question`: The question to be answered by the A2RCHI instance.
+- `question`: The question to be answered by the Archi instance.
 - `sources`: A list of sources (e.g., URLs, ticket IDs) that contain the answer. They are identified via the `sources_match_field`, which must be one of the metadata fields of the documents in your vector store.
 - `answer`: The expected answer to the question, used for evaluation.
 - `sources_match_field` (optional): A list of metadata fields to match the sources against (e.g., `url`, `ticket_id`). If not provided, defaults to what is in the configuration file under `data_manager:services:benchmarking:mode_settings:sources:default_match_field`.
@@ -967,12 +980,12 @@ Finally, before you run the command ensure `out_dir`, the output directory, both
 To run the benchmarking script simply run the following:
 
 ``` bash
-a2rchi evaluate -n <name> -e <env_file> -cd <configs_directory> <optionally use  -c <file1>,<file2>, ...> <OPTIONS>
+archi evaluate -n <name> -e <env_file> -cd <configs_directory> <optionally use  -c <file1>,<file2>, ...> <OPTIONS>
 ```
 
 Example:
 ```bash
-a2rchi evaluate -n benchmark -c examples/benchmarking/benchmark_configs/example_conf.yaml --gpu-ids all
+archi evaluate -n benchmark -c examples/benchmarking/benchmark_configs/example_conf.yaml --gpu-ids all
 ```
 
 ### Additional options
@@ -1001,7 +1014,7 @@ Some useful additional features supported by the framework.
 ---
 ## Configuration Management
 
-A2RCHI uses a three-tier configuration system that allows flexibility at different levels:
+Archi uses a three-tier configuration system that allows flexibility at different levels:
 
 ### Configuration Hierarchy
 
@@ -1022,7 +1035,7 @@ A2RCHI uses a three-tier configuration system that allows flexibility at differe
 
 ### Effective Configuration
 
-When a request is made, A2RCHI resolves the effective value for each setting:
+When a request is made, Archi resolves the effective value for each setting:
 
 ```
 User Preference (if set) → Dynamic Config (admin default) → Static Default
@@ -1057,13 +1070,13 @@ Users can personalize these settings via the preferences API:
 
 ## Prompt Customization
 
-A2RCHI supports customizable prompts organized by type. Prompts are stored as files in your deployment directory for easy editing and version control.
+Archi supports customizable prompts organized by type. Prompts are stored as files in your deployment directory for easy editing and version control.
 
 ### Prompt Location
 
 After deployment, prompts are located at:
 ```
-~/.a2rchi/<deployment-name>/data/prompts/
+~/.archi/<deployment-name>/data/prompts/
 ```
 
 Default prompt templates are provided in the repository at `examples/defaults/prompts/` for reference.
@@ -1092,7 +1105,7 @@ data/prompts/
 
 ### Creating Custom Prompts
 
-1. Navigate to your deployment's prompt directory: `~/.a2rchi/<deployment-name>/data/prompts/`
+1. Navigate to your deployment's prompt directory: `~/.archi/<deployment-name>/data/prompts/`
 2. Create or edit a `.prompt` file in the appropriate subdirectory
 3. Use standard prompt template syntax with placeholders:
    - `{retriever_output}` - Retrieved documents
@@ -1113,13 +1126,13 @@ Question: {question}
 
 **Admin (deployment-wide default):**
 ```
-PATCH /api/v2/config/dynamic
+PATCH /api/config/dynamic
 {"active_chat_prompt": "technical"}
 ```
 
 **User (personal preference):**
 ```
-PATCH /api/v2/users/me/preferences
+PATCH /api/users/me/preferences
 {"preferred_chat_prompt": "formal"}
 ```
 
@@ -1127,7 +1140,7 @@ PATCH /api/v2/users/me/preferences
 
 After adding or modifying prompt files, reload the cache:
 ```
-POST /api/v2/prompts/reload
+POST /api/prompts/reload
 ```
 
 This is admin-only and updates the in-memory prompt cache without restarting services.
@@ -1147,8 +1160,8 @@ UPDATE users SET is_admin = true WHERE email = 'admin@example.com';
 ### Admin Responsibilities
 
 1. **Configuration Management**
-   - Set deployment-wide defaults via `/api/v2/config/dynamic`
-   - Monitor configuration changes via `/api/v2/config/audit`
+   - Set deployment-wide defaults via `/api/config/dynamic`
+   - Monitor configuration changes via `/api/config/audit`
 
 2. **Prompt Management**
    - Add/edit prompt files in `prompts/` directory
@@ -1163,7 +1176,7 @@ UPDATE users SET is_admin = true WHERE email = 'admin@example.com';
 All admin configuration changes are logged:
 
 ```
-GET /api/v2/config/audit?limit=50
+GET /api/config/audit?limit=50
 ```
 
 Returns:

@@ -25,7 +25,8 @@ from pygments.lexers import (BashLexer, CLexer, CppLexer, FortranLexer,
                              MathematicaLexer, MatlabLexer, PythonLexer,
                              TypeScriptLexer)
 
-from src.a2rchi.a2rchi import A2rchi
+from src.archi.archi import archi
+from src.archi.utils.output_dataclass import PipelineOutput
 # from src.data_manager.data_manager import DataManager
 from src.data_manager.data_viewer_service import DataViewerService
 from src.utils.config_loader import CONFIGS_PATH, get_config_names, load_config
@@ -33,7 +34,7 @@ from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.utils.sql import (
     SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO,
-    SQL_INSERT_CONFIG, SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP,
+    SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP,
     SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION,
     SQL_INSERT_TOOL_CALLS, SQL_QUERY_CONVO_WITH_FEEDBACK, SQL_DELETE_REACTION_FEEDBACK,
     SQL_INSERT_AB_COMPARISON, SQL_UPDATE_AB_PREFERENCE, SQL_GET_AB_COMPARISON,
@@ -49,15 +50,15 @@ logger = get_logger(__name__)
 
 # DEFINITIONS
 QUERY_LIMIT = 10000 # max queries per conversation
-MAIN_PROMPT_FILE = "/root/A2rchi/main.prompt"
-CONDENSE_PROMPT_FILE = "/root/A2rchi/condense.prompt"
-SUMMARY_PROMPT_FILE = "/root/A2rchi/summary.prompt"
-A2RCHI_SENDER = "A2rchi"
+MAIN_PROMPT_FILE = "/root/archi/main.prompt"
+CONDENSE_PROMPT_FILE = "/root/archi/condense.prompt"
+SUMMARY_PROMPT_FILE = "/root/archi/summary.prompt"
+ARCHI_SENDER = "archi"
 
 
 class AnswerRenderer(mt.HTMLRenderer):
     """
-    Class for custom rendering of A2rchi output. Child of mistune's HTMLRenderer, with custom overrides.
+    Class for custom rendering of archi output. Child of mistune's HTMLRenderer, with custom overrides.
     Code blocks are structured and colored according to pygment lexers
     """
     RENDERING_LEXER_MAPPING = {
@@ -146,98 +147,75 @@ class ChatWrapper:
         self.cursor = None
 
         # initialize chain
-        self.a2rchi = A2rchi(pipeline=self.config["services"]["chat_app"]["pipeline"])
+        self.archi = archi(pipeline=self.config["services"]["chat_app"]["pipeline"])
         self.number_of_queries = 0
 
-        # track configs and active config state
+        # track active config/model/pipeline state
         self.default_config_name = self.config.get("name")
         self.current_config_name = None
-        self.config_id = None
-        self.config_name_to_id = {}
+        self.current_model_used = None
+        self.current_pipeline_used = None
         self._config_cache = {}
         if self.default_config_name:
             self._config_cache[self.default_config_name] = self.config
 
-        # ensure all supplied configs are registered in Postgres and activate default
-        self._store_config_ids()
+        # activate default config
         if self.default_config_name:
             self.update_config(config_name=self.default_config_name)
 
-    def update_config(self, config_id=None, config_name=None):
+    def update_config(self, config_name=None):
         """
-        Update the active config by ensuring it exists in thje postgres and applying it to the pipeline.
+        Update the active config and apply it to the pipeline.
+        Tracks model_used and pipeline_used for conversation storage.
         """
         target_config_name = config_name or self.current_config_name or self.default_config_name
         if not target_config_name:
             raise ValueError("Config name must be provided to update the chat configuration.")
 
         config_payload = self._get_config_payload(target_config_name)
-        if config_id is None:
-            config_id = self._get_or_create_config_id(target_config_name, config_payload)
-        else:
-            self.config_name_to_id[target_config_name] = config_id
 
-        if self.config_id == config_id and self.current_config_name == target_config_name:
+        if self.current_config_name == target_config_name:
             return
 
         pipeline_name = config_payload["services"]["chat_app"]["pipeline"]
-        self.config_id = config_id
+        
+        # Extract the model name from the config
+        model_name = self._extract_model_name(config_payload, pipeline_name)
+        
         self.current_config_name = target_config_name
-        self.a2rchi.update(pipeline=pipeline_name, config_name=target_config_name)
+        self.current_pipeline_used = pipeline_name
+        self.current_model_used = model_name
+        self.archi.update(pipeline=pipeline_name, config_name=target_config_name)
+
+    def _extract_model_name(self, config_payload, pipeline_name):
+        """Extract the primary model name from config for a given pipeline."""
+        try:
+            pipeline_map = config_payload.get("archi", {}).get("pipeline_map", {})
+            pipeline_cfg = pipeline_map.get(pipeline_name, {})
+            required_models = pipeline_cfg.get("models", {}).get("required", {})
+            
+            # Try common model keys
+            for key in ["chat_model", "agent_model", "model"]:
+                if key in required_models:
+                    return required_models[key]
+            
+            # Return first model if any exist
+            if required_models:
+                return next(iter(required_models.values()))
+        except Exception:
+            pass
+        return None
 
     def _get_config_payload(self, config_name):
         if config_name not in self._config_cache:
             self._config_cache[config_name] = load_config(name=config_name)
         return self._config_cache[config_name]
 
-    def _get_or_create_config_id(self, config_name, config_payload=None):
-        if config_name in self.config_name_to_id:
-            return self.config_name_to_id[config_name]
-
-        payload = config_payload or self._get_config_payload(config_name)
-        serialized = yaml.dump(payload)
-
-        conn = psycopg2.connect(**self.pg_config)
-        cursor = conn.cursor()
-        try:
-            cursor.execute("SELECT config_id FROM configs WHERE config_name = %s ORDER BY config_id DESC LIMIT 1", (config_name,))
-            row = cursor.fetchone()
-            if row:
-                config_id = row[0]
-            else:
-                insert_tup = [(serialized, config_name)]
-                psycopg2.extras.execute_values(cursor, SQL_INSERT_CONFIG, insert_tup)
-                config_id = list(map(lambda tup: tup[0], cursor.fetchall()))[0]
-            conn.commit()
-            self.config_name_to_id[config_name] = config_id
-            return config_id
-        finally:
-            cursor.close()
-            conn.close()
-
-    def _store_config_ids(self):
-        for config_name in get_config_names():
-            try:
-                payload = self._get_config_payload(config_name)
-                self._get_or_create_config_id(config_name, payload)
-            except FileNotFoundError:
-                logger.warning(f"Config file {config_name} missing.")
-            except Exception as exc:
-                logger.warning(f"Failed to register config {config_name}: {exc}")
-
-    def get_config_id(self, config_name):
-        """
-        Helper for external callers needing the config_id for a given config name.
-        """
-        if config_name in self.config_name_to_id:
-            return self.config_name_to_id[config_name]
-        return self._get_or_create_config_id(config_name)
-
     @staticmethod
     def convert_to_app_history(history):
         """
         Input: the history in the form of a list of tuples, where the first entry of each tuple is
-        the author of the text and the second entry is the text itself (native A2rchi history format)
+        the author of the text and the second entry is the text itself (native archi history format)
 
         Output: the history in the form of a list of lists, where the first entry of each tuple is
         the author of the text and the second entry is the text itself
@@ -248,7 +226,7 @@ class ChatWrapper:
     @staticmethod
     def format_code_in_text(text):
         """
-        Takes in input plain text (the output from A2rchi);
+        Takes in input plain text (the output from archi);
         Recognizes structures in canonical Markdown format, and processes according to the custom renderer;
         Returns it formatted in HTML
         """
@@ -863,7 +841,7 @@ class ChatWrapper:
         # query conversation history
         cursor.execute(SQL_QUERY_CONVO, (conversation_id,))
         history = cursor.fetchall()
-        history = collapse_assistant_sequences(history, sender_name=A2RCHI_SENDER)
+        history = collapse_assistant_sequences(history, sender_name=ARCHI_SENDER)
 
         # clean up database connection state
         cursor.close()
@@ -944,7 +922,7 @@ class ChatWrapper:
 
         return context
 
-    def insert_conversation(self, conversation_id, user_message, a2rchi_message, link, a2rchi_context, is_refresh=False) -> List[int]:
+    def insert_conversation(self, conversation_id, user_message, archi_message, link, archi_context, is_refresh=False) -> List[int]:
         """
         """
         logger.debug("Entered insert_conversation.")
@@ -953,25 +931,25 @@ class ChatWrapper:
             return text.replace("\x00", "") if isinstance(text, str) else text
 
         service = "Chatbot"
-        # parse user message / a2rchi message
+        # parse user message / archi message
         user_sender, user_content, user_msg_ts = user_message
-        a2rchi_sender, a2rchi_content, a2rchi_msg_ts = a2rchi_message
+        ARCHI_SENDER, archi_content, archi_msg_ts = archi_message
 
         user_content = _sanitize(user_content)
-        a2rchi_content = _sanitize(a2rchi_content)
+        archi_content = _sanitize(archi_content)
         link = _sanitize(link)
-        a2rchi_context = _sanitize(a2rchi_context)
+        archi_context = _sanitize(archi_context)
 
-        # construct insert_tups
+        # construct insert_tups with model_used and pipeline_used
+        # Format: (service, conversation_id, sender, content, link, context, ts, model_used, pipeline_used)
         insert_tups = (
             [
-                # (service, conversation_id, sender, content, context, ts)
-                (service, conversation_id, user_sender, user_content, '', '', user_msg_ts, self.config_id),
-                (service, conversation_id, a2rchi_sender, a2rchi_content, link, a2rchi_context, a2rchi_msg_ts, self.config_id),
+                (service, conversation_id, user_sender, user_content, '', '', user_msg_ts, self.current_model_used, self.current_pipeline_used),
+                (service, conversation_id, ARCHI_SENDER, archi_content, link, archi_context, archi_msg_ts, self.current_model_used, self.current_pipeline_used),
             ]
             if not is_refresh
             else [
-                (service, conversation_id, a2rchi_sender, a2rchi_content, link, a2rchi_context, a2rchi_msg_ts, self.config_id),
+                (service, conversation_id, ARCHI_SENDER, archi_content, link, archi_context, archi_msg_ts, self.current_model_used, self.current_pipeline_used),
             ]
         )
 
@@ -1003,7 +981,7 @@ class ChatWrapper:
             timestamps['vectorstore_update_ts'],
             timestamps['query_convo_history_ts'],
             timestamps['chain_finished_ts'],
-            timestamps['a2rchi_message_ts'],
+            timestamps['archi_message_ts'],
             timestamps['insert_convo_ts'],
             timestamps['finish_call_ts'],
             timestamps['server_response_msg_ts'],
@@ -1020,61 +998,60 @@ class ChatWrapper:
         cursor.close()
         conn.close()
 
-    def insert_tool_calls_from_messages(self, conversation_id: int, message_id: int, messages: List) -> None:
+    def insert_tool_calls_from_output(self, conversation_id: int, message_id: int, output: PipelineOutput) -> None:
         """
-        Extract and store agent tool calls from the messages list.
-        
+        Extract and store agent tool calls from the pipeline output.
+
         AIMessage with tool_calls contains the tool name, args, and timestamp.
         ToolMessage contains the result, matched by tool_call_id.
         """
-        if not messages:
+        if not output or not output.messages:
             return
-        
-        tool_results = {}
-        for msg in messages:
-            if hasattr(msg, 'tool_call_id') and msg.tool_call_id:
-                tool_results[msg.tool_call_id] = getattr(msg, 'content', '')
-        
-        # Extract tool calls from AIMessages
-        insert_tups = []
-        step_number = 0
-        for msg in messages:
-            if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                # Get timestamp from response_metadata if available
-                response_metadata = getattr(msg, 'response_metadata', {}) or {}
-                created_at = response_metadata.get('created_at')
+
+        tool_calls = output.extract_tool_calls()
+        if not tool_calls:
+            return
+
+        tool_call_timestamps: Dict[str, datetime] = {}
+        for msg in output.messages:
+            if hasattr(msg, "tool_calls") and msg.tool_calls:
+                response_metadata = getattr(msg, "response_metadata", {}) or {}
+                created_at = response_metadata.get("created_at")
                 if created_at:
                     try:
-                        # Parse ISO format timestamp
-                        ts = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                        ts = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
                     except (ValueError, TypeError):
                         ts = datetime.now()
                 else:
                     ts = datetime.now()
-                
+
                 for tc in msg.tool_calls:
-                    step_number += 1
-                    tool_call_id = tc.get('id', '')
-                    tool_name = tc.get('name', 'unknown')
-                    tool_args = tc.get('args', {})
-                    tool_result = tool_results.get(tool_call_id, '')
-                    # Truncate result for storage (max 500 chars)
-                    if len(tool_result) > 500:
-                        tool_result = tool_result[:500] + '...'
-                    
-                    insert_tups.append((
-                        conversation_id,
-                        message_id,
-                        step_number,
-                        tool_name,
-                        json.dumps(tool_args) if tool_args else None,
-                        tool_result,
-                        ts,
-                    ))
+                    tool_call_id = tc.get("id", "")
+                    if tool_call_id and tool_call_id not in tool_call_timestamps:
+                        tool_call_timestamps[tool_call_id] = ts
+
+        insert_tups = []
+        step_number = 0
+        for tc in tool_calls:
+            step_number += 1
+            tool_call_id = tc.get("id", "")
+            tool_name = tc.get("name", "unknown")
+            tool_args = tc.get("args", {})
+            tool_result = tc.get("result", "")
+            if len(tool_result) > 500:
+                tool_result = tool_result[:500] + "..."
+            ts = tool_call_timestamps.get(tool_call_id, datetime.now())
+
+            insert_tups.append((
+                conversation_id,
+                message_id,
+                step_number,
+                tool_name,
+                json.dumps(tool_args) if tool_args else None,
+                tool_result,
+                ts,
+            ))
         
-        if not insert_tups:
-            return
-            
         logger.debug("Inserting %d tool calls for message %d", len(insert_tups), message_id)
 
         conn = psycopg2.connect(**self.pg_config)
@@ -1108,10 +1085,10 @@ class ChatWrapper:
         """
         try:
             if api_key:
-                from src.a2rchi.providers import get_chat_model_with_api_key
+                from src.archi.providers import get_chat_model_with_api_key
                 return get_chat_model_with_api_key(provider, model, api_key)
             else:
-                from src.a2rchi.providers import get_model
+                from src.archi.providers import get_model
                 return get_model(provider, model)
         except ImportError as e:
             logger.warning(f"Providers module not available: {e}")
@@ -1145,7 +1122,7 @@ class ChatWrapper:
         timestamps["query_convo_history_ts"] = datetime.now()
 
         if is_refresh:
-            while history and history[-1][0] == A2RCHI_SENDER:
+            while history and history[-1][0] == ARCHI_SENDER:
                 _ = history.pop(-1)
 
         if server_received_msg_ts.timestamp() - client_sent_msg_ts > client_timeout:
@@ -1280,7 +1257,7 @@ class ChatWrapper:
         else:
             output += self.format_links_markdown(top_sources)
 
-        timestamps["a2rchi_message_ts"] = datetime.now()
+        timestamps["archi_message_ts"] = datetime.now()
         context_data = self.prepare_context_for_storage(documents, scores)
 
         best_reference = "Link unavailable"
@@ -1289,17 +1266,17 @@ class ChatWrapper:
             best_reference = primary_source["link"] or primary_source["display"]
 
         user_message = (context.sender, context.content, server_received_msg_ts)
-        a2rchi_message = (A2RCHI_SENDER, output, timestamps["a2rchi_message_ts"])
+        archi_message = (ARCHI_SENDER, output, timestamps["archi_message_ts"])
         message_ids = self.insert_conversation(
             context.conversation_id,
             user_message,
-            a2rchi_message,
+            archi_message,
             best_reference,
             context_data,
             context.is_refresh,
         )
         timestamps["insert_convo_ts"] = datetime.now()
-        context.history.append((A2RCHI_SENDER, result["answer"]))
+        context.history.append((ARCHI_SENDER, result["answer"]))
 
         agent_messages = getattr(result, "messages", []) or []
         if agent_messages:
@@ -1316,8 +1293,8 @@ class ChatWrapper:
                     has_tool_call_id,
                 )
         if agent_messages and message_ids:
-            a2rchi_message_id = message_ids[-1]
-            self.insert_tool_calls_from_messages(context.conversation_id, a2rchi_message_id, agent_messages)
+            archi_message_id = message_ids[-1]
+            self.insert_tool_calls_from_output(context.conversation_id, archi_message_id, result)
 
         return output, message_ids
 
@@ -1347,7 +1324,7 @@ class ChatWrapper:
             requested_config = self._resolve_config_name(config_name)
             self.update_config(config_name=requested_config)
 
-            result = self.a2rchi(history=context.history, conversation_id=context.conversation_id)
+            result = self.archi(history=context.history, conversation_id=context.conversation_id)
             timestamps["chain_finished_ts"] = datetime.now()
 
             # keep track of total number of queries and log this amount
@@ -1433,27 +1410,26 @@ class ChatWrapper:
             if provider and model:
                 try:
                     override_llm = self._create_provider_llm(provider, model, provider_api_key)
-                    if override_llm and hasattr(self.a2rchi, 'pipeline') and hasattr(self.a2rchi.pipeline, 'agent_llm'):
-                        original_llm = self.a2rchi.pipeline.agent_llm
-                        self.a2rchi.pipeline.agent_llm = override_llm
+                    if override_llm and hasattr(self.archi, 'pipeline') and hasattr(self.archi.pipeline, 'agent_llm'):
+                        original_llm = self.archi.pipeline.agent_llm
+                        self.archi.pipeline.agent_llm = override_llm
                         # Force agent refresh to use new LLM
-                        if hasattr(self.a2rchi.pipeline, 'refresh_agent'):
-                            self.a2rchi.pipeline.refresh_agent(force=True)
+                        if hasattr(self.archi.pipeline, 'refresh_agent'):
+                            self.archi.pipeline.refresh_agent(force=True)
                         logger.info(f"Overrode pipeline LLM with {provider}/{model}")
                 except Exception as e:
                     logger.warning(f"Failed to create provider LLM {provider}/{model}: {e}")
                     yield {"type": "warning", "message": f"Using default model: {e}"}
             
             # Create trace for this streaming request
-            config_id = self._get_config_id(requested_config)
             trace_id = self.create_agent_trace(
                 conversation_id=context.conversation_id,
                 user_message_id=None,  # Will be updated at finalization
-                config_id=config_id,
-                pipeline_name=self.a2rchi.pipeline_name if hasattr(self.a2rchi, 'pipeline_name') else None,
+                config_id=None,  # Legacy field, no longer used
+                pipeline_name=self.archi.pipeline_name if hasattr(self.archi, 'pipeline_name') else None,
             )
 
-            for output in self.a2rchi.stream(history=context.history, conversation_id=context.conversation_id):
+            for output in self.archi.stream(history=context.history, conversation_id=context.conversation_id):
                 logger.debug("Received streaming output chunk: %s", output)
                 last_output = output
                 
@@ -1463,28 +1439,35 @@ class ChatWrapper:
                 
                 # Handle different event types
                 if event_type == "tool_start":
-                    tool_call_count += 1
-                    trace_event = {
-                        "type": "tool_start",
-                        "tool_call_id": output.metadata.get("tool_call_id", ""),
-                        "tool_name": output.metadata.get("tool_name", "unknown"),
-                        "tool_args": output.metadata.get("tool_args", {}),
-                        "timestamp": timestamp,
-                        "conversation_id": context.conversation_id,
-                    }
-                    trace_events.append(trace_event)
-                    if include_tool_steps:
-                        yield trace_event
+                    tool_messages = getattr(output, "messages", []) or []
+                    tool_message = tool_messages[0] if tool_messages else None
+                    tool_calls = getattr(tool_message, "tool_calls", None) if tool_message else None
+                    if tool_calls:
+                        for tool_call in tool_calls:
+                            tool_call_count += 1
+                            trace_event = {
+                                "type": "tool_start",
+                                "tool_call_id": tool_call.get("id", ""),
+                                "tool_name": tool_call.get("name", "unknown"),
+                                "tool_args": tool_call.get("args", {}),
+                                "timestamp": timestamp,
+                                "conversation_id": context.conversation_id,
+                            }
+                            trace_events.append(trace_event)
+                            if include_tool_steps:
+                                yield trace_event
                         
                 elif event_type == "tool_output":
-                    tool_output = output.metadata.get("output", "")
+                    tool_messages = getattr(output, "messages", []) or []
+                    tool_message = tool_messages[0] if tool_messages else None
+                    tool_output = self._message_content(tool_message) if tool_message else ""
                     truncated = len(tool_output) > max_step_chars
                     full_length = len(tool_output) if truncated else None
                     display_output = self._truncate_text(tool_output, max_step_chars)
                     
                     trace_event = {
                         "type": "tool_output",
-                        "tool_call_id": output.metadata.get("tool_call_id", ""),
+                        "tool_call_id": getattr(tool_message, "tool_call_id", "") if tool_message else "",
                         "output": display_output,
                         "truncated": truncated,
                         "full_length": full_length,
@@ -1512,18 +1495,13 @@ class ChatWrapper:
                     # Stream text content
                     content = getattr(output, "answer", "") or ""
                     if content and include_agent_steps:
-                        if content.startswith(last_streamed_text):
-                            delta = content[len(last_streamed_text):]
-                        else:
-                            delta = content
                         last_streamed_text = content
-                        chunk_size = 80
-                        for i in range(0, len(delta), chunk_size):
-                            yield {
-                                "type": "chunk",
-                                "content": delta[i:i + chunk_size],
-                                "conversation_id": context.conversation_id,
-                            }
+                        yield {
+                            "type": "chunk",
+                            "content": content,
+                            "accumulated": True,
+                            "conversation_id": context.conversation_id,
+                        }
                     # Record text event in trace
                     if content:
                         trace_events.append({
@@ -1617,7 +1595,7 @@ class ChatWrapper:
                 "type": "final",
                 "response": output,
                 "conversation_id": context.conversation_id,
-                "a2rchi_msg_id": message_ids[-1] if message_ids else None,
+                "archi_msg_id": message_ids[-1] if message_ids else None,
                 "message_id": message_ids[-1] if message_ids else None,
                 "user_message_id": message_ids[0] if message_ids and len(message_ids) > 1 else None,
                 "trace_id": trace_id,
@@ -1667,19 +1645,6 @@ class ChatWrapper:
             if self.conn is not None:
                 self.conn.close()
 
-    def _get_config_id(self, config_name: str) -> Optional[int]:
-        """Get config_id from configs table by name, or None if not found."""
-        try:
-            conn = psycopg2.connect(**self.pg_config)
-            cursor = conn.cursor()
-            cursor.execute("SELECT config_id FROM configs WHERE config_name = %s", (config_name,))
-            row = cursor.fetchone()
-            cursor.close()
-            conn.close()
-            return row[0] if row else None
-        except Exception:
-            return None
-
 
 class FlaskAppWrapper(object):
 
@@ -1728,9 +1693,6 @@ class FlaskAppWrapper(object):
         
         if self.sso_enabled:
             self._setup_sso()
-
-        # insert config
-        self.config_id = self.insert_config(self.config)
 
         # create the chat from the wrapper and ensure default config is active
         self.chat = ChatWrapper()
@@ -1968,38 +1930,10 @@ class FlaskAppWrapper(object):
     def run(self, **kwargs):
         self.app.run(**kwargs)
 
-    def insert_config(self, config):
-        # TODO: use config_name (and then hash of config string) to determine
-        #       if config already exists; if so, don't push new config
-
-        # parse config and config_name
-        config_name = self.config["name"]
-        config = yaml.dump(self.config)
-
-        # construct insert_tup
-        insert_tup = [
-            (config, config_name),
-        ]
-
-        # create connection to database
-        self.conn = psycopg2.connect(**self.pg_config)
-        self.cursor = self.conn.cursor()
-        psycopg2.extras.execute_values(self.cursor, SQL_INSERT_CONFIG, insert_tup)
-        self.conn.commit()
-        config_id = list(map(lambda tup: tup[0], self.cursor.fetchall()))[0]
-
-        # clean up database connection state
-        self.cursor.close()
-        self.conn.close()
-        self.cursor, self.conn = None, None
-
-        return config_id
-
     def update_config(self):
         """
-        Updates the config used by A2rchi for responding to messages. The config
-        is parsed and inserted into the `configs` table. Finally, the chat wrapper's
-        config_id is updated.
+        Updates the config used by archi for responding to messages.
+        Reloads the config and updates the chat wrapper.
         """
         # parse config and write it out to CONFIGS_PATH
         config_str = request.json.get('config')
@@ -2039,13 +1973,12 @@ class FlaskAppWrapper(object):
         # recreate chat wrapper so all dependent services reload the new config
         self.chat = ChatWrapper()
         self.chat.update_config(config_name=self.config["name"])
-        new_config_id = self.chat.get_config_id(self.config["name"])
 
-        return jsonify({'response': f'config updated successfully w/config_id: {new_config_id}'}), 200
+        return jsonify({'response': 'config updated successfully'}), 200
 
     def get_configs(self):
         """
-        Gets the names of configs loaded in A2rchi.
+        Gets the names of configs loaded in archi.
 
 
         Returns:
@@ -2056,14 +1989,12 @@ class FlaskAppWrapper(object):
         options = []
         for name in config_names:
             description = ""
-            config_id = None
             try:
                 payload = load_config(name=name)
-                description = payload.get("a2rchi", {}).get("agent_description", "No description provided")
-                config_id = self.chat._get_or_create_config_id(name, payload)
+                description = payload.get("archi", {}).get("agent_description", "No description provided")
             except Exception as exc:
                 logger.warning(f"Failed to load config {name} for description: {exc}")
-            options.append({"name": name, "description": description, "id": config_id})
+            options.append({"name": name, "description": description})
         return jsonify({'options': options}), 200
 
     def get_providers(self):
@@ -2078,7 +2009,7 @@ class FlaskAppWrapper(object):
             - models: List of available models
         """
         try:
-            from src.a2rchi.providers import (
+            from src.archi.providers import (
                 list_provider_types,
                 get_provider,
                 ProviderType,
@@ -2134,9 +2065,9 @@ class FlaskAppWrapper(object):
         """
         try:
             pipeline_name = self.config.get("services", {}).get("chat_app", {}).get("pipeline")
-            a2rchi_config = self.config.get("a2rchi", {})
-            pipeline_map = a2rchi_config.get("pipeline_map", {})
-            model_class_map = a2rchi_config.get("model_class_map", {})
+            archi_config = self.config.get("archi", {})
+            pipeline_map = archi_config.get("pipeline_map", {})
+            model_class_map = archi_config.get("model_class_map", {})
 
             pipeline_cfg = pipeline_map.get(pipeline_name, {})
             models_cfg = pipeline_cfg.get("models", {})
@@ -2213,7 +2144,7 @@ class FlaskAppWrapper(object):
             return jsonify({'error': 'provider parameter required'}), 400
         
         try:
-            from src.a2rchi.providers import get_provider
+            from src.archi.providers import get_provider
             
             provider = get_provider(provider_type)
             models = provider.list_models()
@@ -2262,7 +2193,7 @@ class FlaskAppWrapper(object):
             return jsonify({'error': 'provider field required'}), 400
         
         try:
-            from src.a2rchi.providers import get_provider
+            from src.archi.providers import get_provider
             
             provider = get_provider(provider_type)
             is_valid = provider.validate_connection()
@@ -2307,7 +2238,7 @@ class FlaskAppWrapper(object):
         
         # Validate the provider type
         try:
-            from src.a2rchi.providers import ProviderType
+            from src.archi.providers import ProviderType
             ptype = ProviderType(provider_type.lower())
         except ValueError:
             return jsonify({'error': f'Unknown provider type: {provider_type}'}), 400
@@ -2320,7 +2251,7 @@ class FlaskAppWrapper(object):
         
         # Validate the API key by testing the provider
         try:
-            from src.a2rchi.providers import get_provider_with_api_key
+            from src.archi.providers import get_provider_with_api_key
             
             provider = get_provider_with_api_key(provider_type, api_key)
             is_valid = provider.validate_connection()
@@ -2355,7 +2286,7 @@ class FlaskAppWrapper(object):
         session_keys = session.get('provider_api_keys', {})
         
         try:
-            from src.a2rchi.providers import (
+            from src.archi.providers import (
                 list_provider_types,
                 get_provider,
                 get_provider_with_api_key,
@@ -2469,7 +2400,7 @@ class FlaskAppWrapper(object):
         
         # Validate the provider type
         try:
-            from src.a2rchi.providers import ProviderType, get_provider_with_api_key
+            from src.archi.providers import ProviderType, get_provider_with_api_key
             ptype = ProviderType(provider_type.lower())
         except ValueError:
             return jsonify({'error': f'Unknown provider type: {provider_type}'}), 400
@@ -2585,7 +2516,7 @@ class FlaskAppWrapper(object):
         timestamps['client_sent_msg_ts'] = datetime.fromtimestamp(client_sent_msg_ts)
         self.chat.insert_timing(message_ids[-1], timestamps)
 
-        # otherwise return A2rchi's response to client
+        # otherwise return archi's response to client
         try:
             response_size = len(response) if isinstance(response, str) else 0
             logger.info(f"Generated Response Length: {response_size} characters")
@@ -2597,7 +2528,7 @@ class FlaskAppWrapper(object):
         response_data = {
             'response': response,
             'conversation_id': conversation_id,
-            'a2rchi_msg_id': message_ids[-1],
+            'archi_msg_id': message_ids[-1],
             'server_response_msg_ts': timestamps['server_response_msg_ts'].timestamp(),
             'final_response_msg_ts': datetime.now().timestamp(),
         }
@@ -2652,7 +2583,6 @@ class FlaskAppWrapper(object):
                 model=model,
                 provider_api_key=session_api_key,
             ):
-                logger.debug(f"\n\n\nStreaming event\n\n\n")
                 yield json.dumps(event, default=str) + "\n"
 
         headers = {
@@ -2890,7 +2820,7 @@ class FlaskAppWrapper(object):
             # get history of the conversation along with latest feedback state
             cursor.execute(SQL_QUERY_CONVO_WITH_FEEDBACK, (conversation_id, ))
             history_rows = cursor.fetchall()
-            history_rows = collapse_assistant_sequences(history_rows, sender_name=A2RCHI_SENDER, sender_index=0)
+            history_rows = collapse_assistant_sequences(history_rows, sender_name=ARCHI_SENDER, sender_index=0)
 
             conversation = {
                 'conversation_id': meta_row[0],
