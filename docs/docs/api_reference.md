@@ -221,6 +221,7 @@ Controls ingestion sources and vector store behaviour.
 
 - **sources.links.input_lists:** `.list` files with seed URLs.
 - **sources.links.scraper:** Behaviour toggles for HTTP scraping (resetting data, URL verification, warning output).
+- **sources.links.selenium_scraper:** Selenium configuration used for SSO scraping and optional link scraping.
 - **sources.<name>.visible:** Mark whether documents harvested from a source should appear in chat citations and other user-facing listings (`true` by default).
 - **sources.git.enabled / sources.sso.enabled / sources.jira.enabled / sources.redmine.enabled:** Toggle additional collectors when paired with `--sources`.
 - **sources.jira.cutoff_date:** ISO-8601 date; JIRA tickets created before this are ignored.
@@ -231,6 +232,8 @@ Controls ingestion sources and vector store behaviour.
 - **num_documents_to_retrieve:** Top-k documents returned at query time.
 - **distance_metric / use_hybrid_search / bm25_weight / semantic_weight / bm25.{k1,b}:** Retrieval tuning knobs.
 - **utils.anonymizer** (legacy) / **data_manager.utils.anonymizer**: Redaction settings applied when ticket collectors anonymise content.
+
+Source configuration is persisted to PostgreSQL `static_config.sources_config` at deployment time and used for runtime ingestion.
 
 ---
 
@@ -249,7 +252,6 @@ Defines pipelines and model routing.
 
 Utility configuration for supporting components (mostly legacy fallbacks):
 
-- **sso:** Global SSO defaults used when a source-specific override is not provided.
 - **git:** Legacy toggle for Git scraping.
 - **jira / redmine:** Compatibility settings for ticket integrations; prefer configuring these under `data_manager.sources`.
 
@@ -688,7 +690,9 @@ List all ingested documents.
 - `limit`: Max documents to return (default: 100)
 - `offset`: Pagination offset (default: 0)
 - `search`: Filter by document name
-- `source_type`: Filter by source type
+- `source_type`: Filter by source type (e.g., `links`, `git`, `ticket`)
+
+Ticketing integrations normalize to `source_type: ticket` and record the provider in `metadata.ticket_provider` (e.g., `jira`, `redmine`).
 
 **Response:**
 ```json
@@ -788,7 +792,7 @@ Get document statistics.
   "total_chunks": 350,
   "by_source_type": {
     "links": 30,
-    "jira": 12
+    "ticket": 12
   }
 }
 ```
@@ -804,4 +808,3 @@ Health check with database connectivity status.
 #### `GET /api/info`
 
 Get API version and available features.
-

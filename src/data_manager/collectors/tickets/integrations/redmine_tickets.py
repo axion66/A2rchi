@@ -111,6 +111,7 @@ class RedmineClient:
 
                     metadata: Dict[str, Any] = {
                         "subject": subject,
+                        "ticket_provider": "redmine",
                     }
 
                     created_at = getattr(full_issue, "created_on", None)
@@ -123,7 +124,7 @@ class RedmineClient:
                     yield TicketResource(
                         ticket_id=issue_id,
                         content=content,
-                        source_type="redmine",
+                        source_type="ticket",
                         created_at=created_at_str,
                         metadata=metadata,
                     )
