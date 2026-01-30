@@ -415,18 +415,17 @@ class PostgresVectorStore(VectorStore):
                 
                 if has_bm25_index:
                     # Use pg_textsearch BM25
-                    bm25_score = "c.chunk_text <@> %s"
-                    params_with_query = [embedding_str, query] + params + [k]
+                    bm25_score = "chunk_text <@> %s"
                 else:
                     # Fallback to ts_rank with GIN index
-                    bm25_score = "ts_rank(c.chunk_tsv, plainto_tsquery('english', %s))"
-                    params_with_query = [embedding_str, query] + params + [k]
+                    bm25_score = "ts_rank(chunk_tsv, plainto_tsquery('english', %s))"
                 
                 query_sql = f"""
                     WITH semantic AS (
                         SELECT 
                             c.id,
                             c.chunk_text,
+                            c.chunk_tsv,
                             c.metadata,
                             1.0 - (c.embedding {self._distance_op} %s::vector) AS semantic_score,
                             d.resource_hash,
@@ -451,7 +450,8 @@ class PostgresVectorStore(VectorStore):
                     LIMIT %s
                 """
                 
-                all_params = params_with_query[:-1] + [semantic_weight, bm25_weight, k]
+                # Params order: embedding, collection (+ any filters), query, semantic_weight, bm25_weight, k
+                all_params = [embedding_str] + params + [query, semantic_weight, bm25_weight, k]
                 cursor.execute(query_sql, all_params)
                 rows = cursor.fetchall()
         finally:
