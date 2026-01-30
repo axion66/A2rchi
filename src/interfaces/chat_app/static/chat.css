@@ -81,6 +81,37 @@
 }
 
 /* -----------------------------------------------------------------------------
+   Dark Theme Overrides
+   ----------------------------------------------------------------------------- */
+:root[data-theme="dark"] {
+  --bg-primary: #0f1217;
+  --bg-secondary: #141923;
+  --bg-tertiary: #1b2432;
+  --bg-hover: #232f43;
+
+  --text-primary: #e5e7eb;
+  --text-secondary: #9ca3af;
+  --text-tertiary: #6b7280;
+
+  --border-color: #253246;
+  --border-light: #1b2432;
+
+  --accent: #22c55e;
+  --accent-hover: #16a34a;
+  --accent-light: rgba(34, 197, 94, 0.16);
+
+  --user-bg: #192130;
+  --assistant-bg: #0f1217;
+
+  --code-bg: #0b0f17;
+  --code-header-bg: #141923;
+  --code-text: #e2e8f0;
+
+  --error-bg: #3b1515;
+  --error-text: #f87171;
+}
+
+/* -----------------------------------------------------------------------------
    Reset & Base Styles
    ----------------------------------------------------------------------------- */
 *, *::before, *::after {

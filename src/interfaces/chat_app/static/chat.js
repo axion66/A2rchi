@@ -501,12 +501,22 @@ const UI = {
       customModelInput: document.getElementById('custom-model-input'),
       customModelRow: document.getElementById('custom-model-row'),
       activeModelLabel: document.getElementById('active-model-label'),
+      darkModeToggle: document.getElementById('dark-mode-toggle'),
     };
 
     this.sendBtnDefaultHtml = this.elements.sendBtn?.innerHTML || '';
 
     this.bindEvents();
     this.initTraceVerboseMode();
+    this.initThemeToggle();
+  },
+
+  initThemeToggle() {
+    if (!this.elements.darkModeToggle) return;
+    const savedTheme = localStorage.getItem('archi_theme') || 'light';
+    const isDark = savedTheme === 'dark';
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    this.elements.darkModeToggle.checked = isDark;
   },
 
   initTraceVerboseMode() {
@@ -608,6 +618,12 @@ const UI = {
       if (e.target.name === 'trace-verbose') {
         Chat.setTraceVerboseMode(e.target.value);
       }
+    });
+
+    this.elements.darkModeToggle?.addEventListener('change', (e) => {
+      const isDark = e.target.checked;
+      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+      localStorage.setItem('archi_theme', isDark ? 'dark' : 'light');
     });
 
     // Provider selection
