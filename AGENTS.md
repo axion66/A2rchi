@@ -27,7 +27,7 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 ## Codebase Map
 - CLI entrypoint is `src/cli/cli_main.py`, with registries in `src/cli/service_registry.py` and `src/cli/source_registry.py`, and managers in `src/cli/managers/`.
 - Service entrypoints live in `src/bin/` and wire Flask apps from `src/interfaces/`.
-- Runtime config is loaded from `/root/archi/configs/` by `src/utils/config_loader.py`; CLI deployments render under `~/.archi/archi-<name>` (override with `A2RCHI_DIR`).
+- Runtime config is loaded from `/root/archi/configs/` by `src/utils/config_loader.py`; CLI deployments render under `~/.archi/archi-<name>` (override with `Archi_DIR`).
 - Core orchestration lives in `src/archi/archi.py` with pipelines in `src/archi/pipelines/`; ingestion is in `src/data_manager/`.
 
 ## Build, Test, and Development Commands

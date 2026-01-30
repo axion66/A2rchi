@@ -24,9 +24,9 @@ _archi_ provides:
 The [docs](https://mit-submit.github.io/archi/) are organized as follows:
 
 - [Install](https://mit-submit.github.io/archi/install/) — system requirements and environment preparation.
-- [Quickstart](https://mit-submit.github.io/archi/quickstart/) — after installation, learn how to deploy your first A2RCHI instance.
+- [Quickstart](https://mit-submit.github.io/archi/quickstart/) — after installation, learn how to deploy your first Archi instance.
 - [User Guide](https://mit-submit.github.io/archi/user_guide/) — framework concepts for users and administrators.
-- [Advanced Setup & Deployment](https://mit-submit.github.io/archi/advanced_setup_deploy/) — configuring A2RCHI for GPU use, custom models, and advanced workflows.
+- [Advanced Setup & Deployment](https://mit-submit.github.io/archi/advanced_setup_deploy/) — configuring Archi for GPU use, custom models, and advanced workflows.
 - [API Reference](https://mit-submit.github.io/archi/api_reference/) — programmatic interfaces and integration points.
 - [Developer Guide](https://mit-submit.github.io/archi/developer_guide/) — codebase layout, contribution workflow, and extension patterns.
 

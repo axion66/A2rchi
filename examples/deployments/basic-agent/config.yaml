@@ -1,4 +1,4 @@
-# Basic configuration file for a A2RCHI deployment
+# Basic configuration file for a Archi deployment
 # with a chat app interface, agent, and
 # PostgreSQL with pgvector for document storage.
 # The LLM is used through an existing Ollama server.

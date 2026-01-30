@@ -23,7 +23,7 @@ BASE_COMPOSE_TEMPLATE = "base-compose.yaml"
 BASE_INIT_SQL_TEMPLATE = "init.sql"  # PostgreSQL + pgvector schema
 BASE_GRAFANA_DATASOURCES_TEMPLATE = "grafana/datasources.yaml"
 BASE_GRAFANA_DASHBOARDS_TEMPLATE = "grafana/dashboards.yaml"
-BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE = "grafana/archi-default-dashboard.json"
+BASE_GRAFANA_ARCHI_DEFAULT_DASHBOARDS_TEMPLATE = "grafana/archi-default-dashboard.json"
 BASE_GRAFANA_CONFIG_TEMPLATE = "grafana/grafana.ini"
 
 
@@ -341,7 +341,7 @@ class TemplateManager:
         configs = context.config_manager.get_configs()
         palette = assign_feedback_palette(configs)
 
-        dashboard_template = self.env.get_template(BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE)
+        dashboard_template = self.env.get_template(BASE_GRAFANA_ARCHI_DEFAULT_DASHBOARDS_TEMPLATE)
         dashboard = dashboard_template.render(
             feedback_palette=palette,
         )

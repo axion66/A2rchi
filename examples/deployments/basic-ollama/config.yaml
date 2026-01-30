@@ -12,8 +12,8 @@ services:
   chat_app:
     pipeline: CMSCompOpsAgent
     trained_on: "My data"
-    port: 7869
-    external_port: 7869
+    port: 7867
+    external_port: 7867
   vectorstore:
     backend: postgres  # PostgreSQL with pgvector (only supported backend)
   data_manager:
@@ -21,8 +21,6 @@ services:
     external_port: 7889
 
 data_manager:
-  # port: 7888
-  # external_port: 7888
   sources:
     links:
       input_lists:
@@ -44,4 +42,4 @@ archi:
     OllamaInterface:
       kwargs:
         url: http://localhost:7870 # make sure this matches your ollama server URL!
-        base_model: "gemma3" # make sure this matches a model you have downloaded locally with ollama
+        base_model: "gpt-oss:120b" # make sure this matches a model you have downloaded locally with ollama

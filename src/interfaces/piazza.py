@@ -133,7 +133,7 @@ class Piazza:
 
                 logger.info(f"PROCESSING NEW POST: {post_nr}")
                 response, post_str = self.ai_wrapper(post)
-                response = f"====================\nReplying to Post @{post['nr']}\n==========\n\n{post_str}\n==========\n\nA2RCHI RESPONSE: {response}\n====================\n"
+                response = f"====================\nReplying to Post @{post['nr']}\n==========\n\n{post_str}\n==========\n\nARCHI RESPONSE: {response}\n====================\n"
 
                 # send response to Slack
                 r = requests.post(self.slack_url, data=json.dumps({"text": response}), headers=self.slack_headers)

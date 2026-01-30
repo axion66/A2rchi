@@ -400,6 +400,13 @@ class PostgresVectorStore(VectorStore):
                     WHERE indexname = 'idx_chunks_bm25'
                 """)
                 has_bm25_index = cursor.fetchone() is not None
+
+                cursor.execute("""
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'document_chunks'
+                      AND column_name = 'chunk_tsv'
+                """)
+                has_chunk_tsv = cursor.fetchone() is not None
                 
                 where_clauses = ["(c.metadata->>'collection' = %s OR c.metadata->>'collection' IS NULL)"]
                 params: List[Any] = [self._collection_name]
@@ -416,16 +423,23 @@ class PostgresVectorStore(VectorStore):
                 if has_bm25_index:
                     # Use pg_textsearch BM25
                     bm25_score = "chunk_text <@> %s"
+                    chunk_tsv_select = ""
                 else:
-                    # Fallback to ts_rank with GIN index
-                    bm25_score = "ts_rank(chunk_tsv, plainto_tsquery('english', %s))"
+                    # Fallback to ts_rank with GIN index when available,
+                    # otherwise compute tsvector on the fly (no index).
+                    if has_chunk_tsv:
+                        bm25_score = "ts_rank(chunk_tsv, plainto_tsquery('english', %s))"
+                        chunk_tsv_select = "c.chunk_tsv,"
+                    else:
+                        bm25_score = "ts_rank(to_tsvector('english', c.chunk_text), plainto_tsquery('english', %s))"
+                        chunk_tsv_select = ""
                 
                 query_sql = f"""
                     WITH semantic AS (
                         SELECT 
                             c.id,
                             c.chunk_text,
-                            c.chunk_tsv,
+                            {chunk_tsv_select}
                             c.metadata,
                             1.0 - (c.embedding {self._distance_op} %s::vector) AS semantic_score,
                             d.resource_hash,

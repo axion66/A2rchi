@@ -214,13 +214,13 @@ def main() -> None:
     _check_data_manager_catalog()
     _check_ollama_model()
 
-    config_path = os.getenv("A2RCHI_CONFIG_PATH")
-    pipeline_name = os.getenv("A2RCHI_PIPELINE_NAME", "CMSCompOpsAgent")
+    config_path = os.getenv("ARCHI_CONFIG_PATH")
+    pipeline_name = os.getenv("ARCHI_PIPELINE_NAME", "CMSCompOpsAgent")
     ollama_model = os.getenv("OLLAMA_MODEL", "")
     if config_path:
         _check_config_ollama(config_path, pipeline_name, ollama_model)
     else:
-        _info("A2RCHI_CONFIG_PATH not set; skipping config Ollama validation")
+        _info("ARCHI_CONFIG_PATH not set; skipping config Ollama validation")
 
     _info("Preflight checks passed")
 

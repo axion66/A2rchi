@@ -35,9 +35,9 @@ def _invoke_tool(tool, payload: Dict[str, object]) -> str:
 
 
 def _load_config() -> Dict:
-    config_path = os.getenv("A2RCHI_CONFIG_PATH")
+    config_path = os.getenv("ARCHI_CONFIG_PATH")
     if not config_path:
-        _fail("A2RCHI_CONFIG_PATH is required for tool smoke checks")
+        _fail("ARCHI_CONFIG_PATH is required for tool smoke checks")
     try:
         with open(config_path, "r", encoding="utf-8") as handle:
             return yaml.safe_load(handle) or {}

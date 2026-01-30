@@ -33,7 +33,7 @@ jobs:
     permissions:
       contents: read
     env:
-      A2RCHI_DIR: ${{ github.workspace }}/archi-local
+      ARCHI_DIR: ${{ github.workspace }}/archi-local
 
     outputs:
       changed: ${{ steps.detect.outputs.changed }}
@@ -103,7 +103,7 @@ jobs:
       contents: read
       pull-requests: write
     env:
-      A2RCHI_DIR: ${{ github.workspace }}/archi-local
+      ARCHI_DIR: ${{ github.workspace }}/archi-local
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -162,7 +162,7 @@ jobs:
           hostmode: "true"
           wait-url: http://localhost:2786/api/health
           base-url: http://localhost:2786
-          extra-env: A2RCHI_COMPOSE_UP_FLAGS=--build
+          extra-env: ARCHI_COMPOSE_UP_FLAGS=--build
           use-podman: ${{ contains(runner.name, 'submit') }}
 
       - name: Cleanup local base images

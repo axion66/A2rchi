@@ -67,7 +67,7 @@ class RemoteCatalogClient:
             env_host_mode = (
                 os.environ.get("HOST_MODE")
                 or os.environ.get("HOSTMODE")
-                or os.environ.get("A2RCHI_HOST_MODE")
+                or os.environ.get("ARCHI_HOST_MODE")
             )
             return str(env_host_mode).lower() in {"1", "true", "yes", "on"}
         return bool(host_mode)

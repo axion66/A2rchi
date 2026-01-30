@@ -19,7 +19,7 @@ from src.utils.sql import SQL_INSERT_CONVO, SQL_UPSERT_CONVERSATION_METADATA
 logger = get_logger(__name__)
 
 # DEFINITIONS
-A2RCHI_PATTERN = '-- archi --'
+ARCHI_PATTERN = '-- archi --'
 
 
 class RedmineAIWrapper:
@@ -239,7 +239,7 @@ class Redmine:
         for record in issue.journals:
             user = self.redmine.user.get(record.user.id)
             note = record.notes
-            if note != '' and A2RCHI_PATTERN not in note:
+            if note != '' and ARCHI_PATTERN not in note:
                 history.append((user.login,note))
         return history
     
@@ -319,7 +319,7 @@ class Redmine:
                 cc = issue.custom_fields[1]['value']
                 note = ''
                 for record in issue.journals:
-                    if record.notes and record.notes != "" and A2RCHI_PATTERN not in record.notes:
+                    if record.notes and record.notes != "" and ARCHI_PATTERN not in record.notes:
                         note = record.notes
                 logger.info(f"\n TO:{to}\n CC:{cc}\n SUBJECT:{subject}\nISSUE_ID:{issue.id} (leave for reference)\n\n{note}\n\n> {issue.description}")
                 note = f"\nISSUE_ID:{issue.id} (leave for reference)\n\n{note}"
@@ -338,7 +338,7 @@ class Redmine:
         Moving the issue in the 'closed' status
         """
         self.redmine.issue.update(issue_id,status_id=self.status_dict['Closed'],
-                                  notes=f'{A2RCHI_PATTERN} Resolving email was sent:\n{answer}')
+                                  notes=f'{ARCHI_PATTERN} Resolving email was sent:\n{answer}')
         return
     
     def feedback_issue(self,issue_id):
@@ -346,7 +346,7 @@ class Redmine:
         Moving the issue in the 'feedback' status
         """
         self.redmine.issue.update(issue_id,status_id=self.status_dict['Feedback'],
-                                  notes=f'{A2RCHI_PATTERN} Moved into feedback.')
+                                  notes=f'{ARCHI_PATTERN} Moved into feedback.')
         return
 
     def show_issue(self,issue_id):

@@ -4,12 +4,12 @@ set -euo pipefail
 # Env vars used by this runner:
 # BASE_URL, DM_BASE_URL, OLLAMA_URL, OLLAMA_MODEL,
 # PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE, DM_API_TOKEN,
-# A2RCHI_CONFIG_PATH, A2RCHI_CONFIG_NAME, A2RCHI_PIPELINE_NAME, USE_PODMAN
+# ARCHI_CONFIG_PATH, ARCHI_CONFIG_NAME, ARCHI_PIPELINE_NAME, USE_PODMAN
 
 NAME="${1:-}"
 if [[ -z "${NAME}" ]]; then
   echo "Usage: $0 <deployment-name>"
-  echo "Requires env vars: A2RCHI_CONFIG_PATH, OLLAMA_MODEL, PGHOST, PGUSER, PGPASSWORD, PGDATABASE"
+  echo "Requires env vars: ARCHI_CONFIG_PATH, OLLAMA_MODEL, PGHOST, PGUSER, PGPASSWORD, PGDATABASE"
   exit 1
 fi
 
@@ -37,17 +37,17 @@ if ! "${tool}" inspect "${container_name}" >/dev/null 2>&1; then
   echo "[combined-smoke] ERROR: Missing container ${container_name}" >&2
   exit 1
 fi
-config_name="${A2RCHI_CONFIG_NAME:-}"
-if [[ -z "${config_name}" && -n "${A2RCHI_CONFIG_PATH:-}" ]]; then
-  config_name="$(basename "${A2RCHI_CONFIG_PATH}" .yaml)"
+config_name="${ARCHI_CONFIG_NAME:-}"
+if [[ -z "${config_name}" && -n "${ARCHI_CONFIG_PATH:-}" ]]; then
+  config_name="$(basename "${ARCHI_CONFIG_PATH}" .yaml)"
 fi
 if [[ -z "${config_name}" ]]; then
-  echo "[combined-smoke] ERROR: A2RCHI_CONFIG_NAME is required for container tool checks" >&2
+  echo "[combined-smoke] ERROR: ARCHI_CONFIG_NAME is required for container tool checks" >&2
   exit 1
 fi
 "${tool}" exec -i -w /root/archi \
-  -e A2RCHI_CONFIG_NAME="${config_name}" \
-  -e A2RCHI_CONFIG_PATH="/root/archi/configs/${config_name}.yaml" \
+  -e ARCHI_CONFIG_NAME="${config_name}" \
+  -e ARCHI_CONFIG_PATH="/root/archi/configs/${config_name}.yaml" \
   -e DM_BASE_URL="${DM_BASE_URL}" \
   -e DM_API_TOKEN="${DM_API_TOKEN:-}" \
   -e OLLAMA_URL="${OLLAMA_URL}" \

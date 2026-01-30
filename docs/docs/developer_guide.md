@@ -1,6 +1,6 @@
 # Developers Guide
 
-Below is all the information developers may need to get started contributing to the A2RCHI project.
+Below is all the information developers may need to get started contributing to the Archi project.
 
 ## Editing Documentation
 
@@ -32,7 +32,7 @@ Always open a PR to merge documentation changes into `main`. Do not edit files d
 If you want the full CI-like smoke run (create deployment, wait for readiness, run checks, and clean up) you can use the shared runner:
 
 ```bash
-export A2RCHI_DIR=~/.archi
+export Archi_DIR=~/.archi
 export DEPLOYMENT_NAME=local-smoke
 export USE_PODMAN=true
 export SMOKE_FORCE_CREATE=true
@@ -51,9 +51,9 @@ The shared runner performs these checks in order (ensuring the configured Ollama
 The combined smoke workflow alone does not start A2rchi for you. Start a deployment first, then run the checks (it validates Postgres, data-manager catalog, Ollama model availability, ReAct streaming, and direct tool probes inside the chatbot container):
 
 ```bash
-export A2RCHI_CONFIG_PATH=~/.archi/archi-<deployment-name>/configs/<config-name>.yaml
-export A2RCHI_CONFIG_NAME=<config-name>
-export A2RCHI_PIPELINE_NAME=CMSCompOpsAgent
+export Archi_CONFIG_PATH=~/.archi/archi-<deployment-name>/configs/<config-name>.yaml
+export Archi_CONFIG_NAME=<config-name>
+export Archi_PIPELINE_NAME=CMSCompOpsAgent
 export USE_PODMAN=true
 export OLLAMA_MODEL=<ollama-model-name>
 export PGHOST=localhost
@@ -78,7 +78,7 @@ export VECTORSTORE_QUERY="cms"
 
 ## Postgres Usage Overview
 
-A2RCHI relies on Postgres as the durable metadata store across services. Core usage falls into two buckets:
+Archi relies on Postgres as the durable metadata store across services. Core usage falls into two buckets:
 
 - **Ingestion catalog**: the `resources` table tracks persisted files and metadata for the data manager catalog (`CatalogService`).
 - **Conversation history**: the `conversation_metadata` and `conversations` tables store chat/session metadata plus message history for interfaces like the chat app and ticketing integrations (e.g., Redmine mailer).
@@ -97,7 +97,7 @@ When extending an interface that writes to `conversations`, make sure a matching
 
 ## DockerHub Images
 
-A2RCHI loads different base images hosted on Docker Hub. The Python base image is used when GPUs are not required; otherwise the PyTorch base image is used. The Dockerfiles for these base images live in `src/cli/templates/dockerfiles/base-X-image`.
+Archi loads different base images hosted on Docker Hub. The Python base image is used when GPUs are not required; otherwise the PyTorch base image is used. The Dockerfiles for these base images live in `src/cli/templates/dockerfiles/base-X-image`.
 
 Images are hosted at:
 
@@ -136,7 +136,7 @@ podman push archi/<image-name>:<tag>
 
 ## Data Ingestion Architecture
 
-A2RCHI ingests content through **sources** which are collected by **collectors** (`data_manager/collectors`).
+Archi ingests content through **sources** which are collected by **collectors** (`data_manager/collectors`).
 These documents are written to persistent, local files via the `PersistenceService`, which uses `Resource` objects as an abstraction for different content types, and `ResourceMetadata` for associated metadata.
 A catalog of persisted files and metadata is maintained in Postgres via
 `CatalogService` (table: `resources`).

@@ -1,10 +1,10 @@
 # Quickstart
 
-Deploy your first instance of A2RCHI and walk through the important concepts.
+Deploy your first instance of Archi and walk through the important concepts.
 
 ## Sources and Services
 
-A2RCHI can ingest data from a variety of **sources** and supports several **services**. List them with the CLI command below and decide which ones you want to use so that we can configure them.
+Archi can ingest data from a variety of **sources** and supports several **services**. List them with the CLI command below and decide which ones you want to use so that we can configure them.
 
 ```bash
 archi list-services
@@ -13,7 +13,7 @@ archi list-services
 Example output:
 
 ```
-Available A2RCHI services:
+Available Archi services:
 
 Application Services:
   chatbot              Interactive chat interface for users to communicate with the AI agent
@@ -37,7 +37,7 @@ See the [User Guide](user_guide.md) for detailed information about each service 
 
 ## Pipelines
 
-A2RCHI supports several pipelines—pre-defined sequences of operations that process user inputs and generate responses. Each service supports a subset of pipelines (see the [User Guide](user_guide.md) for details).
+Archi supports several pipelines—pre-defined sequences of operations that process user inputs and generate responses. Each service supports a subset of pipelines (see the [User Guide](user_guide.md) for details).
 
 An example pipeline is `QAPipeline`, a question-answering pipeline that takes a user's question, retrieves relevant documents from the vector store, and generates an answer using a language model.
 
@@ -97,7 +97,7 @@ services:
 <details>
 <summary>Explanation of configuration parameters</summary>
 
-- `name`: Name of your A2RCHI deployment.
+- `name`: Name of your Archi deployment.
 - `data_manager`: Settings related to data ingestion and the vector store.
   - `sources.links.input_lists`: Lists of URLs to seed the deployment.
   - `sources.<name>.visible`: Controls whether content from a given source should be surfaced to end users (defaults to `true`).
@@ -138,7 +138,7 @@ If you are not using open-source models, supply the relevant API credentials:
 
 Other services may require additional secrets; see the [User Guide](user_guide.md) for details.
 
-## Creating an A2RCHI Deployment
+## Creating an Archi Deployment
 
 Create your deployment with the CLI:
 
@@ -164,7 +164,7 @@ archi create --name my-archi --config examples/deployments/basic-gpu/config.yaml
 ```
 
 ```
-Starting A2RCHI deployment process...
+Starting Archi deployment process...
 [archi] Creating deployment 'my-archi' with services: chatbot
 [archi] Auto-enabling dependencies: postgres
 [archi] Configuration validated successfully
@@ -176,7 +176,7 @@ Starting A2RCHI deployment process...
 [archi] Using compose file: /path/to/my/.archi/archi-my-archi/compose.yaml
 [archi] (This might take a minute...)
 [archi] Deployment started successfully
-A2RCHI deployment 'my-archi' created successfully!
+Archi deployment 'my-archi' created successfully!
 Services running: chatbot, postgres
 [archi] Chatbot: http://localhost:7861
 ```

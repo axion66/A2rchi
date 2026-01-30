@@ -28,7 +28,7 @@ SMOKE_OLLAMA_MODEL="${SMOKE_OLLAMA_MODEL:-}"
 SMOKE_OLLAMA_URL="${SMOKE_OLLAMA_URL:-}"
 export USE_PODMAN
 
-A2RCHI_DIR="${A2RCHI_DIR:-${HOME}/.archi}"
+ARCHI_DIR="${ARCHI_DIR:-${HOME}/.archi}"
 
 ENV_FILE_CREATED=0
 CONFIG_DEST_CREATED=0
@@ -154,7 +154,7 @@ fi
 info "Ensuring Ollama model '${SMOKE_OLLAMA_MODEL}' is available..."
 OLLAMA_HOST="${SMOKE_OLLAMA_URL}" ollama pull "${SMOKE_OLLAMA_MODEL}"
 
-DEPLOYMENT_DIR="${A2RCHI_DIR}/archi-${DEPLOYMENT_NAME}"
+DEPLOYMENT_DIR="${ARCHI_DIR}/archi-${DEPLOYMENT_NAME}"
 if [[ -d "${DEPLOYMENT_DIR}" ]]; then
   if [[ "${SMOKE_FORCE_CREATE,,}" == "true" ]]; then
     info "Existing deployment found; deleting ${DEPLOYMENT_NAME}..."
@@ -236,15 +236,15 @@ if [[ -z "${CONFIG_NAME}" ]]; then
   exit 1
 fi
 
-RENDERED_CONFIG="${A2RCHI_DIR}/archi-${DEPLOYMENT_NAME}/configs/${CONFIG_NAME}.yaml"
+RENDERED_CONFIG="${ARCHI_DIR}/archi-${DEPLOYMENT_NAME}/configs/${CONFIG_NAME}.yaml"
 if [[ ! -f "${RENDERED_CONFIG}" ]]; then
   echo "Rendered config not found at ${RENDERED_CONFIG}" >&2
   exit 1
 fi
 
-export A2RCHI_CONFIG_PATH="${RENDERED_CONFIG}"
-export A2RCHI_CONFIG_NAME="${CONFIG_NAME}"
-export A2RCHI_PIPELINE_NAME="$(RENDERED_CONFIG="${RENDERED_CONFIG}" python - <<'PY'
+export ARCHI_CONFIG_PATH="${RENDERED_CONFIG}"
+export ARCHI_CONFIG_NAME="${CONFIG_NAME}"
+export ARCHI_PIPELINE_NAME="$(RENDERED_CONFIG="${RENDERED_CONFIG}" python - <<'PY'
 import os
 import yaml
 

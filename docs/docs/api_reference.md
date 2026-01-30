@@ -2,7 +2,7 @@
 
 ## CLI
 
-The A2RCHI CLI provides commands to create, manage, and delete A2RCHI deployments and services.
+The Archi CLI provides commands to create, manage, and delete Archi deployments and services.
 
 ---
 
@@ -10,7 +10,7 @@ The A2RCHI CLI provides commands to create, manage, and delete A2RCHI deployment
 
 #### 1. `create`
 
-Create a new A2RCHI deployment.
+Create a new Archi deployment.
 
 **Usage:**
 ```sh
@@ -37,7 +37,7 @@ archi create --name <deployment_name> --config <config.yaml> --env-file <secrets
 
 #### 2. `delete`
 
-Delete an existing A2RCHI deployment.
+Delete an existing Archi deployment.
 
 **Usage:**
 ```sh
@@ -107,7 +107,7 @@ archi restart -n mybot --service data_manager
 
 #### 4. `list-services`
 
-List all available A2RCHI services and data sources.
+List all available Archi services and data sources.
 
 **Usage:**
 ```sh
@@ -118,7 +118,7 @@ archi list-services
 
 #### 5. `list-deployments`
 
-List all existing A2RCHI deployments.
+List all existing Archi deployments.
 
 **Usage:**
 ```sh
@@ -175,7 +175,7 @@ archi list-services
 
 ## Configuration YAML API Reference
 
-The A2RCHI configuration YAML file defines the deployment, services, data sources, pipelines, models, and interface settings for your A2RCHI instance.
+The Archi configuration YAML file defines the deployment, services, data sources, pipelines, models, and interface settings for your Archi instance.
 
 ---
 

@@ -32,7 +32,7 @@ env = Environment(
     autoescape=select_autoescape(),
     undefined=ChainableUndefined,
 )
-A2RCHI_DIR = os.environ.get('A2RCHI_DIR',os.path.join(os.path.expanduser('~'), ".archi"))
+ARCHI_DIR = os.environ.get('ARCHI_DIR',os.path.join(os.path.expanduser('~'), ".archi"))
 
 @click.group()
 def cli():
@@ -56,7 +56,7 @@ def cli():
 @click.option('--dry', '--dry-run', is_flag=True, help="Validate configuration and show what would be created without actually deploying")
 def create(name: str, config_files: list, config_dir: str, env_file: str, services: list, sources: list, 
            force: bool, dry: bool, verbosity: int, **other_flags):
-    """Create an A2RCHI deployment with selected services and data sources."""
+    """Create an ARCHI deployment with selected services and data sources."""
 
     if not (bool(config_files) ^ bool(config_dir)): 
         raise click.ClickException(f"Must specify only one of config files or config dir")
@@ -64,7 +64,7 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
         config_path = Path(config_dir)
         config_files = [item for item in config_path.iterdir() if item.is_file()]
 
-    print("Starting A2RCHI deployment process...")
+    print("Starting ARCHI deployment process...")
     setup_cli_logging(verbosity=verbosity)
     logger = get_logger(__name__)
 
@@ -90,7 +90,7 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
         
         
         # Handle existing deployment
-        base_dir = Path(A2RCHI_DIR) / f"archi-{name}"
+        base_dir = Path(ARCHI_DIR) / f"archi-{name}"
         handle_existing_deployment(base_dir, name, force, dry, other_flags.get('podman', False))
         
         # Initialize managers
@@ -178,7 +178,7 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
 @click.option('--podman', '-p', is_flag=True, default=False, help="specify if podman is being used")
 def delete(name: str, rmi: bool, rmv: bool, keep_files: bool, list_deployments: bool, verbosity: int, podman: bool):
     """
-    Delete an A2RCHI deployment with the specified name.
+    Delete an ARCHI deployment with the specified name.
     
     This command stops containers and optionally removes images, volumes, and files.
     
@@ -287,7 +287,7 @@ def restart(
             "Example: archi restart --name mybot --podman ..."
         )
 
-    deployment_dir = Path(A2RCHI_DIR) / f"archi-{name}"
+    deployment_dir = Path(ARCHI_DIR) / f"archi-{name}"
     compose_file = deployment_dir / "compose.yaml"
     if not compose_file.exists():
         raise click.ClickException(
@@ -397,7 +397,7 @@ def restart(
 def list_services():
     """List all available services"""
     
-    click.echo("Available A2RCHI services:\n")
+    click.echo("Available ARCHI services:\n")
     
     # Application services
     app_services = service_registry.get_application_services()
@@ -428,7 +428,7 @@ def list_services():
 def list_deployments():
     """List all existing deployments"""
     
-    archi_dir = Path(A2RCHI_DIR)
+    archi_dir = Path(ARCHI_DIR)
 
     if not archi_dir.exists():
         click.echo("No deployments found")
@@ -471,7 +471,7 @@ def list_deployments():
 @click.option('--verbosity', '-v', type=int, default=3, help="Logging verbosity level (0-4)")
 def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_mode: bool, sources: list, 
              force: bool, verbosity: int, **other_flags):
-    """Create an A2RCHI deployment with selected services and data sources."""
+    """Create an ARCHI deployment with selected services and data sources."""
     if not (bool(config_file) ^ bool(config_dir)): 
         raise click.ClickException(f"Must specify only one of config files or config dir")
     if config_dir: 
@@ -480,7 +480,7 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_m
     else: 
         config_files = [item for item in config_file.split(",")]
 
-    print("Starting A2RCHI benchmarking process...")
+    print("Starting ARCHI benchmarking process...")
     setup_cli_logging(verbosity=verbosity)
     logger = get_logger(__name__)
 
@@ -495,7 +495,7 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_m
     gpu = other_flags.get("gpu-ids") != None
 
     try: 
-        base_dir = Path(A2RCHI_DIR) / f"archi-{name}"
+        base_dir = Path(ARCHI_DIR) / f"archi-{name}"
         handle_existing_deployment(base_dir, name, force, False, other_flags.get('podman', False))
 
         requested_sources = ['links']

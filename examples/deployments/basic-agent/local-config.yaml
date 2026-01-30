@@ -2,7 +2,7 @@
 # Uses local Ollama server at localhost:11434
 #
 # Run with:
-# export A2RCHI_DIR=/tmp/archi-test
+# export ARCHI_DIR=/tmp/archi-test
 # echo "PG_PASSWORD=testpassword123" > /tmp/test-env
 # archi create --name cms-agent --config examples/deployments/basic-agent/local-config.yaml --services chatbot --env-file /tmp/test-env
 

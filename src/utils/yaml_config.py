@@ -17,13 +17,13 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 
-# Default config path - can be overridden with A2RCHI_CONFIGS_PATH env var
-CONFIGS_PATH = os.environ.get("A2RCHI_CONFIGS_PATH", "/root/archi/configs/")
+# Default config path - can be overridden with ARCHI_CONFIGS_PATH env var
+CONFIGS_PATH = os.environ.get("ARCHI_CONFIGS_PATH", "/root/archi/configs/")
 
 
 def _get_configs_path() -> str:
     """Get the configs path, with environment override support."""
-    return os.environ.get("A2RCHI_CONFIGS_PATH", CONFIGS_PATH)
+    return os.environ.get("ARCHI_CONFIGS_PATH", CONFIGS_PATH)
 
 
 def list_config_names() -> List[str]:

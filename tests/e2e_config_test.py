@@ -23,7 +23,7 @@ def test_yaml_config():
     print("\n[1/5] Testing yaml_config module...")
     
     with tempfile.TemporaryDirectory() as tmpdir:
-        os.environ['A2RCHI_CONFIGS_PATH'] = tmpdir
+        os.environ['ARCHI_CONFIGS_PATH'] = tmpdir
         
         config = {
             'name': 'test-deployment',
@@ -87,8 +87,8 @@ def test_yaml_config():
         print("   ✓ load_archi_config works")
     
     # Clean up env
-    if 'A2RCHI_CONFIGS_PATH' in os.environ:
-        del os.environ['A2RCHI_CONFIGS_PATH']
+    if 'ARCHI_CONFIGS_PATH' in os.environ:
+        del os.environ['ARCHI_CONFIGS_PATH']
     
     print("[1/5] PASSED ✓")
 
@@ -157,7 +157,7 @@ def test_model_registry():
     # Model imports trigger pipeline imports which call load_global_config()
     # at module load time, so we need a valid config directory
     with tempfile.TemporaryDirectory() as tmpdir:
-        os.environ['A2RCHI_CONFIGS_PATH'] = tmpdir
+        os.environ['ARCHI_CONFIGS_PATH'] = tmpdir
         
         # Create a minimal config for imports to succeed
         config = {
@@ -200,8 +200,8 @@ def test_model_registry():
             print(f"   ⚠ Skipping: Missing optional dependency ({e})")
             print("[3/5] SKIPPED (missing deps)")
         finally:
-            if 'A2RCHI_CONFIGS_PATH' in os.environ:
-                del os.environ['A2RCHI_CONFIGS_PATH']
+            if 'ARCHI_CONFIGS_PATH' in os.environ:
+                del os.environ['ARCHI_CONFIGS_PATH']
 
 
 def test_config_service_dataclasses():
@@ -306,7 +306,7 @@ def test_integration_flow():
             with open(os.path.join(prompts_dir, prompt_type, 'default.prompt'), 'w') as f:
                 f.write(f'Default {prompt_type} prompt')
         
-        os.environ['A2RCHI_CONFIGS_PATH'] = config_dir
+        os.environ['ARCHI_CONFIGS_PATH'] = config_dir
         
         config = {
             'name': 'integration-test',
@@ -346,7 +346,7 @@ def test_integration_flow():
             print("   ⚠ Model registry skipped (missing deps)")
         
         # Clean up
-        del os.environ['A2RCHI_CONFIGS_PATH']
+        del os.environ['ARCHI_CONFIGS_PATH']
     
     print("[INTEGRATION] PASSED ✓")
 

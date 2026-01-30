@@ -24,7 +24,7 @@ Provide a retrieval-augmented generation framework for research and education te
 - CLI entrypoint in `src/cli/cli_main.py` with service/source registries in `src/cli/service_registry.py` and `src/cli/source_registry.py`
 - Service entrypoints in `src/bin/` wire interfaces from `src/interfaces/`
 - Runtime config loaded from `/root/archi/configs/` via `src/utils/config_loader.py`
-- CLI deployments render to `~/.archi/archi-<name>` (override with `A2RCHI_DIR`)
+- CLI deployments render to `~/.archi/archi-<name>` (override with `Archi_DIR`)
 
 ### Testing Strategy
 - No formal testing setup yet; add tests as needed when introducing new behavior
