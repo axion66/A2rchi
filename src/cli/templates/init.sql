@@ -118,6 +118,9 @@ CREATE TABLE IF NOT EXISTS static_config (
     -- Auth configuration
     auth_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     session_lifetime_days INTEGER NOT NULL DEFAULT 30,
+
+    -- Source configuration (deploy-time)
+    sources_config JSONB NOT NULL DEFAULT '{}'::jsonb,
     
     -- Timestamps
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -233,7 +236,7 @@ CREATE TABLE IF NOT EXISTS documents (
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
     deleted_at TIMESTAMP,
     
-    CONSTRAINT valid_source CHECK (source_type IN ('local_files', 'web', 'ticket', 'git', 'unknown'))
+    CONSTRAINT valid_source CHECK (source_type IN ('local_files', 'web', 'ticket', 'git', 'sso', 'unknown'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(resource_hash);
