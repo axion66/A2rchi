@@ -82,10 +82,6 @@ class DynamicConfig:
     bm25_weight: float = 0.3
     semantic_weight: float = 0.7
     
-    # BM25 parameters
-    bm25_k1: float = 1.2
-    bm25_b: float = 0.75
-    
     # Schedules
     ingestion_schedule: str = ""
     
@@ -353,7 +349,7 @@ class ConfigService:
                            system_prompt, top_p, top_k, repetition_penalty,
                            active_condense_prompt, active_chat_prompt, active_system_prompt,
                            num_documents_to_retrieve, use_hybrid_search, bm25_weight, semantic_weight,
-                           bm25_k1, bm25_b, ingestion_schedule, verbosity, updated_at, updated_by
+                           ingestion_schedule, verbosity, updated_at, updated_by
                     FROM dynamic_config
                     WHERE id = 1
                     """
@@ -380,8 +376,6 @@ class ConfigService:
                     use_hybrid_search=row["use_hybrid_search"],
                     bm25_weight=float(row["bm25_weight"]),
                     semantic_weight=float(row["semantic_weight"]),
-                    bm25_k1=float(row["bm25_k1"]),
-                    bm25_b=float(row["bm25_b"]),
                     ingestion_schedule=row.get("ingestion_schedule", ""),
                     verbosity=row.get("verbosity", 3),
                     updated_at=str(row["updated_at"]) if row["updated_at"] else None,
@@ -402,8 +396,6 @@ class ConfigService:
         use_hybrid_search: Optional[bool] = None,
         bm25_weight: Optional[float] = None,
         semantic_weight: Optional[float] = None,
-        bm25_k1: Optional[float] = None,
-        bm25_b: Optional[float] = None,
         updated_by: Optional[str] = None,
     ) -> DynamicConfig:
         """
@@ -424,8 +416,6 @@ class ConfigService:
             use_hybrid_search: Enable hybrid search
             bm25_weight: Weight for BM25 in hybrid search
             semantic_weight: Weight for semantic in hybrid search
-            bm25_k1: BM25 k1 parameter
-            bm25_b: BM25 b parameter
             updated_by: User ID making the change
             
         Returns:
@@ -483,14 +473,6 @@ class ConfigService:
             updates.append("semantic_weight = %s")
             params.append(semantic_weight)
         
-        if bm25_k1 is not None:
-            updates.append("bm25_k1 = %s")
-            params.append(bm25_k1)
-        
-        if bm25_b is not None:
-            updates.append("bm25_b = %s")
-            params.append(bm25_b)
-        
         if not updates:
             return self.get_dynamic_config()
         
@@ -509,7 +491,7 @@ class ConfigService:
                     RETURNING active_pipeline, active_model, temperature, max_tokens,
                               system_prompt, num_documents_to_retrieve,
                               use_hybrid_search, bm25_weight, semantic_weight,
-                              bm25_k1, bm25_b, updated_at, updated_by
+                              updated_at, updated_by
                     """,
                     params
                 )
@@ -536,8 +518,6 @@ class ConfigService:
                     use_hybrid_search=row["use_hybrid_search"],
                     bm25_weight=float(row["bm25_weight"]),
                     semantic_weight=float(row["semantic_weight"]),
-                    bm25_k1=float(row["bm25_k1"]),
-                    bm25_b=float(row["bm25_b"]),
                     updated_at=str(row["updated_at"]) if row["updated_at"] else None,
                     updated_by=row["updated_by"],
                 )

@@ -68,7 +68,6 @@ class QAPipeline(BasePipeline):
     def update_retriever(self, vectorstore):
         retrievers_cfg = self.dm_config.get("retrievers", {})
         hybrid_cfg = retrievers_cfg.get("hybrid_retriever", {})
-        bm25_cfg = retrievers_cfg.get("bm25_retriever", {})
         default_k = 5
 
         logger.info("Initializing HybridRetriever with BM25 + semantic search")
@@ -77,8 +76,6 @@ class QAPipeline(BasePipeline):
             k=hybrid_cfg.get("num_documents_to_retrieve", default_k),
             bm25_weight=hybrid_cfg.get("bm25_weight", 0.6),
             semantic_weight=hybrid_cfg.get("semantic_weight", 0.4),
-            bm25_k1=bm25_cfg.get("k1", 0.5),
-            bm25_b=bm25_cfg.get("b", 0.75),
         )
 
     def invoke(self, **kwargs) -> PipelineOutput:

@@ -156,10 +156,6 @@ CREATE TABLE IF NOT EXISTS dynamic_config (
     bm25_weight NUMERIC(3,2) NOT NULL DEFAULT 0.3,
     semantic_weight NUMERIC(3,2) NOT NULL DEFAULT 0.7,
     
-    -- BM25 parameters (pg_textsearch)
-    bm25_k1 NUMERIC(4,2) NOT NULL DEFAULT 1.2,
-    bm25_b NUMERIC(3,2) NOT NULL DEFAULT 0.75,
-    
     -- Schedules
     ingestion_schedule VARCHAR(100) NOT NULL DEFAULT '',  -- Cron expression
     

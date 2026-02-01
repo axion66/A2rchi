@@ -123,7 +123,7 @@ class BaseReActAgent:
         emitted_tool_starts: Set[str] = set()
         
         for event in self.agent.stream(agent_inputs, stream_mode="messages"):
-            logger.debug("Received stream event type=%s: %s", type(event).__name__, str(event)[:200])
+            
             messages = self._extract_messages(event)
             if not messages:
                 continue
@@ -138,6 +138,7 @@ class BaseReActAgent:
             
             # Detect tool call start (AIMessage with tool_calls)
             if hasattr(message, "tool_calls") and message.tool_calls:
+                logger.debug("Received stream event type=%s: %s", type(event).__name__, str(event)[:1000])
                 new_tool_call = False
                 for tc in message.tool_calls:
                     tc_id = tc.get("id", "")
@@ -156,6 +157,7 @@ class BaseReActAgent:
             # Detect tool result (ToolMessage with tool_call_id)
             tool_call_id = getattr(message, "tool_call_id", None)
             if tool_call_id:
+                logger.debug("Received stream event type=%s: %s", type(event).__name__, str(event)[:1000])
                 yield self.finalize_output(
                     answer="",
                     memory=self.active_memory,

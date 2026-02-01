@@ -309,13 +309,13 @@ def create_metadata_search_tool(
     tool_description = (
         description
         or (
-            "Search metadata for locally stored documents (use this to find files by name/path).\n"
-            "Input: query string with optional key:value filters; use OR between filters.\n"
-            "Important: key:value filters are exact matches (ANDed within a group, OR across groups).\n"
-            "Use free-text for filename/path contains searches (e.g., \"mz_dilepton.py\").\n"
-            "Examples: \"mz_dilepton.py\" or \"relative_path:full/path/to/mz_dilepton.py\" "
-            "or \"file_name:foo.py OR relative_path:bar/foo.py\".\n"
-            "Output: list of matches with hash, path, metadata, and a short snippet."
+            "Search document metadata stored in PostgreSQL (tickets, git, local files).\n"
+            "Input: query string with key:value filters; filters are exact matches and ANDed within a group, OR across groups.\n"
+            "Canonical filter keys: source_type, ticket_id, display_name, relative_path, file_path, url. "
+            "Legacy keys like resource_type/resource_id are aliased automatically.\n"
+            "Examples: \"source_type:ticket\", \"ticket_id:12345\", \"source_type:ticket OR source_type:git\", "
+            "\"relative_path:docs/readme.md\".\n"
+            "Free text matches display_name/url/paths when used without filters. Output: list of matches with hash, path, metadata, and a short snippet."
         )
     )
 

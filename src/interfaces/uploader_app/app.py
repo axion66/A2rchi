@@ -699,6 +699,12 @@ def _flatten_metadata(data: Dict[str, object], prefix: str = "") -> Dict[str, st
     return flattened
 
 
+_METADATA_ALIAS_MAP = {
+    "resource_type": "source_type",
+    "resource_id": "ticket_id",
+}
+
+
 def _parse_metadata_query(query: str) -> Tuple[Dict[str, str] | List[Dict[str, str]], str]:
     filters_groups: List[Dict[str, str]] = []
     current_group: Dict[str, str] = {}
@@ -714,6 +720,8 @@ def _parse_metadata_query(query: str) -> Tuple[Dict[str, str] | List[Dict[str, s
             key = key.strip()
             value = value.strip()
             if key and value:
+                # Normalize legacy keys to canonical column names
+                key = _METADATA_ALIAS_MAP.get(key, key)
                 current_group[key] = value
                 continue
         free_tokens.append(token)

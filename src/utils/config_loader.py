@@ -1,6 +1,10 @@
 import os
-
 import yaml
+
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 # DEFINITIONS
 CONFIGS_PATH = "/root/archi/configs/"
@@ -10,6 +14,7 @@ def load_config(map: bool = False, name: str = None):
     Load the configuration specified by name, or the first one by default.
     Optionally maps models to the corresponding class.
     """
+    logger.warning("This should be deprecated in favor of reading from PG!")
 
     if name is None:
         default_path = CONFIGS_PATH + os.listdir(CONFIGS_PATH)[0]

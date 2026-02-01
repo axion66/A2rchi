@@ -171,16 +171,12 @@ class CMSCompOpsAgent(BaseReActAgent):
         k = hybrid_cfg["num_documents_to_retrieve"]
         bm25_weight = hybrid_cfg["bm25_weight"]
         semantic_weight = hybrid_cfg["semantic_weight"]
-        bm25_k1 = hybrid_cfg["bm25_k1"]
-        bm25_b = hybrid_cfg["bm25_b"]
 
         hybrid_retriever = HybridRetriever(
             vectorstore=vectorstore,
             k=k,
             bm25_weight=bm25_weight,
             semantic_weight=semantic_weight,
-            bm25_k1=bm25_k1,
-            bm25_b=bm25_b,
         )
 
         hybrid_description = (

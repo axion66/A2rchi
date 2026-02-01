@@ -89,10 +89,11 @@ class GitScraper:
         self.git_token = read_secret("GIT_TOKEN")
         self._credentials_available = bool(self.git_username and self.git_token)
         if not self._credentials_available:
-            logger.info("No git credentials supplied; git scraping will be skipped.")
+            logger.info("No git credentials supplied; git scraping will not work for private repositories.")
 
     def collect(self, git_urls: List[str]) -> List[ScrapedResource]:
-        if not self._credentials_available or not git_urls:
+        if not git_urls:
+            logger.warning("No git URLs provided for scraping; skipping git scraper.")
             return []
 
         harvested: List[ScrapedResource] = []

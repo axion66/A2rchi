@@ -21,15 +21,15 @@ class TicketManager:
         raw_sources = (dm_config or {}).get('sources', {}) if isinstance(dm_config, dict) else {}
         sources_config = dict(raw_sources) if isinstance(raw_sources, dict) else {}
 
-        self.jira_config = dict(sources_config.get('jira', {}))
-        self.redmine_config = dict(sources_config.get('redmine', {}))
+        self.jira_config = sources_config['jira']
+        self.redmine_config = sources_config['redmine']
 
         self.jira_client = None
-        if self.jira_config.get('enabled', False):
+        if self.jira_config['enabled']:
             self.jira_client = self._init_client(lambda: JiraClient(self.jira_config), "JIRA")
 
         self.redmine_client = None
-        if self.redmine_config.get('enabled', False):
+        if self.redmine_config['enabled']:
             self.redmine_client = self._init_client(lambda: RedmineClient(self.redmine_config), "Redmine")
 
         # cache the projects we have collected
@@ -63,7 +63,7 @@ class TicketManager:
         self._collect_from_client(
             self.jira_client, "JIRA",
             persistence=persistence,
-            projects=projects,
+            projects=projects or [],
             **(kwargs or {})
         )
 
@@ -76,7 +76,7 @@ class TicketManager:
         self._collect_from_client(
             self.redmine_client, "Redmine",
             persistence=persistence,
-            projects=projects,
+            projects=projects or [],
             **kwargs
         )
 

@@ -1430,7 +1430,6 @@ class ChatWrapper:
             )
 
             for output in self.archi.stream(history=context.history, conversation_id=context.conversation_id):
-                logger.debug("Received streaming output chunk: %s", output)
                 last_output = output
                 
                 # Extract event_type from metadata (new structured events from BaseReActAgent)
