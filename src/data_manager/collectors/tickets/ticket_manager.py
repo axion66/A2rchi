@@ -6,17 +6,16 @@ from src.data_manager.collectors.tickets.integrations.jira import JiraClient
 from src.data_manager.collectors.tickets.integrations.redmine_tickets import \
     RedmineClient
 from src.data_manager.collectors.tickets.ticket_resource import TicketResource
-from src.utils.yaml_config import load_global_config
+from src.utils.config_access import get_global_config
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
-
-global_config = load_global_config()
 
 class TicketManager:
     """Coordinates ticket integrations and delegates persistence."""
 
     def __init__(self, dm_config: Optional[Dict[str, Any]] = None) -> None:
+        global_config = get_global_config()
         self.data_path = Path(global_config["DATA_PATH"])
         raw_sources = (dm_config or {}).get('sources', {}) if isinstance(dm_config, dict) else {}
         sources_config = dict(raw_sources) if isinstance(raw_sources, dict) else {}

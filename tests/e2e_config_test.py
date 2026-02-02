@@ -16,6 +16,31 @@ import tempfile
 import shutil
 
 import yaml
+from src.utils.postgres_service_factory import PostgresServiceFactory
+
+
+class _FakeConfigService:
+    def __init__(self, cfg):
+        self._cfg = cfg
+
+    def get_raw_config(self):
+        return self._cfg
+
+    def initialize_from_yaml(self, cfg):
+        self._cfg = cfg
+
+
+class _FakeFactory:
+    def __init__(self, cfg):
+        self.config_service = _FakeConfigService(cfg)
+
+
+def _set_fake_factory(cfg):
+    PostgresServiceFactory.set_instance(_FakeFactory(cfg))
+
+
+def _clear_factory():
+    PostgresServiceFactory.set_instance(None)
 
 
 def test_yaml_config():
@@ -53,42 +78,41 @@ def test_yaml_config():
         config_path = os.path.join(tmpdir, 'test.yaml')
         with open(config_path, 'w') as f:
             yaml.dump(config, f)
+
+        _set_fake_factory(config)
         
-        from src.utils.yaml_config import (
-            load_yaml_config, list_config_names, load_global_config,
-            load_services_config, load_data_manager_config, load_archi_config
+        from src.utils.config_access import (
+            get_full_config,
+            get_global_config,
+            get_services_config,
+            get_data_manager_config,
+            get_archi_config,
         )
-        
-        # Test list_config_names
-        names = list_config_names()
-        assert names == ['test'], f'Expected ["test"], got {names}'
-        print("   ✓ list_config_names works")
-        
-        # Test load_yaml_config
-        loaded = load_yaml_config()
+
+        loaded = get_full_config()
         assert loaded['name'] == 'test-deployment'
-        print("   ✓ load_yaml_config works")
-        
-        # Test section loaders
-        global_cfg = load_global_config()
+        print("   ✓ get_full_config works")
+
+        global_cfg = get_global_config()
         assert global_cfg['DATA_PATH'] == '/tmp/data'
-        print("   ✓ load_global_config works")
-        
-        services_cfg = load_services_config()
+        print("   ✓ get_global_config works")
+
+        services_cfg = get_services_config()
         assert services_cfg['chat_app']['port'] == 7868
-        print("   ✓ load_services_config works")
-        
-        dm_cfg = load_data_manager_config()
+        print("   ✓ get_services_config works")
+
+        dm_cfg = get_data_manager_config()
         assert dm_cfg['embedding_name'] == 'HuggingFaceEmbeddings'
-        print("   ✓ load_data_manager_config works")
-        
-        archi_cfg = load_archi_config()
+        print("   ✓ get_data_manager_config works")
+
+        archi_cfg = get_archi_config()
         assert 'QAPipeline' in archi_cfg['pipelines']
-        print("   ✓ load_archi_config works")
+        print("   ✓ get_archi_config works")
     
     # Clean up env
     if 'ARCHI_CONFIGS_PATH' in os.environ:
         del os.environ['ARCHI_CONFIGS_PATH']
+    _clear_factory()
     
     print("[1/5] PASSED ✓")
 
@@ -202,6 +226,7 @@ def test_model_registry():
         finally:
             if 'ARCHI_CONFIGS_PATH' in os.environ:
                 del os.environ['ARCHI_CONFIGS_PATH']
+            _clear_factory()
 
 
 def test_config_service_dataclasses():
@@ -307,6 +332,7 @@ def test_integration_flow():
                 f.write(f'Default {prompt_type} prompt')
         
         os.environ['ARCHI_CONFIGS_PATH'] = config_dir
+        _set_fake_factory(config)
         
         config = {
             'name': 'integration-test',
@@ -325,11 +351,11 @@ def test_integration_flow():
         with open(os.path.join(config_dir, 'integration.yaml'), 'w') as f:
             yaml.dump(config, f)
         
-        # Load config
-        from src.utils.yaml_config import load_yaml_config
-        loaded_config = load_yaml_config()
+        # Load config (from fake Postgres)
+        from src.utils.config_access import get_full_config
+        loaded_config = get_full_config()
         assert loaded_config['name'] == 'integration-test'
-        print("   ✓ Config loaded from YAML")
+        print("   ✓ Config loaded from Postgres stub")
         
         # Load prompts
         from src.utils.prompt_service import PromptService
@@ -347,6 +373,7 @@ def test_integration_flow():
         
         # Clean up
         del os.environ['ARCHI_CONFIGS_PATH']
+        _clear_factory()
     
     print("[INTEGRATION] PASSED ✓")
 

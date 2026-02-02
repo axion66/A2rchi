@@ -8,9 +8,9 @@ from flask import Flask
 
 from src.archi.archi import archi
 from src.data_manager.data_manager import DataManager
-from src.utils.yaml_config import load_yaml_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
+from src.utils.config_access import get_full_config
 
 logger = get_logger(__name__)
 
@@ -47,7 +47,7 @@ class Mattermost:
 
         logger.info('Mattermost::INIT')
 
-        self.mattermost_config = load_yaml_config()["utils"].get("mattermost", None)
+        self.mattermost_config = get_full_config().get("utils", {}).get("mattermost", None)
         
         # mattermost webhook for reading questions/sending responses
         self.mattermost_url = 'https://mattermost.web.cern.ch/'

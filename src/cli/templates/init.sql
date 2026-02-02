@@ -121,6 +121,10 @@ CREATE TABLE IF NOT EXISTS static_config (
 
     -- Source configuration (deploy-time)
     sources_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    services_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    data_manager_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    archi_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    global_config JSONB NOT NULL DEFAULT '{}'::jsonb,
     
     -- Timestamps
     created_at TIMESTAMP NOT NULL DEFAULT NOW()

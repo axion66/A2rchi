@@ -15,9 +15,9 @@ from typing import Optional
 from flask import Blueprint, jsonify, request, g, current_app
 
 from src.utils.postgres_service_factory import PostgresServiceFactory
-from src.utils.yaml_config import load_yaml_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
+from src.utils.config_access import get_full_config
 
 logger = get_logger(__name__)
 
@@ -32,15 +32,16 @@ def get_services() -> PostgresServiceFactory:
         if hasattr(current_app, 'pg_services'):
             g.services = current_app.pg_services
         else:
-            # Create from config
-            config = load_yaml_config()
-            encryption_key = read_secret("BYOK_ENCRYPTION_KEY", default="")
-            
-            factory = PostgresServiceFactory.from_yaml_config(
-                config=config,
-                encryption_key=encryption_key,
-            )
-            current_app.pg_services = factory
+            # Prefer singleton if set by service entrypoint
+            factory = PostgresServiceFactory.get_instance()
+            if not factory:
+                encryption_key = read_secret("BYOK_ENCRYPTION_KEY", default="")
+                raw_config = get_full_config()
+                factory = PostgresServiceFactory.from_yaml_config(
+                    config=raw_config,
+                    encryption_key=encryption_key,
+                )
+                current_app.pg_services = factory
             g.services = factory
     
     return g.services

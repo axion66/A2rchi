@@ -12,8 +12,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      config-seed:
+        condition: service_completed_successfully
     {% endif -%}
     environment:
+      PGHOST: {{ 'localhost' if host_mode else 'postgres' }}
+      PGPORT: {{ postgres_port }}
+      PGDATABASE: archi-db
+      PGUSER: archi
+      PG_PASSWORD: ${PG_PASSWORD}
       {% for secret in required_secrets | default([]) -%}
       {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
       {% endfor %}
@@ -68,6 +75,34 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  
+  config-seed:
+    image: {{ chatbot_image }}:{{ chatbot_tag }}
+    build:
+      context: .
+      dockerfile: archi_code/cli/templates/dockerfiles/Dockerfile-chat{{ '-gpu' if gpu_ids else '' }}
+      args:
+        APP_VERSION: {{ app_version }}
+    container_name: {{ name }}-config-seed
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: {{ 'localhost' if host_mode else 'postgres' }}
+      PGPORT: {{ postgres_port }}
+      PGDATABASE: archi-db
+      PGUSER: archi
+      PG_PASSWORD: ${PG_PASSWORD}
+      CONFIG_PATH: /rendered-config/config.yaml
+    env_file:
+      - .env
+    volumes:
+      - ./configs:/rendered-config:ro
+    command: ["bash", "-lc", "python -m src.cli.tools.config_seed"]
+    restart: "no"
+    {%- if host_mode %}
+    network_mode: host
+    {%- endif %}
   {%- endif %}
 
   # Application services (conditional)
@@ -84,8 +119,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      config-seed:
+        condition: service_completed_successfully
     {% endif -%}
     environment:
+      PGHOST: {{ 'localhost' if host_mode else 'postgres' }}
+      PGPORT: {{ postgres_port }}
+      PGDATABASE: archi-db
+      PGUSER: archi
+      PG_PASSWORD: ${PG_PASSWORD}
       {% for secret in required_secrets | default([]) -%}
       {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
       {% endfor %}
@@ -152,7 +194,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      config-seed:
+        condition: service_completed_successfully
     {% endif -%}
+    environment:
+      PGHOST: {{ 'localhost' if host_mode else 'postgres' }}
+      PGPORT: {{ postgres_port }}
+      PGDATABASE: archi-db
+      PGUSER: archi
+      PG_PASSWORD: ${PG_PASSWORD}
     ports:
       - {{ grafana_port_host }}:3000
     volumes:
@@ -178,11 +228,17 @@ services:
       dockerfile: archi_code/cli/templates/dockerfiles/Dockerfile-grader{{ '-gpu' if gpu_ids else '' }}
     {% if postgres_enabled -%}
     depends_on:
-      {% if postgres_enabled -%}
       postgres:
         condition: service_healthy
-      {% endif %}
+      config-seed:
+        condition: service_completed_successfully
     {% endif -%}
+    environment:
+      PGHOST: {{ 'localhost' if host_mode else 'postgres' }}
+      PGPORT: {{ postgres_port }}
+      PGDATABASE: archi-db
+      PGUSER: archi
+      PG_PASSWORD: ${PG_PASSWORD}
     environment:
       {% for secret in required_secrets | default([]) -%}
       {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
@@ -256,10 +312,10 @@ services:
     container_name: {{ piazza_container_name }}
     {% if postgres_enabled -%}
     depends_on:
-      {% if postgres_enabled -%}
       postgres:
         condition: service_healthy
-      {% endif %}
+      config-seed:
+        condition: service_completed_successfully
     {% endif -%}
     environment:
       {% for secret in required_secrets | default([]) -%}
@@ -300,10 +356,10 @@ services:
         TAG: {{ mattermost_tag }}
     {% if postgres_enabled -%}
     depends_on:
-      {% if postgres_enabled -%}
       postgres:
         condition: service_healthy
-      {% endif %}
+      config-seed:
+        condition: service_completed_successfully
     {% endif -%}
     environment:
       {% for secret in required_secrets | default([]) -%}
@@ -368,10 +424,10 @@ services:
     container_name: {{ redmine_mailer_container_name }}-redmine
     {% if postgres_enabled -%}
     depends_on:
-      {% if postgres_enabled -%}
       postgres:
         condition: service_healthy
-      {% endif %}
+      config-seed:
+        condition: service_completed_successfully
     {% endif -%}
     environment:
       {% for secret in required_secrets | default([]) -%}
@@ -425,10 +481,10 @@ services:
     container_name: {{ redmine_mailer_container_name }}-mailer
     {% if postgres_enabled -%}
     depends_on:
-      {% if postgres_enabled -%}
       postgres:
         condition: service_healthy
-      {% endif %}
+      config-seed:
+        condition: service_completed_successfully
     {% endif -%}
     environment:
       {% for secret in required_secrets | default([]) -%}

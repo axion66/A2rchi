@@ -11,10 +11,10 @@ from src.archi.archi import archi
 from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
 from src.data_manager.data_manager import DataManager
 from src.interfaces.redmine_mailer_integration.utils import sender
-from src.utils.yaml_config import load_yaml_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.utils.sql import SQL_INSERT_CONVO, SQL_UPSERT_CONVERSATION_METADATA
+from src.utils.config_access import get_full_config, get_global_config, get_services_config
 
 logger = get_logger(__name__)
 
@@ -34,9 +34,9 @@ class RedmineAIWrapper:
         self.data_manager = DataManager(run_ingestion=False)
 
         # configs
-        self.config = load_yaml_config()
-        self.global_config = self.config["global"]
-        self.services_config = self.config["services"]
+        self.config = get_full_config()
+        self.global_config = get_global_config()
+        self.services_config = get_services_config()
         self.redmine_config = self.services_config.get("redmine_mailbox", {})
         self.data_path = self.global_config["DATA_PATH"]
 
@@ -168,8 +168,7 @@ class Redmine:
             self.ai_wrapper = RedmineAIWrapper()
 
         # read configuration for Redmine mailbox service
-        config = load_yaml_config()
-        services_config = config.get("services", {}) if isinstance(config, dict) else {}
+        services_config = get_services_config()
         redmine_mailbox_config = services_config.get("redmine_mailbox", {})
 
         self.redmine_url = redmine_mailbox_config.get("url")

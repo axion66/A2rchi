@@ -5,6 +5,7 @@ Provides a single entry point for initializing and accessing all database servic
 with shared connection pooling.
 """
 from typing import Any, Dict, Optional
+import os
 
 from src.utils.connection_pool import ConnectionPool
 from src.utils.config_service import ConfigService
@@ -84,8 +85,8 @@ class PostgresServiceFactory:
         """
         pool = ConnectionPool(
             connection_params=connection_params,
-            min_connections=pool_min_conn,
-            max_connections=pool_max_conn,
+            min_conn=pool_min_conn,
+            max_conn=pool_max_conn,
         )
         
         return cls(
@@ -111,6 +112,9 @@ class PostgresServiceFactory:
             Configured PostgresServiceFactory
         """
         db_config = config.get('database', {}).get('postgres', {})
+        if not db_config:
+            # Fallback to legacy location
+            db_config = config.get('services', {}).get('postgres', {})
         
         connection_params = {
             'host': db_config.get('host', 'localhost'),
@@ -127,6 +131,39 @@ class PostgresServiceFactory:
             pool_min_conn=pool_config.get('min_connections', 5),
             pool_max_conn=pool_config.get('max_connections', 20),
             encryption_key=encryption_key or db_config.get('encryption_key'),
+        )
+
+    @classmethod
+    def from_env(
+        cls,
+        *,
+        password_override: Optional[str] = None,
+        encryption_key: Optional[str] = None,
+        pool_min_conn: int = 5,
+        pool_max_conn: int = 20,
+    ) -> 'PostgresServiceFactory':
+        """
+        Create factory from environment variables (PGHOST, PGPORT, PGDATABASE, PGUSER, PG_PASSWORD).
+        """
+        # Support common Postgres env var names used by compose/k8s
+        host = os.environ.get('PGHOST', os.environ.get('POSTGRES_HOST', 'localhost'))
+        port = int(os.environ.get('PGPORT', os.environ.get('POSTGRES_PORT', 5432)))
+        database = os.environ.get('PGDATABASE', os.environ.get('POSTGRES_DB', 'postgres'))
+        user = os.environ.get('PGUSER', os.environ.get('POSTGRES_USER', 'archi'))
+        password = password_override or os.environ.get('PG_PASSWORD') or os.environ.get('POSTGRES_PASSWORD', '')
+
+        connection_params = {
+            'host': host,
+            'port': port,
+            'database': database,
+            'user': user,
+            'password': password,
+        }
+        return cls.from_config(
+            connection_params=connection_params,
+            pool_min_conn=pool_min_conn,
+            pool_max_conn=pool_max_conn,
+            encryption_key=encryption_key or os.environ.get('PG_ENCRYPTION_KEY'),
         )
     
     @classmethod

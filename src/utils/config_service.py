@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 import psycopg2
 import psycopg2.extras
+import json
 
 from src.utils.logging import get_logger
 
@@ -49,8 +50,12 @@ class StaticConfig:
     auth_enabled: bool = False
     session_lifetime_days: int = 30
 
-    # Sources configuration (deploy-time)
+    # Config sections
     sources_config: Dict[str, Any] = field(default_factory=dict)
+    services_config: Dict[str, Any] = field(default_factory=dict)
+    data_manager_config: Dict[str, Any] = field(default_factory=dict)
+    archi_config: Dict[str, Any] = field(default_factory=dict)
+    global_config: Dict[str, Any] = field(default_factory=dict)
     
     created_at: Optional[str] = None
 
@@ -126,22 +131,104 @@ class ConfigService:
         self._pool = connection_pool
         self._pg_config = pg_config
         self._static_cache: Optional[StaticConfig] = None
+        # Ensure supporting tables exist for full-config storage (best-effort)
+        try:
+            self._ensure_config_tables()
+        except Exception as exc:
+            logger.debug("Could not ensure config tables: %s", exc)
     
     def _get_connection(self) -> psycopg2.extensions.connection:
         """Get a database connection."""
         if self._pool:
-            return self._pool.get_connection()
+            return self._pool.get_connection_direct()
         elif self._pg_config:
             return psycopg2.connect(**self._pg_config)
         else:
             raise ValueError("No connection pool or pg_config provided")
-    
+
     def _release_connection(self, conn) -> None:
         """Release connection back to pool or close it."""
         if self._pool:
             self._pool.release_connection(conn)
         else:
             conn.close()
+
+    def _ensure_config_tables(self) -> None:
+        """Create/extend config tables if missing."""
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cursor:
+                # Create base tables if they don't exist
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS static_config (
+                        id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+                        deployment_name VARCHAR(100) NOT NULL,
+                        config_version VARCHAR(20) NOT NULL DEFAULT '2.0.0',
+                        data_path TEXT NOT NULL DEFAULT '/root/data/',
+                        prompts_path TEXT NOT NULL DEFAULT '/root/archi/data/prompts/',
+                        embedding_model VARCHAR(200) NOT NULL,
+                        embedding_dimensions INTEGER NOT NULL,
+                        chunk_size INTEGER NOT NULL DEFAULT 1000,
+                        chunk_overlap INTEGER NOT NULL DEFAULT 150,
+                        distance_metric VARCHAR(20) NOT NULL DEFAULT 'cosine',
+                        available_pipelines TEXT[] NOT NULL DEFAULT '{}',
+                        available_models TEXT[] NOT NULL DEFAULT '{}',
+                        available_providers TEXT[] NOT NULL DEFAULT '{}',
+                        auth_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                        session_lifetime_days INTEGER NOT NULL DEFAULT 30,
+                        sources_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+                        services_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+                        data_manager_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+                        archi_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+                        global_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+                        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+                    );
+                    CREATE TABLE IF NOT EXISTS dynamic_config (
+                        id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+                        active_pipeline VARCHAR(100) NOT NULL DEFAULT 'QAPipeline',
+                        active_model VARCHAR(200) NOT NULL DEFAULT 'openai/gpt-4o',
+                        temperature NUMERIC(3,2) NOT NULL DEFAULT 0.7,
+                        max_tokens INTEGER NOT NULL DEFAULT 4096,
+                        system_prompt TEXT,
+                        top_p NUMERIC(3,2) NOT NULL DEFAULT 0.9,
+                        top_k INTEGER NOT NULL DEFAULT 50,
+                        repetition_penalty NUMERIC(4,2) NOT NULL DEFAULT 1.0,
+                        active_condense_prompt VARCHAR(100) NOT NULL DEFAULT 'default',
+                        active_chat_prompt VARCHAR(100) NOT NULL DEFAULT 'default',
+                        active_system_prompt VARCHAR(100) NOT NULL DEFAULT 'default',
+                        num_documents_to_retrieve INTEGER NOT NULL DEFAULT 10,
+                        use_hybrid_search BOOLEAN NOT NULL DEFAULT TRUE,
+                        bm25_weight NUMERIC(3,2) NOT NULL DEFAULT 0.3,
+                        semantic_weight NUMERIC(3,2) NOT NULL DEFAULT 0.7,
+                        ingestion_schedule VARCHAR(100) NOT NULL DEFAULT '',
+                        verbosity INTEGER NOT NULL DEFAULT 3,
+                        updated_at TIMESTAMP,
+                        updated_by VARCHAR(100)
+                    );
+                    """
+                )
+                # Ensure JSONB columns present (idempotent)
+                cursor.execute(
+                    """
+                    ALTER TABLE static_config
+                    ADD COLUMN IF NOT EXISTS services_config JSONB DEFAULT '{}'::jsonb,
+                    ADD COLUMN IF NOT EXISTS data_manager_config JSONB DEFAULT '{}'::jsonb,
+                    ADD COLUMN IF NOT EXISTS archi_config JSONB DEFAULT '{}'::jsonb,
+                    ADD COLUMN IF NOT EXISTS global_config JSONB DEFAULT '{}'::jsonb
+                    """
+                )
+                conn.commit()
+        except psycopg2.Error as e:
+            logger.debug("Could not ensure config tables/columns: %s", e)
+        finally:
+            self._release_connection(conn)
+
+    # =========================================================================
+    # Raw config storage (full YAML as JSONB)
+    # =========================================================================
+
+    # raw_config removed; use explicit sections in static_config
 
     @staticmethod
     def _normalize_sources_config(sources_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -172,6 +259,8 @@ class ConfigService:
         if self._static_cache is not None and not force_reload:
             return self._static_cache
         
+        # Ensure schema exists before attempting to read
+        self._ensure_config_tables()
         conn = self._get_connection()
         try:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
@@ -181,7 +270,9 @@ class ConfigService:
                            embedding_model, embedding_dimensions,
                            chunk_size, chunk_overlap, distance_metric,
                            available_pipelines, available_models, available_providers,
-                           auth_enabled, session_lifetime_days, sources_config, created_at
+                           auth_enabled, session_lifetime_days, sources_config,
+                           services_config, data_manager_config, archi_config, global_config,
+                           created_at
                     FROM static_config
                     WHERE id = 1
                     """
@@ -207,6 +298,10 @@ class ConfigService:
                     auth_enabled=row["auth_enabled"],
                     session_lifetime_days=row.get("session_lifetime_days", 30),
                     sources_config=row.get("sources_config") or {},
+                    services_config=row.get("services_config") or {},
+                    data_manager_config=row.get("data_manager_config") or {},
+                    archi_config=row.get("archi_config") or {},
+                    global_config=row.get("global_config") or {},
                     created_at=str(row["created_at"]) if row["created_at"] else None,
                 )
                 
@@ -230,6 +325,10 @@ class ConfigService:
         available_providers: Optional[List[str]] = None,
         auth_enabled: bool = False,
         sources_config: Optional[Dict[str, Any]] = None,
+        services_config: Optional[Dict[str, Any]] = None,
+        data_manager_config: Optional[Dict[str, Any]] = None,
+        archi_config: Optional[Dict[str, Any]] = None,
+        global_config: Optional[Dict[str, Any]] = None,
     ) -> StaticConfig:
         """
         Initialize static configuration (typically called once at deployment).
@@ -258,6 +357,10 @@ class ConfigService:
             psycopg2.IntegrityError: If static config already exists
         """
         normalized_sources = self._normalize_sources_config(sources_config)
+        services_section = services_config or {}
+        data_manager_section = data_manager_config or {}
+        archi_section = archi_config or {}
+        global_section = global_config or {}
         conn = self._get_connection()
         try:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
@@ -268,9 +371,10 @@ class ConfigService:
                         embedding_model, embedding_dimensions,
                         chunk_size, chunk_overlap, distance_metric,
                         available_pipelines, available_models, available_providers,
-                        auth_enabled, sources_config
+                        auth_enabled, sources_config,
+                        services_config, data_manager_config, archi_config, global_config
                     )
-                    VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO UPDATE SET
                         deployment_name = EXCLUDED.deployment_name,
                         config_version = EXCLUDED.config_version,
@@ -284,12 +388,18 @@ class ConfigService:
                         available_models = EXCLUDED.available_models,
                         available_providers = EXCLUDED.available_providers,
                         auth_enabled = EXCLUDED.auth_enabled,
-                        sources_config = EXCLUDED.sources_config
+                        sources_config = EXCLUDED.sources_config,
+                        services_config = EXCLUDED.services_config,
+                        data_manager_config = EXCLUDED.data_manager_config,
+                        archi_config = EXCLUDED.archi_config,
+                        global_config = EXCLUDED.global_config
                     RETURNING deployment_name, config_version, data_path,
                               embedding_model, embedding_dimensions,
                               chunk_size, chunk_overlap, distance_metric,
                               available_pipelines, available_models, available_providers,
-                              auth_enabled, sources_config, created_at
+                              auth_enabled, sources_config,
+                              services_config, data_manager_config, archi_config, global_config,
+                              created_at
                     """,
                     (
                         deployment_name, config_version, data_path,
@@ -300,6 +410,10 @@ class ConfigService:
                         available_providers or [],
                         auth_enabled,
                         psycopg2.extras.Json(normalized_sources),
+                        psycopg2.extras.Json(services_section),
+                        psycopg2.extras.Json(data_manager_section),
+                        psycopg2.extras.Json(archi_section),
+                        psycopg2.extras.Json(global_section),
                     )
                 )
                 row = cursor.fetchone()
@@ -319,6 +433,10 @@ class ConfigService:
                     available_providers=row["available_providers"] or [],
                     auth_enabled=row["auth_enabled"],
                     sources_config=row.get("sources_config") or {},
+                    services_config=row.get("services_config") or {},
+                    data_manager_config=row.get("data_manager_config") or {},
+                    archi_config=row.get("archi_config") or {},
+                    global_config=row.get("global_config") or {},
                     created_at=str(row["created_at"]) if row["created_at"] else None,
                 )
                 
@@ -603,6 +721,11 @@ class ConfigService:
             Initialized ConfigService
         """
         service = ConfigService(pg_config)
+        # Store full raw config for downstream runtime consumption
+        try:
+            service.set_raw_config(config)
+        except Exception as exc:
+            logger.warning("Failed to persist raw config to Postgres: %s", exc)
         
         data_manager = config.get("data_manager", {})
         embedding_class_map = data_manager.get("embedding_class_map", {})
@@ -671,6 +794,12 @@ class ConfigService:
         Args:
             config: Parsed config.yaml dictionary
         """
+        # Persist raw config for runtime access
+        try:
+            self.set_raw_config(config)
+        except Exception as exc:
+            logger.warning("Failed to persist raw config to Postgres: %s", exc)
+
         data_manager = config.get("data_manager", {})
         embedding_class_map = data_manager.get("embedding_class_map", {})
         embedding_name = data_manager.get("embedding_name", "HuggingFaceEmbeddings")

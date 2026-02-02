@@ -5,27 +5,10 @@ import os
 from flask import Flask
 
 from src.interfaces.chat_app.app import FlaskAppWrapper
-from src.utils.yaml_config import load_yaml_config
 from src.utils.env import read_secret
 from src.utils.logging import setup_logging
-
-
-def initialize_config_from_yaml(config):
-    """Initialize ConfigService from YAML config on startup."""
-    try:
-        from src.utils.config_service import ConfigService
-        
-        pg_config = {
-            "password": read_secret("PG_PASSWORD"),
-            **config["services"]["postgres"],
-        }
-        
-        config_service = ConfigService(pg_config)
-        config_service.initialize_from_yaml(config)
-        print("Synced configuration to PostgreSQL")
-    except Exception as e:
-        print(f"Warning: Could not sync config to PostgreSQL: {e}")
-        # Non-fatal - service can still start without ConfigService sync
+from src.utils.postgres_service_factory import PostgresServiceFactory
+from src.utils.config_access import get_full_config
 
 
 def main():
@@ -36,12 +19,13 @@ def main():
     os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
     os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
     os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
-    
-    config = load_yaml_config()
-    
-    # Initialize ConfigService from YAML (syncs static config to DB)
-    initialize_config_from_yaml(config)
-    
+
+    # Set up shared Postgres services (expects config already in DB)
+    factory = PostgresServiceFactory.from_env(password_override=read_secret("PG_PASSWORD"))
+    PostgresServiceFactory.set_instance(factory)
+
+    # Reload config from Postgres (runtime source of truth)
+    config = get_full_config()
     chat_config = config["services"]["chat_app"]
     archi_config = config["archi"]
     print(f"Starting Chat Service with (host, port): ({chat_config['host']}, {chat_config['port']})")
@@ -76,4 +60,3 @@ def generate_script(chat_config, archi_config):
 if __name__ == "__main__":
     mp.set_start_method("spawn", force=True)
     main()
-

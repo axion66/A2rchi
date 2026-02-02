@@ -280,6 +280,7 @@ class TemplateManager:
         configs_path.mkdir(exist_ok=True)
 
         archi_configs = context.config_manager.get_configs()
+        single_mode = len(archi_configs) == 1
         for archi_config in archi_configs:
             name = archi_config["name"]
             updated_config = copy.deepcopy(archi_config)
@@ -311,9 +312,10 @@ class TemplateManager:
             config_template = self.env.get_template(BASE_CONFIG_TEMPLATE)
             config_rendered = config_template.render(verbosity=context.plan.verbosity, **updated_config)
 
-            with open(configs_path / f"{name}.yaml", "w") as f:
+            target_name = "config.yaml" if single_mode else f"{name}.yaml"
+            with open(configs_path / target_name, "w") as f:
                 f.write(config_rendered)
-            logger.info(f"Rendered configuration file {configs_path / name}.yaml")
+            logger.info(f"Rendered configuration file {configs_path / target_name}")
 
     # service-specific assets
     def _render_grafana_assets(self, context: TemplateContext) -> None:

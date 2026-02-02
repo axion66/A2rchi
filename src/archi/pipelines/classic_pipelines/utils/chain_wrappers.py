@@ -6,13 +6,10 @@ from langchain_core.language_models.base import BaseLanguageModel
 from langchain_core.prompts.base import BasePromptTemplate
 
 from src.archi.pipelines.classic_pipelines.utils.token_limiter import TokenLimiter
-from src.utils.yaml_config import load_global_config
 from src.utils.logging import get_logger
+from src.utils.config_access import get_global_config
 
 logger = get_logger(__name__)
-
-# DEFINITIONS
-global_configs = load_global_config()
 
 class ChainWrapper:
     """
@@ -56,6 +53,7 @@ class ChainWrapper:
         """
         Prepare the input_variables to be passed to the chain.
         """
+        global_configs = get_global_config()
 
         # reduce number of tokens, if necessary
         inputs = self.token_limiter.prune_inputs_to_token_limit(**inputs)

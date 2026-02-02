@@ -76,7 +76,6 @@ class ConnectionPool:
         Note:
             Either pg_config or connection_params must be provided.
         """
-        # Support both parameter names for backward compatibility
         effective_config = pg_config or connection_params
         if not effective_config:
             raise ValueError("Either pg_config or connection_params must be provided")
@@ -125,7 +124,6 @@ class ConnectionPool:
         Returns:
             Singleton ConnectionPool instance
         """
-        # Support both parameter names
         effective_config = pg_config or connection_params
         if cls._instance is None:
             with cls._lock:
@@ -169,9 +167,6 @@ class ConnectionPool:
         
         conn = None
         try:
-            # getconn() blocks until a connection is available
-            # Note: psycopg2's pool doesn't have native timeout support
-            # For production, consider using psycopg3 or pgbouncer
             conn = self._pool.getconn()
             
             if conn is None:
@@ -179,7 +174,6 @@ class ConnectionPool:
                     f"Could not acquire connection within {self._timeout}s timeout"
                 )
             
-            # Ensure connection is usable
             if conn.closed:
                 conn = self._reconnect(conn)
             
@@ -218,45 +212,14 @@ class ConnectionPool:
     ) -> Any:
         """
         Execute a query using a pooled connection.
-        
-        Convenience method for simple queries.
-        
-        Args:
-            query: SQL query
-            params: Query parameters
-            fetch: If True, return fetchall() results
-            
-        Returns:
-            Query results if fetch=True, else None
         """
         with self.get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(query, params)
+            with conn.cursor() as cur:
+                cur.execute(query, params)
                 if fetch:
-                    return cursor.fetchall()
+                    return cur.fetchall()
                 conn.commit()
                 return None
-    
-    def execute_many(
-        self,
-        query: str,
-        params_list: list,
-    ) -> int:
-        """
-        Execute a query multiple times with different parameters.
-        
-        Args:
-            query: SQL query
-            params_list: List of parameter tuples
-            
-        Returns:
-            Total rows affected
-        """
-        with self.get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.executemany(query, params_list)
-                conn.commit()
-                return cursor.rowcount
     
     @property
     def stats(self) -> Dict[str, Any]:
@@ -264,8 +227,6 @@ class ConnectionPool:
         if self._pool is None:
             return {"status": "closed"}
         
-        # Note: ThreadedConnectionPool doesn't expose detailed stats
-        # For production monitoring, consider using pgbouncer
         return {
             "status": "open",
             "min_connections": self._min_conn,
@@ -279,6 +240,19 @@ class ConnectionPool:
             self._pool.closeall()
             self._closed = True
             logger.info("Connection pool closed")
+
+    # Compatibility helpers for legacy callers
+    def release_connection(self, conn) -> None:
+        if self._pool is not None and conn is not None:
+            try:
+                self._pool.putconn(conn)
+            except Exception:
+                pass
+
+    def get_connection_direct(self):
+        if self._pool is None or self._closed:
+            raise ConnectionPoolError("Connection pool is closed")
+        return self._pool.getconn()
     
     def __enter__(self) -> "ConnectionPool":
         return self
@@ -294,19 +268,6 @@ def init_pool(
     min_conn: int = 5,
     max_conn: int = 20,
 ) -> ConnectionPool:
-    """
-    Initialize application-wide connection pool.
-    
-    Call this during application startup.
-    
-    Args:
-        pg_config: PostgreSQL connection parameters
-        min_conn: Minimum pool size
-        max_conn: Maximum pool size
-        
-    Returns:
-        ConnectionPool instance
-    """
     return ConnectionPool.get_instance(
         pg_config,
         min_conn=min_conn,
@@ -315,15 +276,7 @@ def init_pool(
 
 
 def get_pool() -> ConnectionPool:
-    """
-    Get the application connection pool.
-    
-    Must call init_pool() first during startup.
-    
-    Returns:
-        ConnectionPool instance
-        
-    Raises:
-        ValueError: If pool not initialized
-    """
-    return ConnectionPool.get_instance()
+    pool = ConnectionPool.get_instance()
+    if pool is None:
+        raise ConnectionPoolError("Connection pool not initialized")
+    return pool

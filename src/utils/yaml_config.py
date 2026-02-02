@@ -1,13 +1,9 @@
 """
-Simple YAML configuration loader for archi.
+YAML configuration loader with Postgres-backed runtime source of truth.
 
-This module provides direct YAML access for:
-1. CLI commands that run before PostgreSQL exists
-2. Complex nested configuration that isn't in the database yet
-3. Bootstrapping ConfigService initialization
-
-For runtime configuration with user preferences and dynamic settings,
-use ConfigService instead.
+Runtime behavior:
+- Reads configuration from PostgreSQL (raw_config table) via ConfigService / PostgresServiceFactory.
+- Does not fall back to filesystem YAML at runtime. Bootstrap code must ingest YAML into Postgres first.
 """
 
 import os
@@ -16,9 +12,16 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from src.utils.postgres_service_factory import PostgresServiceFactory
+
 
 # Default config path - can be overridden with ARCHI_CONFIGS_PATH env var
 CONFIGS_PATH = os.environ.get("ARCHI_CONFIGS_PATH", "/root/archi/configs/")
+
+
+def _get_config_from_db() -> Optional[Dict[str, Any]]:
+    """Deprecated helper; returns None (raw_config removed)."""
+    return None
 
 
 def _get_configs_path() -> str:
@@ -33,41 +36,15 @@ def list_config_names() -> List[str]:
     Returns:
         List of config names found in CONFIGS_PATH.
     """
-    configs_path = _get_configs_path()
-    if not os.path.exists(configs_path):
-        return []
-    return [n.replace('.yaml', '') for n in os.listdir(configs_path) if n.endswith('.yaml')]
+    raise RuntimeError("list_config_names is removed. Query config via ConfigService.")
 
 
 def load_yaml_config(name: Optional[str] = None) -> Dict[str, Any]:
     """
-    Load a YAML configuration file.
-    
-    Args:
-        name: Config name (without .yaml extension). If None, loads the first config found.
-        
-    Returns:
-        Dictionary containing the full configuration.
-        
-    Raises:
-        FileNotFoundError: If no config file is found.
+    Deprecated. Use src.utils.config_access.get_raw_config().
+    Kept only to surface a clear error if legacy imports remain.
     """
-    configs_path = _get_configs_path()
-    
-    if name is None:
-        # Find first YAML file in configs directory
-        files = [f for f in os.listdir(configs_path) if f.endswith('.yaml')]
-        if not files:
-            raise FileNotFoundError(f"No config files found in {configs_path}")
-        config_path = os.path.join(configs_path, files[0])
-    else:
-        config_path = os.path.join(configs_path, f"{name}.yaml")
-        
-    if not os.path.exists(config_path):
-        raise FileNotFoundError(f"Config file not found: {config_path}")
-        
-    with open(config_path, "r") as f:
-        return yaml.load(f, Loader=yaml.FullLoader)
+    raise RuntimeError("load_yaml_config is removed. Use ConfigService via PostgresServiceFactory (see config_access.get_raw_config()).")
 
 
 def load_global_config(name: Optional[str] = None) -> Dict[str, Any]:
@@ -80,8 +57,8 @@ def load_global_config(name: Optional[str] = None) -> Dict[str, Any]:
     Returns:
         Dictionary containing global configuration.
     """
-    config = load_yaml_config(name)
-    return config.get("global", {})
+    from src.utils.config_access import get_global_config
+    return get_global_config()
 
 
 def load_services_config(name: Optional[str] = None) -> Dict[str, Any]:
@@ -94,8 +71,8 @@ def load_services_config(name: Optional[str] = None) -> Dict[str, Any]:
     Returns:
         Dictionary containing services configuration.
     """
-    config = load_yaml_config(name)
-    return config.get("services", {})
+    from src.utils.config_access import get_services_config
+    return get_services_config()
 
 
 def load_data_manager_config(name: Optional[str] = None) -> Dict[str, Any]:
@@ -108,8 +85,8 @@ def load_data_manager_config(name: Optional[str] = None) -> Dict[str, Any]:
     Returns:
         Dictionary containing data_manager configuration.
     """
-    config = load_yaml_config(name)
-    return config.get("data_manager", {})
+    from src.utils.config_access import get_data_manager_config
+    return get_data_manager_config()
 
 
 def load_archi_config(name: Optional[str] = None) -> Dict[str, Any]:
@@ -122,8 +99,8 @@ def load_archi_config(name: Optional[str] = None) -> Dict[str, Any]:
     Returns:
         Dictionary containing archi configuration.
     """
-    config = load_yaml_config(name)
-    return config.get("archi", {})
+    from src.utils.config_access import get_archi_config
+    return get_archi_config()
 
 
 def get_model_class_map(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
@@ -180,26 +157,21 @@ def get_embedding_class_map(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]
     return result
 
 
-def load_config_with_class_mapping(name: Optional[str] = None) -> Dict[str, Any]:
+def load_config_with_class_mapping(name: Optional[str] = None, *, factory=None) -> Dict[str, Any]:
     """
-    Load config and resolve model/embedding class names to actual classes.
-    
-    This is the replacement for `load_config(map=True)` from config_loader.
-    
-    Args:
-        name: Config name (without .yaml extension).
-        
-    Returns:
-        Full configuration with class mappings resolved.
+    Resolve model/embedding class names to actual classes from Postgres raw_config.
     """
-    config = load_yaml_config(name)
-    
-    # Resolve model classes
+    from src.utils.config_access import get_full_config
+
+    _ = name  # unused; present for compatibility
+    _ = factory
+
+    config = get_full_config()
+
     if "archi" in config and "model_class_map" in config["archi"]:
         config["archi"]["model_class_map"] = get_model_class_map(config)
-        
-    # Resolve embedding classes
+
     if "data_manager" in config and "embedding_class_map" in config["data_manager"]:
         config["data_manager"]["embedding_class_map"] = get_embedding_class_map(config)
-        
+
     return config

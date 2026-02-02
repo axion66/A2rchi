@@ -1,8 +1,11 @@
 import logging
+import os
 
-import yaml
-
-from src.utils.yaml_config import load_global_config
+# Avoid importing YAML/config loaders here to prevent circular imports during startup.
+try:
+    from src.utils.config_access import get_global_config
+except Exception:
+    get_global_config = None
 
 # ignore debug logs from these modules, too verbose :)
 ignore_debug_modules = [
@@ -23,9 +26,12 @@ logging_verboseLevel = [
 ]
 
 def setup_logging():
-
-    config = load_global_config()
-    verbosity = config["verbosity"]
+    verbosity = 3
+    if get_global_config:
+        try:
+            verbosity = get_global_config().get("verbosity", verbosity)
+        except Exception:
+            pass
 
     format_str = '(%(asctime)s) [%(name)s] %(levelname)s: %(message)s'
 
