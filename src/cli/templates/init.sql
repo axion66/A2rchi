@@ -354,8 +354,18 @@ CREATE INDEX IF NOT EXISTS idx_conv_meta_user ON conversation_metadata(user_id);
 CREATE INDEX IF NOT EXISTS idx_conv_meta_client ON conversation_metadata(client_id);
 
 -- Add FK to conversation_document_overrides now that conversation_metadata exists
-ALTER TABLE conversation_document_overrides 
-    DROP CONSTRAINT IF EXISTS conversation_document_overrides_conversation_id_fkey;
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'conversation_document_overrides_conversation_id_fkey'
+          AND conrelid = 'conversation_document_overrides'::regclass
+    ) THEN
+        ALTER TABLE conversation_document_overrides
+            DROP CONSTRAINT conversation_document_overrides_conversation_id_fkey;
+    END IF;
+END $$;
 ALTER TABLE conversation_document_overrides 
     ADD CONSTRAINT conversation_document_overrides_conversation_id_fkey 
     FOREIGN KEY (conversation_id) REFERENCES conversation_metadata(conversation_id) ON DELETE CASCADE;
