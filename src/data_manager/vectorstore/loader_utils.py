@@ -24,18 +24,7 @@ def select_loader(file_path: str | Path):
     path = Path(file_path)
     _, file_extension = path.suffix, path.suffix
     file_extension = file_extension.lower()
-    # Text-based files that can be loaded directly
-    text_extensions = {
-        ".txt", ".c", ".C", ".sh", ".h", ".php",
-        ".json", ".yaml", ".yml", ".toml",  # Data formats
-        ".js", ".ts", ".jsx", ".tsx",  # JavaScript/TypeScript
-        ".java", ".go", ".rs", ".rb",  # Other languages
-        ".css", ".scss", ".less",  # Stylesheets
-        ".xml", ".csv", ".tsv",  # Other structured data
-        ".rst", ".log", ".ini", ".cfg", ".conf",  # Config/docs
-        ".md",  # Markdown (use TextLoader to preserve all content including comments)
-    }
-    if file_extension in text_extensions:
+    if file_extension in {".txt", ".c", ".C", ".sh", ".h", ".php", ".yaml", ".yml", ".json", ".csv", ".tsv", ".log", ".rst", ".md"}:
         return TextLoader(str(path))
     if file_extension == ".py":
         return PythonLoader(str(path))

@@ -843,16 +843,12 @@ data_manager:
   use_hybrid_search: true
   bm25_weight: 0.6
   semantic_weight: 0.4
-  bm25:
-    k1: 0.5
-    b: 0.75
 ```
 
-- **`use_hybrid_search`**: Enable hybrid search combining BM25 and semantic similarity. Default: `false`
-- **`bm25_weight`**: Weight for BM25 keyword scores. Default: `0.6`
-- **`semantic_weight`**: Weight for semantic similarity scores. Default: `0.4`
-- **`bm25.k1`**: BM25 term frequency saturation parameter. Default: `0.5`
-- **`bm25.b`**: BM25 document length normalization parameter. Default: `0.75`
+- **`use_hybrid_search`**: Enable hybrid search combining BM25 and semantic similarity. Default: `true`
+- **`bm25_weight`**: Weight for BM25 keyword scores (base config default: `0.6`).
+- **`semantic_weight`**: Weight for semantic similarity scores (base config default: `0.4`).
+- **BM25 tuning**: Parameters like `k1` and `b` are set when the PostgreSQL BM25 index is created and are no longer configurable via this file.
 
 ### Stemming
 

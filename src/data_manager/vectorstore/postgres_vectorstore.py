@@ -385,22 +385,20 @@ class PostgresVectorStore(VectorStore):
         Returns:
             List of (Document, combined_score) tuples
         """
+        logger.debug("Performing hybrid search: query='%s', k=%d", query, k)
+
         query_embedding = self._embedding_function.embed_query(query)
         embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
-        
+
         metadata_filter = kwargs.get("filter", {})
         include_deleted = kwargs.get("include_deleted", False)
-        
+
         conn = self._get_connection()
         try:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-                # Check if pg_textsearch BM25 index exists on document_chunks.chunk_text
-                # This is a strict check that verifies:
-                # - Index is on the correct table (document_chunks)
-                # - Index uses BM25 access method
-                # - Index is in the public schema
-                cursor.execute("""
-                    SELECT 1
+                cursor.execute(
+                    """
+                    SELECT idx.relname
                     FROM pg_class t
                     JOIN pg_index i ON t.oid = i.indrelid
                     JOIN pg_class idx ON idx.oid = i.indexrelid
@@ -409,46 +407,36 @@ class PostgresVectorStore(VectorStore):
                     WHERE t.relname = 'document_chunks'
                       AND n.nspname = 'public'
                       AND am.amname = 'bm25'
-                """)
-                has_bm25_index = cursor.fetchone() is not None
+                    LIMIT 1
+                    """
+                )
+                bm25_index_row = cursor.fetchone()
+                bm25_index_name = bm25_index_row["relname"] if bm25_index_row else None
+                if not bm25_index_name:
+                    raise RuntimeError(
+                        "Hybrid search requires pg_textsearch BM25 index on document_chunks; none found."
+                    )
 
-                cursor.execute("""
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'document_chunks'
-                      AND column_name = 'chunk_tsv'
-                """)
-                has_chunk_tsv = cursor.fetchone() is not None
-                
                 where_clauses = ["(c.metadata->>'collection' = %s OR c.metadata->>'collection' IS NULL)"]
                 params: List[Any] = [self._collection_name]
-                
+
                 for key, value in metadata_filter.items():
                     where_clauses.append(f"c.metadata->>'{key}' = %s")
                     params.append(str(value))
-                
+
                 if not include_deleted:
                     where_clauses.append("(d.id IS NULL OR d.is_deleted = FALSE)")
-                
+
                 where_sql = " AND ".join(where_clauses)
-                
-                if has_bm25_index:
-                    # Use pg_textsearch BM25 - must be computed on base table where index exists
-                    # The <@> operator requires the BM25 index on the actual table being queried
-                    bm25_score_expr = "c.chunk_text <@> %s"
-                    tsv_column = ""
-                else:
-                    # Fallback to ts_rank with GIN index - needs chunk_tsv
-                    bm25_score_expr = "ts_rank(c.chunk_tsv, plainto_tsquery('english', %s))"
-                    tsv_column = "c.chunk_tsv,"
-                
-                # BM25 score must be computed in the base query (not a CTE) because
-                # the <@> operator requires direct access to the indexed table
+
+                # Use pg_textsearch BM25 operator with explicit index target
+                bm25_score_expr = f"c.chunk_text <@> to_bm25query(%s, '{bm25_index_name}')"
+
                 query_sql = f"""
                     WITH scored AS (
                         SELECT 
                             c.id,
                             c.chunk_text,
-                            {tsv_column}
                             c.metadata,
                             1.0 - (c.embedding {self._distance_op} %s::vector) AS semantic_score,
                             {bm25_score_expr} AS bm25_score,
@@ -467,20 +455,24 @@ class PostgresVectorStore(VectorStore):
                     ORDER BY combined_score DESC
                     LIMIT %s
                 """
-                
+
                 # Params order: embedding, collection (+ any filters), query, semantic_weight, bm25_weight, k
                 all_params = [embedding_str] + params + [query, semantic_weight, bm25_weight, k]
                 cursor.execute(query_sql, all_params)
                 rows = cursor.fetchall()
         finally:
             self._close_connection(conn)
-        
+
         results: List[Tuple[Document, float]] = []
+        # If BM25 returned zero rows, fall back to semantic similarity to avoid empty results
+        if not rows:
+            return self.similarity_search_with_score(query, k=k, **kwargs)
+
         for row in rows:
             metadata = row["metadata"] or {}
             if isinstance(metadata, str):
                 metadata = json.loads(metadata)
-            
+
             if row["resource_hash"]:
                 metadata["resource_hash"] = row["resource_hash"]
             if row["display_name"]:

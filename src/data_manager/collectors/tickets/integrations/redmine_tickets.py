@@ -4,27 +4,10 @@ from redminelib import Redmine
 
 from src.data_manager.collectors.tickets.ticket_resource import TicketResource
 from src.data_manager.collectors.utils.anonymizer import Anonymizer
-from src.utils.yaml_config import load_services_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
-
-# Lazy-load answer tag to avoid config loading at import time
-_ANSWER_TAG = None
-
-def _get_answer_tag() -> str:
-    """Get the answer tag, loading from config on first access."""
-    global _ANSWER_TAG
-    if _ANSWER_TAG is None:
-        try:
-            _ANSWER_TAG = load_services_config()["redmine_mailbox"]["answer_tag"]
-        except (KeyError, FileNotFoundError):
-            _ANSWER_TAG = "[ANSWER]"  # Default fallback
-    return _ANSWER_TAG
-
-# Keep ANSWER_TAG for backward compatibility but as a property-like access
-ANSWER_TAG = "[ANSWER]"  # Default, will be updated at runtime
 
 
 class RedmineClient:
@@ -33,7 +16,7 @@ class RedmineClient:
         self.redmine_url: Optional[str] = None
         self.redmine_user: Optional[str] = None
         self.redmine_pw: Optional[str] = None
-        self.redmine_project: Optional[str] = None
+        self.redmine_projects: Optional[List[str]] = None
         self.anonymizer: Optional[Anonymizer] = None
         self.visible: bool = True
 
@@ -43,9 +26,10 @@ class RedmineClient:
             return
 
         self.redmine_url = redmine_config.get("url")
+        self.redmine_projects = redmine_config.get("projects", [])
         self.visible = bool(redmine_config.get("visible", True))
-        if not self.redmine_url or not self.redmine_project:
-            logger.warning("Redmine config missing url/project; skipping Redmine collection")
+        if not self.redmine_url or not self.redmine_projects:
+            logger.warning("Redmine config missing url/projects; skipping Redmine collection")
             return
 
         try:
@@ -84,6 +68,7 @@ class RedmineClient:
 
     def collect(self, projects: List[str], **kwargs) -> Iterator[TicketResource]:
         """Return an iterator of Redmine tickets."""
+        logger.info(f"Collecting Redmine tickets from projects: {projects}")
         if not self._verify() or not self.redmine:
             logger.debug(
                 "Skipping Redmine collection; client not initialised or credentials missing."
@@ -161,7 +146,7 @@ class RedmineClient:
     def _verify(self) -> bool:
         """Check if necessary secrets are provided to access Redmine."""
         if not all(
-            [self.redmine_url, self.redmine_user, self.redmine_pw, self.redmine_project]
+            [self.redmine_url, self.redmine_user, self.redmine_pw, self.redmine_projects]
         ):
             logger.debug(
                 "Redmine configuration or credentials missing; skipping Redmine collection"
@@ -198,9 +183,8 @@ class RedmineClient:
         answer_tag = _get_answer_tag()
         for record in journals[::-1]:
             note = record.notes
-            if note and answer_tag in note:
-                answer = note.replace(answer_tag, "")
-                answer = "\n".join(line for line in answer.splitlines() if "ISSUE_ID" not in line)
+            if note:
+                answer = "\n".join(line for line in note.splitlines() if "ISSUE_ID" not in line)
                 answer = answer.replace("\n", " ")
                 if self.anonymizer:
                     answer = self.anonymizer.anonymize(answer)

@@ -121,6 +121,10 @@ CREATE TABLE IF NOT EXISTS static_config (
 
     -- Source configuration (deploy-time)
     sources_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    services_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    data_manager_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    archi_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    global_config JSONB NOT NULL DEFAULT '{}'::jsonb,
     
     -- Timestamps
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -155,10 +159,6 @@ CREATE TABLE IF NOT EXISTS dynamic_config (
     use_hybrid_search BOOLEAN NOT NULL DEFAULT TRUE,
     bm25_weight NUMERIC(3,2) NOT NULL DEFAULT 0.3,
     semantic_weight NUMERIC(3,2) NOT NULL DEFAULT 0.7,
-    
-    -- BM25 parameters (pg_textsearch)
-    bm25_k1 NUMERIC(4,2) NOT NULL DEFAULT 1.2,
-    bm25_b NUMERIC(3,2) NOT NULL DEFAULT 0.75,
     
     -- Schedules
     ingestion_schedule VARCHAR(100) NOT NULL DEFAULT '',  -- Cron expression
@@ -355,8 +355,18 @@ CREATE INDEX IF NOT EXISTS idx_conv_meta_user ON conversation_metadata(user_id);
 CREATE INDEX IF NOT EXISTS idx_conv_meta_client ON conversation_metadata(client_id);
 
 -- Add FK to conversation_document_overrides now that conversation_metadata exists
-ALTER TABLE conversation_document_overrides 
-    DROP CONSTRAINT IF EXISTS conversation_document_overrides_conversation_id_fkey;
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'conversation_document_overrides_conversation_id_fkey'
+          AND conrelid = 'conversation_document_overrides'::regclass
+    ) THEN
+        ALTER TABLE conversation_document_overrides
+            DROP CONSTRAINT conversation_document_overrides_conversation_id_fkey;
+    END IF;
+END $$;
 ALTER TABLE conversation_document_overrides 
     ADD CONSTRAINT conversation_document_overrides_conversation_id_fkey 
     FOREIGN KEY (conversation_id) REFERENCES conversation_metadata(conversation_id) ON DELETE CASCADE;

@@ -15,9 +15,9 @@ logger = get_logger(__name__)
 
 class DataManager():
 
-    def __init__(self, *, run_ingestion: bool = True):
+    def __init__(self, *, run_ingestion: bool = True, factory=None):
 
-        self.config = load_config_with_class_mapping()
+        self.config = load_config_with_class_mapping(factory=factory)
         self.global_config = self.config["global"]
         self.data_path = self.global_config["DATA_PATH"]
         self.should_run_ingestion = run_ingestion
@@ -29,7 +29,7 @@ class DataManager():
             **self.config["services"]["postgres"],
         }
         self.persistence = PersistenceService(self.data_path, pg_config=self.pg_config)
-        self.config_service = ConfigService(pg_config=self.pg_config)
+        self.config_service = factory.config_service if factory else ConfigService(pg_config=self.pg_config)
         static_config = self.config_service.get_static_config()
         if not static_config or static_config.sources_config is None:
             raise RuntimeError("Static config missing sources_config; run deployment initialization first.")

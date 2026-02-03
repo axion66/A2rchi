@@ -7,7 +7,7 @@ from src.data_manager.collectors.persistence import PersistenceService
 from src.data_manager.collectors.scrapers.scraped_resource import \
     ScrapedResource
 from src.data_manager.collectors.scrapers.scraper import LinkScraper
-from src.utils.yaml_config import load_global_config
+from src.utils.config_access import get_global_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 
@@ -22,7 +22,7 @@ class ScraperManager:
     """Coordinates scraper integrations and centralises persistence logic."""
 
     def __init__(self, dm_config: Optional[Dict[str, Any]] = None) -> None:
-        global_config = load_global_config()
+        global_config = get_global_config()
 
         sources_config = (dm_config or {}).get("sources", {}) or {}
         links_config = sources_config.get("links", {}) if isinstance(sources_config, dict) else {}

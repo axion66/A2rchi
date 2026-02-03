@@ -1,8 +1,6 @@
 from typing import Any, Dict, List, Optional, Tuple
 
-from src.utils.yaml_config import load_global_config
-
-global_config = load_global_config()
+from src.utils.config_access import get_global_config
 
 def stringify_history(chat_history: List[Tuple[str, str]]) -> str:
     """
@@ -15,6 +13,7 @@ def stringify_history(chat_history: List[Tuple[str, str]]) -> str:
         return chat_history
     
     buffer = ""
+    roles = get_global_config().get("ROLES", [])
     for dialogue in chat_history:
         if isinstance(dialogue, tuple) and dialogue[0] in global_config["ROLES"]:
             identity = dialogue[0]
@@ -39,12 +38,13 @@ def tuplize_history(chat_history: str) -> List[Tuple[str, str]]:
     if chat_history is None or type(chat_history) is not str or len(chat_history) == 0:
         return chat_history
     
+    roles = get_global_config().get("ROLES", [])
     history = []
     for line in chat_history.strip().splitlines():
         if ": " not in line:
             raise ValueError(f"Line does not contain valid format 'role: message': {line}")
         role, message = line.split(": ", 1)
-        if role not in global_config["ROLES"]:
+        if role not in roles:
             raise ValueError(f"Unsupported role: {role}. Full line: {line}")
         history.append((role, message))
     return history

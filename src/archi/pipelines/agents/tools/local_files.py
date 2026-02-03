@@ -136,6 +136,15 @@ class RemoteCatalogClient:
         resp.raise_for_status()
         return resp.json()
 
+    def schema(self) -> Dict[str, object]:
+        resp = requests.get(
+            f"{self.base_url}/api/catalog/schema",
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
 
 def _render_metadata_preview(metadata: Optional[Dict[str, object]], *, max_chars: int = 800) -> str:
     if not metadata:
@@ -309,12 +318,13 @@ def create_metadata_search_tool(
     tool_description = (
         description
         or (
-            "Search metadata for locally stored documents (use this to find files by name/path).\n"
-            "Input: query string with optional key:value filters; use OR between filters.\n"
-            "Important: key:value filters are exact matches (ANDed within a group, OR across groups).\n"
-            "Use free-text for filename/path contains searches (e.g., \"mz_dilepton.py\").\n"
-            "Examples: \"mz_dilepton.py\" or \"relative_path:full/path/to/mz_dilepton.py\" "
-            "or \"file_name:foo.py OR relative_path:bar/foo.py\".\n"
+            "Search document metadata stored in PostgreSQL (tickets, git, local files).\n"
+            "Input: query string with key:value filters; filters are exact matches and ANDed within a group, OR across groups.\n"
+            "Canonical filter keys with examples: "
+            "source_type:ticket | ticket_id:CMSPROD-1234 | display_name:\"Release Notes\" | "
+            "relative_path:docs/readme.md | file_path:/data/foo.txt | url:github.com/org/repo | "
+            "git_repo:org/repo | suffix:.py | created_at:2024-11-01 | ingested_at:2024-11-02.\n"
+            "Legacy keys resource_type/resource_id are aliased automatically. Free text matches display_name/url/paths when used without filters.\n"
             "Output: list of matches with hash, path, metadata, and a short snippet."
         )
     )
@@ -358,6 +368,41 @@ def create_metadata_search_tool(
         return _format_files_for_llm(hits)
 
     return _search_metadata
+
+
+def create_metadata_schema_tool(
+    catalog: RemoteCatalogClient,
+    *,
+    name: str = "list_metadata_schema",
+    description: Optional[str] = None,
+) -> Callable[[], str]:
+    """Create a tool that returns supported metadata keys and distinct values."""
+
+    tool_description = (
+        description
+        or (
+            "Return metadata schema hints: supported keys, distinct source_type values, and suffixes. "
+            "Use this to learn which key:value filters are available."
+        )
+    )
+
+    @tool(name, description=tool_description)
+    def _schema_tool() -> str:
+        try:
+            payload = catalog.schema()
+        except Exception as exc:
+            logger.warning("Metadata schema fetch failed: %s", exc)
+            return "Metadata schema fetch failed."
+        keys = payload.get("keys") or []
+        source_types = payload.get("source_types") or []
+        suffixes = payload.get("suffixes") or []
+        return (
+            "Supported keys: " + ", ".join(keys) + "\n"
+            "source_type values: " + (", ".join(source_types) or "none") + "\n"
+            "suffix values: " + (", ".join(suffixes) or "none")
+        )
+
+    return _schema_tool
 
 
 def create_document_fetch_tool(

@@ -115,8 +115,6 @@ def _run_vectorstore_tool(config: Dict) -> None:
         k=retriever_cfg["num_documents_to_retrieve"],
         bm25_weight=retriever_cfg["bm25_weight"],
         semantic_weight=retriever_cfg["semantic_weight"],
-        bm25_k1=retriever_cfg["bm25_k1"],
-        bm25_b=retriever_cfg["bm25_b"],
     )
 
     retriever_tool = create_retriever_tool(hybrid_retriever)

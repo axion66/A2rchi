@@ -25,6 +25,8 @@ from src.cli.utils.helpers import (
 )
 from src.cli.utils.service_builder import ServiceBuilder
 from src.utils.logging import get_logger, setup_cli_logging
+from src.cli.tools.config_seed import seed_entry
+import subprocess
 
 # DEFINITIONS
 env = Environment(
@@ -63,6 +65,8 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
     if config_dir: 
         config_path = Path(config_dir)
         config_files = [item for item in config_path.iterdir() if item.is_file()]
+    if len(config_files) != 1:
+        raise click.ClickException("Exactly one config file is supported; please provide a single -c file.")
 
     print("Starting ARCHI deployment process...")
     setup_cli_logging(verbosity=verbosity)
@@ -152,6 +156,8 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
         volume_manager.create_required_volumes(compose_config, config_manager.config)
 
         template_manager.prepare_deployment_files(compose_config, config_manager, secrets_manager, **other_flags)
+
+        # Host-side seeding removed; container config-seed handles schema + ingestion before services start.
         
         deployment_manager = DeploymentManager(compose_config.use_podman)
         deployment_manager.start_deployment(base_dir)

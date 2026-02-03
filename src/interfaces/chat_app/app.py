@@ -31,12 +31,11 @@ from src.archi.archi import archi
 from src.archi.utils.output_dataclass import PipelineOutput
 # from src.data_manager.data_manager import DataManager
 from src.data_manager.data_viewer_service import DataViewerService
-from src.data_manager.vectorstore.manager import VectorStoreManager
-from src.utils.config_loader import CONFIGS_PATH, get_config_names, load_config
-from src.utils.yaml_config import load_config_with_class_mapping
-from src.utils.config_service import ConfigService
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
+from src.utils.config_access import get_full_config, get_services_config, get_global_config
+from src.utils.yaml_config import load_config_with_class_mapping
+from src.utils.config_service import ConfigService
 from src.utils.sql import (
     SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO,
     SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP,
@@ -52,6 +51,10 @@ from src.interfaces.chat_app.utils import collapse_assistant_sequences
 
 
 logger = get_logger(__name__)
+
+def _config_names():
+    cfg = get_full_config()
+    return [cfg.get("name", "default")]
 
 # DEFINITIONS
 QUERY_LIMIT = 10000 # max queries per conversation
@@ -83,7 +86,7 @@ class AnswerRenderer(mt.HTMLRenderer):
         }
 
     def __init__(self):
-        self.config = load_config()
+        self.config = load_config_with_class_mapping()
         super().__init__()
 
     def block_code(self, code, info=None):
@@ -128,7 +131,7 @@ class ChatWrapper:
     """
     def __init__(self):
         # load configs
-        self.config = load_config()
+        self.config = load_config_with_class_mapping()
         self.global_config = self.config["global"]
         self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -222,7 +225,7 @@ class ChatWrapper:
 
     def _get_config_payload(self, config_name):
         if config_name not in self._config_cache:
-            self._config_cache[config_name] = load_config(name=config_name)
+            self._config_cache[config_name] = load_config_with_class_mapping()
         return self._config_cache[config_name]
 
     @staticmethod
@@ -1444,7 +1447,6 @@ class ChatWrapper:
             )
 
             for output in self.archi.stream(history=context.history, conversation_id=context.conversation_id):
-                logger.debug("Received streaming output chunk: %s", output)
                 last_output = output
                 
                 # Extract event_type from metadata (new structured events from BaseReActAgent)
@@ -1666,7 +1668,7 @@ class FlaskAppWrapper(object):
         logger.info("Entering FlaskAppWrapper")
         self.app = app
         self.configs(**configs)
-        self.config = load_config()
+        self.config = load_config_with_class_mapping()
         self.global_config = self.config["global"]
         self.services_config = self.config["services"]
         self.chat_app_config = self.config["services"]["chat_app"]
@@ -1981,46 +1983,7 @@ class FlaskAppWrapper(object):
         Updates the config used by archi for responding to messages.
         Reloads the config and updates the chat wrapper.
         """
-        # parse config and write it out to CONFIGS_PATH
-        config_str = request.json.get('config')
-        config_name = config_str['name']
-        with open(CONFIGS_PATH+f'{config_name}.yaml', 'w') as f:
-            f.write(config_str)
-
-        # parse prompts and write them to their respective locations
-        # TODO fix
-        main_prompt = request.json.get('main_prompt')
-        with open(MAIN_PROMPT_FILE, 'w') as f:
-            f.write(main_prompt)
-
-        condense_prompt = request.json.get('condense_prompt')
-        with open(CONDENSE_PROMPT_FILE, 'w') as f:
-            f.write(condense_prompt)
-
-        summary_prompt = request.json.get('summary_prompt')
-        with open(SUMMARY_PROMPT_FILE, 'w') as f:
-            f.write(summary_prompt)
-
-        # re-read config using load_config and update dependent variables
-        self.config = load_config()
-        self.global_config = self.config["global"]
-        self.services_config = self.config["services"]
-        self.chat_app_config = self.config["services"]["chat_app"]
-        self.data_path = self.global_config["DATA_PATH"]
-
-        # store postgres connection info
-        self.pg_config = {
-            "password": read_secret("PG_PASSWORD"),
-            **self.services_config["postgres"],
-        }
-        self.conn = None
-        self.cursor = None
-
-        # recreate chat wrapper so all dependent services reload the new config
-        self.chat = ChatWrapper()
-        self.chat.update_config(config_name=self.config["name"])
-
-        return jsonify({'response': 'config updated successfully'}), 200
+        return jsonify({"error": "Config updates must be applied to Postgres; file-based updates are disabled."}), 400
 
     def get_configs(self):
         """
@@ -2031,12 +1994,12 @@ class FlaskAppWrapper(object):
             A json with a response list of the configs names
         """
 
-        config_names = get_config_names()
+        config_names = _config_names()
         options = []
         for name in config_names:
             description = ""
             try:
-                payload = load_config(name=name)
+                payload = load_config_with_class_mapping()
                 description = payload.get("archi", {}).get("agent_description", "No description provided")
             except Exception as exc:
                 logger.warning(f"Failed to load config {name} for description: {exc}")

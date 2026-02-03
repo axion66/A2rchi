@@ -14,6 +14,7 @@ from src.archi.pipelines.agents.tools import (
     create_document_fetch_tool,
     create_file_search_tool,
     create_metadata_search_tool,
+    create_metadata_schema_tool,
     create_retriever_tool,
     initialize_mcp_client,
     RemoteCatalogClient,
@@ -63,6 +64,13 @@ class CMSCompOpsAgent(BaseReActAgent):
             ),
             store_docs=self._store_documents,
         )
+        metadata_schema_tool = create_metadata_schema_tool(
+            self.catalog_service,
+            description=(
+                "List metadata schema hints: supported keys, distinct source_type values, and suffixes. "
+                "Use this to learn which key:value filters are available before searching."
+            ),
+        )
 
         fetch_tool = create_document_fetch_tool(
             self.catalog_service,
@@ -72,7 +80,7 @@ class CMSCompOpsAgent(BaseReActAgent):
             ),
         )
 
-        all_tools = [file_search_tool, metadata_search_tool, fetch_tool]
+        all_tools = [file_search_tool, metadata_search_tool, metadata_schema_tool, fetch_tool]
 
         try:
             nest_asyncio.apply()
@@ -171,16 +179,12 @@ class CMSCompOpsAgent(BaseReActAgent):
         k = hybrid_cfg["num_documents_to_retrieve"]
         bm25_weight = hybrid_cfg["bm25_weight"]
         semantic_weight = hybrid_cfg["semantic_weight"]
-        bm25_k1 = hybrid_cfg["bm25_k1"]
-        bm25_b = hybrid_cfg["bm25_b"]
 
         hybrid_retriever = HybridRetriever(
             vectorstore=vectorstore,
             k=k,
             bm25_weight=bm25_weight,
             semantic_weight=semantic_weight,
-            bm25_k1=bm25_k1,
-            bm25_b=bm25_b,
         )
 
         hybrid_description = (

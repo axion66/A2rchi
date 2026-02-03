@@ -22,9 +22,18 @@ services:
 
 data_manager:
   sources:
+    jira:
+      max_tickets: 10
+      url: https://its.cern.ch/jira/
+      projects:
+        - "CMSPROD"
     links:
       input_lists:
         - examples/deployments/basic-ollama/miscellanea.list
+    redmine:
+      url: https://cleo.mit.edu
+      projects:
+        - emails-to-ticket
   embedding_name: HuggingFaceEmbeddings
 
 archi:

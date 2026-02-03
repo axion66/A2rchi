@@ -61,7 +61,7 @@ services:
     imap4_port: {{ services.redmine_mailbox.imap4_port | default(143, true) }}
     mailbox_update_time: {{ services.redmine_mailbox.mailbox_update_time | default(10, true) }}
   postgres:
-    port: {{ services.postgres.port if host_mode else 5432 }}
+    port: {{ services.postgres.port | default(5432, true) }}
     user: {{ services.postgres.user | default('archi', true) }}
     database: {{ services.postgres.database | default('archi-db', true) }}
     host: {{ 'localhost' if host_mode else (utils.postgres.host | default('postgres', true)) }}
@@ -149,14 +149,10 @@ data_manager:
       num_documents_to_retrieve: {{ data_manager.retrievers.semantic_retriever.num_documents_to_retrieve | default(5, true) }}
     bm25_retriever:
       num_documents_to_retrieve: {{ data_manager.retrievers.bm25_retriever.num_documents_to_retrieve | default(5, true) }}
-      k1: {{ data_manager.retrievers.bm25_retriever.k1 | default(0.5, true) }}
-      b: {{ data_manager.retrievers.bm25_retriever.b | default(0.75, true) }}
     hybrid_retriever:
       num_documents_to_retrieve: {{ data_manager.retrievers.hybrid_retriever.num_documents_to_retrieve | default(5, true) }}
       bm25_weight: {{ data_manager.retrievers.hybrid_retriever.bm25_weight | default(0.6, true) }}
       semantic_weight: {{ data_manager.retrievers.hybrid_retriever.semantic_weight | default(0.4, true) }}
-      bm25_k1: {{ data_manager.retrievers.hybrid_retriever.bm25_k1 | default(0.5, true) }}
-      bm25_b: {{ data_manager.retrievers.hybrid_retriever.bm25_b | default(0.75, true) }}
   sources:
     local_files:
       enabled: {{ data_manager.sources.local_files.enabled | default(true, true) }}
@@ -215,10 +211,30 @@ data_manager:
     redmine:
       enabled: {{ data_manager.sources.redmine.enabled | default(true, true) }}
       url: {{ data_manager.sources.redmine.url | default('', true) }}
-      project: {{ data_manager.sources.redmine.project | default('', true) }}
+      projects:
+        {%- for project in data_manager.sources.redmine.projects | default([], true) %}
+        - {{ project }}
+        {%- endfor %}
       visible: {{ data_manager.sources.redmine.visible | default(false, true) }}
       schedule: '{{ data_manager.sources.redmine.schedule | default("", true) }}'
       anonymize_data: {{ data_manager.sources.redmine.anonymize_data | default(true, true) }}
+  utils:
+    anonymizer:
+        nlp_model: {{ data_manager.utils.anonymizer.nlp_model | default('en_core_web_sm', true) }}
+        excluded_words:
+          {%- for word in data_manager.utils.anonymizer.excluded_words | default([], true) %}
+          - {{ word }}
+          {%- endfor %}
+        greeting_patterns:
+          {%- for pattern in data_manager.utils.anonymizer.greeting_patterns | default([], true) %}
+          - {{ pattern }}
+          {%- endfor %}
+        signoff_patterns:
+          {%- for pattern in data_manager.utils.anonymizer.signoff_patterns | default([], true) %}
+          - {{ pattern }}
+          {%- endfor %}
+        email_pattern: {{ data_manager.utils.anonymizer.email_pattern | default('', true) }}
+        username_pattern: {{ data_manager.utils.anonymizer.username_pattern | default('', true) }}
 
 archi:
   pipelines: {{ archi.pipelines | default(['QAPipeline'], true) }}

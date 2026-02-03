@@ -3,9 +3,10 @@ import os
 import time
 
 from src.interfaces.redmine_mailer_integration import mailbox, redmine
-from src.utils.yaml_config import load_yaml_config
 from src.utils.env import read_secret
 from src.utils.logging import setup_logging
+from src.utils.postgres_service_factory import PostgresServiceFactory
+from src.utils.config_access import get_services_config
 
 # set basicConfig for logging
 setup_logging()
@@ -22,7 +23,10 @@ password = read_secret('IMAP_PW')
 time.sleep(60)
 
 print("Starting Mailbox Service")
-mailbox_config = load_yaml_config()["services"]["redmine_mailbox"]
+factory = PostgresServiceFactory.from_env(password_override=read_secret("PG_PASSWORD"))
+PostgresServiceFactory.set_instance(factory)
+
+mailbox_config = get_services_config().get("redmine_mailbox", {})
 redmine = redmine.Redmine('Redmine_Helpdesk_Mail') # this name tells redmine class to not initialize archi() class
 
 while True:

@@ -9,9 +9,9 @@ from piazza_api import Piazza as PiazzaAPI
 
 from src.archi.archi import archi
 from src.data_manager.data_manager import DataManager
-from src.utils.yaml_config import load_yaml_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
+from src.utils.config_access import get_full_config
 
 logger = get_logger(__name__)
 
@@ -47,7 +47,7 @@ class Piazza:
 
         logger.info("Initializing Piazza service")
 
-        self.piazza_config = load_yaml_config()["utils"].get("piazza", None)
+        self.piazza_config = get_full_config().get("utils", {}).get("piazza", None)
 
         # login to piazza
         self.piazza = PiazzaAPI()

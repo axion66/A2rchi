@@ -34,12 +34,12 @@ from sklearn.metrics.pairwise import \
 
 from src.archi.archi import archi
 from src.data_manager.data_manager import DataManager
-from src.utils.yaml_config import CONFIGS_PATH, load_yaml_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.utils.sql import (SQL_INSERT_CONVO,
                            SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING,
                            SQL_QUERY_CONVO)
+from src.utils.config_access import get_full_config, get_global_config, get_services_config
 
 logger = get_logger(__name__)
 
@@ -48,9 +48,9 @@ csv.field_size_limit(sys.maxsize)
 
 class ImageToTextWrapper:
     def __init__(self):
-        self.config = load_yaml_config()
-        self.global_config = self.config["global"]
-        self.services_config = self.config["services"]
+        self.config = get_full_config()
+        self.global_config = get_global_config()
+        self.services_config = get_services_config()
         self.data_path = self.global_config["DATA_PATH"]
         self.pg_config = {
             "password": read_secret("PG_PASSWORD"),
@@ -94,9 +94,9 @@ class ImageToTextWrapper:
 
 class GradingWrapper:
     def __init__(self):
-        self.config = load_yaml_config()
-        self.global_config = self.config["global"]
-        self.services_config = self.config["services"]
+        self.config = get_full_config()
+        self.global_config = get_global_config()
+        self.services_config = get_services_config()
         self.data_path = self.global_config["DATA_PATH"]
 
         # store postgres connection info
@@ -150,9 +150,9 @@ class FlaskAppWrapper(object):
     def __init__(self, app: Flask, **configs):
         self.app = app
         self.configs(**configs)
-        self.config = load_yaml_config()
-        self.global_config = self.config["global"]
-        self.services_config = self.config["services"]
+        self.config = get_full_config()
+        self.global_config = get_global_config()
+        self.services_config = get_services_config()
         self.data_path = self.global_config["DATA_PATH"]
 
         # session config

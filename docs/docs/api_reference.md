@@ -230,7 +230,7 @@ Controls ingestion sources and vector store behaviour.
 - **chunk_size / chunk_overlap:** Text splitter parameters.
 - **reset_collection:** Whether to wipe the collection before re-populating.
 - **num_documents_to_retrieve:** Top-k documents returned at query time.
-- **distance_metric / use_hybrid_search / bm25_weight / semantic_weight / bm25.{k1,b}:** Retrieval tuning knobs.
+- **distance_metric / use_hybrid_search / bm25_weight / semantic_weight:** Retrieval tuning knobs (BM25 `k1`/`b` are fixed when the PostgreSQL index is created).
 - **utils.anonymizer** (legacy) / **data_manager.utils.anonymizer**: Redaction settings applied when ticket collectors anonymise content.
 
 Source configuration is persisted to PostgreSQL `static_config.sources_config` at deployment time and used for runtime ingestion.

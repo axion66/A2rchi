@@ -373,6 +373,30 @@ class PostgresCatalogService:
             return None
         return self._row_to_metadata(row)
 
+    def get_distinct_metadata(self, fields: Sequence[str]) -> Dict[str, List[str]]:
+        """Return distinct values for the requested metadata columns."""
+        result: Dict[str, List[str]] = {}
+        allowed = {
+            "source_type",
+            "suffix",
+            "ticket_id",
+            "git_repo",
+            "url",
+        }
+        wanted = [f for f in fields if f in allowed]
+        if not wanted:
+            return result
+
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                for field in wanted:
+                    cur.execute(
+                        f"SELECT DISTINCT {field} FROM documents WHERE NOT is_deleted AND {field} IS NOT NULL"
+                    )
+                    vals = [row[0] for row in cur.fetchall() if row and row[0] is not None]
+                    result[field] = vals
+        return result
+
     def get_filepath_for_hash(self, hash: str) -> Optional[Path]:
         """Get the file path for a resource hash.
         

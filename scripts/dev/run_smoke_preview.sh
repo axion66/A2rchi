@@ -26,6 +26,7 @@ SMOKE_DUMP_LOGS="${SMOKE_DUMP_LOGS:-true}"
 SMOKE_FORCE_CREATE="${SMOKE_FORCE_CREATE:-true}"
 SMOKE_OLLAMA_MODEL="${SMOKE_OLLAMA_MODEL:-}"
 SMOKE_OLLAMA_URL="${SMOKE_OLLAMA_URL:-}"
+SMOKE_TIMEOUT="${SMOKE_TIMEOUT:-900}"
 export USE_PODMAN
 
 ARCHI_DIR="${ARCHI_DIR:-${HOME}/.archi}"
@@ -236,14 +237,21 @@ if [[ -z "${CONFIG_NAME}" ]]; then
   exit 1
 fi
 
-RENDERED_CONFIG="${ARCHI_DIR}/archi-${DEPLOYMENT_NAME}/configs/${CONFIG_NAME}.yaml"
+RENDERED_DIR="${ARCHI_DIR}/archi-${DEPLOYMENT_NAME}/configs"
+RENDERED_CONFIG="${RENDERED_DIR}/${CONFIG_NAME}.yaml"
 if [[ ! -f "${RENDERED_CONFIG}" ]]; then
-  echo "Rendered config not found at ${RENDERED_CONFIG}" >&2
-  exit 1
+  DEFAULT_RENDERED_CONFIG="${RENDERED_DIR}/config.yaml"
+  if [[ -f "${DEFAULT_RENDERED_CONFIG}" ]]; then
+    # Older/newer archi versions render a single config as 'config.yaml'
+    RENDERED_CONFIG="${DEFAULT_RENDERED_CONFIG}"
+  else
+    echo "Rendered config not found; checked ${RENDERED_CONFIG} and ${DEFAULT_RENDERED_CONFIG}" >&2
+    exit 1
+  fi
 fi
 
 export ARCHI_CONFIG_PATH="${RENDERED_CONFIG}"
-export ARCHI_CONFIG_NAME="${CONFIG_NAME}"
+export ARCHI_CONFIG_NAME="$(basename "${RENDERED_CONFIG}" .yaml)"
 export ARCHI_PIPELINE_NAME="$(RENDERED_CONFIG="${RENDERED_CONFIG}" python - <<'PY'
 import os
 import yaml
@@ -349,4 +357,18 @@ PY
 export BASE_URL
 
 info "Running combined smoke checks..."
-./tests/smoke/combined_smoke.sh "${DEPLOYMENT_NAME}"
+TIMEOUT_CMD=()
+if [[ -n "${SMOKE_TIMEOUT}" && "${SMOKE_TIMEOUT}" != "0" ]]; then
+  if command -v timeout >/dev/null 2>&1; then
+    # --foreground keeps signal handling aligned with our trap/cleanup
+    TIMEOUT_CMD=(timeout --foreground "${SMOKE_TIMEOUT}")
+  else
+    info "'timeout' not found; proceeding without enforcing SMOKE_TIMEOUT=${SMOKE_TIMEOUT}s"
+  fi
+fi
+
+if (( ${#TIMEOUT_CMD[@]} )); then
+  "${TIMEOUT_CMD[@]}" ./tests/smoke/combined_smoke.sh "${DEPLOYMENT_NAME}"
+else
+  ./tests/smoke/combined_smoke.sh "${DEPLOYMENT_NAME}"
+fi
