@@ -76,6 +76,8 @@ runs:
         set -euo pipefail
         mkdir -p /var/lib/a2rchi/run/containers
         chmod 700 /var/lib/a2rchi/run/containers
+        mkdir -p /var/lib/a2rchi/.config/containers
+        mkdir -p /var/lib/a2rchi/.local/share/containers/storage
 
     - name: Run shared smoke runner
       shell: bash
@@ -91,8 +93,11 @@ runs:
         WAIT_SLEEP: ${{ inputs.wait-sleep-seconds }}
         BASE_URL: ${{ inputs.base-url }}
         USE_PODMAN: ${{ inputs.use-podman }}
+        HOME: /var/lib/a2rchi
         XDG_RUNTIME_DIR: /var/lib/a2rchi/run
         CONTAINERS_STORAGE_CONF: /var/lib/a2rchi/.config/containers/storage.conf
+        PODMAN_TMPDIR: /var/lib/a2rchi/run/tmp
       run: |
         set -euo pipefail
+        mkdir -p /var/lib/a2rchi/run/tmp
         ./scripts/dev/run_smoke_preview.sh "${DEPLOYMENT_NAME}"
