@@ -12,6 +12,14 @@ data_manager:
 archi:
   pipelines: 
    - QAPipeline
+  providers:
+    openai:
+      enabled: true
+      base_url: https://api.openai.com/v1
+      default_model: gpt-4o
+      models:
+        - gpt-4o
+        - gpt-4o-mini
   pipeline_map:
     QAPipeline:
       prompts:
@@ -20,8 +28,8 @@ archi:
           chat_prompt: configs/prompts/submit.prompt  
       models:
         required:
-          chat_model: OpenAILLM
-          condense_model: OpenAILLM
+          chat_model: openai/gpt-4o
+          condense_model: openai/gpt-4o
 
 
 services:
@@ -31,4 +39,3 @@ services:
     modes: 
       - "RAGAS"
       - "SOURCES"
-

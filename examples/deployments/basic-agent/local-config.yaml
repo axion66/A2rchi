@@ -42,6 +42,14 @@ data_manager:
 archi:
   pipelines:
     - CMSCompOpsAgent
+  providers:
+    local:
+      enabled: true
+      base_url: http://host.docker.internal:11434  # Docker's way to reach localhost
+      mode: ollama
+      default_model: "qwen3:4b"
+      models:
+        - "qwen3:4b"
   pipeline_map:
     CMSCompOpsAgent:
       prompts:
@@ -49,9 +57,4 @@ archi:
           agent_prompt: examples/deployments/basic-agent/agent.prompt
       models:
         required:
-          agent_model: OllamaInterface
-  model_class_map:
-    OllamaInterface:
-      kwargs:
-        url: http://host.docker.internal:11434  # Docker's way to reach localhost
-        base_model: "qwen3:4b"
+          agent_model: local/qwen3:4b
