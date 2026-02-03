@@ -5,13 +5,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import chromadb
 import nltk
-from chromadb.config import Settings
+import psycopg2
+import psycopg2.extras
 from .loader_utils import select_loader
+from .postgres_vectorstore import PostgresVectorStore
 from langchain_text_splitters.character import CharacterTextSplitter
 
-from src.data_manager.collectors.utils.index_utils import CatalogService
+from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 
@@ -20,7 +21,11 @@ logger = get_logger(__name__)
 SUPPORTED_DISTANCE_METRICS = ["l2", "cosine", "ip"]
 
 class VectorStoreManager:
-    """Encapsulates vectorstore configuration and synchronization."""
+    """
+    Encapsulates vectorstore configuration and synchronization.
+    
+    Uses PostgreSQL with pgvector for vector storage and similarity search.
+    """
 
     def __init__(
         self,
@@ -36,13 +41,14 @@ class VectorStoreManager:
 
         self._data_manager_config = config["data_manager"]
         self._services_config = config.get("services", {})
+        
         if pg_config is None:
             pg_config = {
                 "password": read_secret("PG_PASSWORD"),
                 **self._services_config["postgres"],
             }
         self._pg_config = pg_config
-        self._catalog = CatalogService(self.data_path, pg_config=self._pg_config)
+        self._catalog = PostgresCatalogService(self.data_path, pg_config=self._pg_config)
 
         embedding_name = self._data_manager_config["embedding_name"]
         self.collection_name = (
@@ -88,51 +94,69 @@ class VectorStoreManager:
                 )
                 self.parallel_workers = default_workers
         self.parallel_workers = max(1, self.parallel_workers)
+        
+        logger.info(f"VectorStoreManager initialized: collection={self.collection_name}")
 
     def delete_existing_collection_if_reset(self) -> None:
         """Delete the collection if reset_collection is enabled."""
         if not self._data_manager_config.get("reset_collection", False):
             return
 
-        client = self._build_client()
-        if self.collection_name in [c.name for c in client.list_collections()]:
-            logger.info(
-                f"reset_collection is enabled; deleting existing collection {self.collection_name}"
-            )
-            client.delete_collection(self.collection_name)
+        conn = psycopg2.connect(**self._pg_config)
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    DELETE FROM document_chunks 
+                    WHERE metadata->>'collection' = %s OR metadata->>'collection' IS NULL
+                    """,
+                    (self.collection_name,)
+                )
+                deleted = cursor.rowcount
+                conn.commit()
+                logger.info(
+                    f"reset_collection is enabled; deleted {deleted} chunks from collection {self.collection_name}"
+                )
+        finally:
+            conn.close()
 
     def fetch_collection(self):
-        """Return the active Chroma collection."""
-        client = self._build_client()
-        try: 
-            collection = client.get_collection(name=self.collection_name)
-        except chromadb.errors.NotFoundError:
-            logger.info(f"Collection {self.collection_name} not found; creating new collection.")
-        collection = client.get_or_create_collection(
-            name=self.collection_name,
-            metadata={"hnsw:space": self.distance_metric},
+        """
+        Return the active PostgresVectorStore.
+        """
+        # Map distance metric names
+        distance_metric_map = {
+            "l2": "l2",
+            "cosine": "cosine",
+            "ip": "inner_product",
+        }
+        pg_distance = distance_metric_map.get(self.distance_metric, "cosine")
+        
+        store = PostgresVectorStore(
+            pg_config=self._pg_config,
+            embedding_function=self.embedding_model,
+            collection_name=self.collection_name,
+            distance_metric=pg_distance,
         )
-        logger.info(f"N in collection: {collection.count()}")
-        return collection
+        count = store.count()
+        logger.info(f"N in PostgreSQL collection: {count}")
+        return store
 
     def update_vectorstore(self) -> None:
         """Synchronise filesystem documents with the vectorstore."""
-        collection = self.fetch_collection()
+        store = self.fetch_collection()
 
-        sources = CatalogService.load_sources_catalog(self.data_path, self._pg_config)
+        sources = PostgresCatalogService.load_sources_catalog(self.data_path, self._pg_config)
         logger.info(f"Loaded {len(sources)} sources from catalog")
-        collection_metadatas = collection.get(include=["metadatas"]).get("metadatas", [])
-        files_in_vstore = self._collect_vstore_documents(collection_metadatas)
+        
+        # Get hashes currently in vectorstore
+        hashes_in_vstore = self._collect_postgres_hashes()
         files_in_data = self._collect_indexed_documents(sources)
 
-        hashes_in_vstore = set(files_in_vstore.keys())
         hashes_in_data = set(files_in_data.keys())
 
         logger.info(f"Files in catalog: {len(hashes_in_data)}, Files in vectorstore: {len(hashes_in_vstore)}")
-        if hashes_in_data != hashes_in_vstore:
-            logger.debug(f"Hashes in data (first 10): {list(hashes_in_data)[:10]}")
-            logger.debug(f"Hashes in vstore (first 10): {list(hashes_in_vstore)[:10]}")
-
+        
         if hashes_in_data == hashes_in_vstore:
             logger.info("Vectorstore is up to date")
         else:
@@ -140,58 +164,61 @@ class VectorStoreManager:
 
             hashes_to_remove = list(hashes_in_vstore - hashes_in_data)
             if hashes_to_remove:
-                files_to_remove = {
-                    hash_value: files_in_vstore.get(hash_value, "<unknown>")
-                    for hash_value in hashes_to_remove
-                }
-                filed_to_remove_show = {k: files_to_remove[k] for k in list(files_to_remove)[:10]}
-                logger.info(f"Files to remove: {filed_to_remove_show} ...")
-                logger.debug(f"Full files to remove: {files_to_remove}")
-                collection = self._remove_from_vectorstore(collection, hashes_to_remove)
+                logger.info(f"Removing {len(hashes_to_remove)} stale documents")
+                self._remove_from_postgres(hashes_to_remove)
 
             hashes_to_add = hashes_in_data - hashes_in_vstore
             files_to_add = {
                 hash_value: files_in_data[hash_value] for hash_value in hashes_to_add
             }
-            filed_to_add_show = {k: files_to_add[k] for k in list(files_to_add)[:10]}
-            logger.info(f"Files to add: {filed_to_add_show} ...")
-            logger.debug(f"Full files to add: {files_to_add}")
-            collection = self._add_to_vectorstore(collection, files_to_add)
+            if files_to_add:
+                logger.info(f"Adding {len(files_to_add)} new documents")
+                self._add_to_postgres(files_to_add)
             logger.info("Vectorstore update has been completed")
 
-        logger.info(f"N Collection: {collection.count()}")
-        del collection
+        logger.info(f"N Collection: {store.count()}")
 
-    def _build_client(self):
-        chroma_cfg = self._services_config.get("chromadb", {})
-        if chroma_cfg.get("use_HTTP_chromadb_client"):
-            logger.debug("Using ChromaDB HTTP client")
-            return chromadb.HttpClient(
-                host=chroma_cfg["host"],
-                port=chroma_cfg["port"],
-                settings=Settings(allow_reset=False, anonymized_telemetry=False),
-            )
+    def _collect_postgres_hashes(self) -> set:
+        """Get all resource hashes currently in the PostgreSQL vectorstore."""
+        conn = psycopg2.connect(**self._pg_config)
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT DISTINCT metadata->>'resource_hash' as hash
+                    FROM document_chunks
+                    WHERE (metadata->>'collection' = %s OR metadata->>'collection' IS NULL)
+                      AND metadata->>'resource_hash' IS NOT NULL
+                    """,
+                    (self.collection_name,)
+                )
+                return {row[0] for row in cursor.fetchall()}
+        finally:
+            conn.close()
 
-        local_path = chroma_cfg.get(
-            "local_vstore_path", self.global_config.get("LOCAL_VSTORE_PATH")
-        )
-        return chromadb.PersistentClient(
-            path=local_path,
-            settings=Settings(allow_reset=True, anonymized_telemetry=False),
-        )
+    def _remove_from_postgres(self, hashes_to_remove: List[str]) -> None:
+        """Remove chunks by resource hash from PostgreSQL."""
+        conn = psycopg2.connect(**self._pg_config)
+        try:
+            with conn.cursor() as cursor:
+                for resource_hash in hashes_to_remove:
+                    cursor.execute(
+                        """
+                        DELETE FROM document_chunks 
+                        WHERE metadata->>'resource_hash' = %s
+                          AND (metadata->>'collection' = %s OR metadata->>'collection' IS NULL)
+                        """,
+                        (resource_hash, self.collection_name)
+                    )
+                conn.commit()
+                logger.debug(f"Removed {len(hashes_to_remove)} resource hashes from vectorstore")
+        finally:
+            conn.close()
 
-    def _remove_from_vectorstore(self, collection, hashes_to_remove: List[str]):
-        for resource_hash in hashes_to_remove:
-            collection.delete(where={"resource_hash": resource_hash})
-        return collection
-
-    def _add_to_vectorstore(
-        self,
-        collection,
-        files_to_add: Dict[str, str],
-    ):
+    def _add_to_postgres(self, files_to_add: Dict[str, str]) -> None:
+        """Add files to PostgreSQL vectorstore."""
         if not files_to_add:
-            return collection
+            return
 
         files_to_add_items = list(files_to_add.items())
         apply_stemming = self._data_manager_config.get("stemming", {}).get("enabled", False)
@@ -206,9 +233,7 @@ class VectorStoreManager:
             try:
                 loader = self.loader(file_path)
             except Exception as exc:
-                logger.error(
-                    f"Failed to load file: {file_path}. Skipping. Exception: {exc}"
-                )
+                logger.error(f"Failed to load file: {file_path}. Skipping. Exception: {exc}")
                 return None
 
             if loader is None:
@@ -218,11 +243,7 @@ class VectorStoreManager:
             try:
                 docs = loader.load()
             except Exception as exc:
-                logger.error(
-                    "Failed to read file %s. Skipping. Exception: %s",
-                    file_path,
-                    exc,
-                )
+                logger.error("Failed to read file %s. Skipping. Exception: %s", file_path, exc)
                 return None
 
             split_docs = self.text_splitter.split_documents(docs)
@@ -246,6 +267,9 @@ class VectorStoreManager:
                     doc_metadata = dict(doc_metadata)
                 entry_metadata = {**file_level_metadata, **doc_metadata}
                 entry_metadata["chunk_index"] = index
+                entry_metadata["filename"] = filename
+                entry_metadata["resource_hash"] = filehash
+                entry_metadata["collection"] = self.collection_name
                 metadatas.append(entry_metadata)
 
             if not chunks:
@@ -257,6 +281,7 @@ class VectorStoreManager:
         processed_results: Dict[str, tuple] = {}
         max_workers = max(1, self.parallel_workers)
         logger.info(f"Processing files with up to {max_workers} parallel workers")
+        
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
                 executor.submit(process_file, filehash, file_path): filehash
@@ -266,7 +291,7 @@ class VectorStoreManager:
                 filehash = futures[future]
                 try:
                     result = future.result()
-                except Exception as exc:  # Defensive: log unexpected failures
+                except Exception as exc:
                     logger.error(
                         "Unexpected error while processing %s: %s",
                         files_to_add.get(filehash),
@@ -277,31 +302,52 @@ class VectorStoreManager:
                     processed_results[filehash] = result
 
         logger.info("Finished processing files; adding to vectorstore")
-        for filehash, file_path in files_to_add_items:
-            processed = processed_results.get(filehash)
-            if not processed:
-                continue
+        
+        # Batch insert to PostgreSQL
+        conn = psycopg2.connect(**self._pg_config)
+        try:
+            with conn.cursor() as cursor:
+                import json
+                
+                for filehash, file_path in files_to_add_items:
+                    processed = processed_results.get(filehash)
+                    if not processed:
+                        continue
 
-            filename, chunks, metadatas = processed
-            embeddings = self.embedding_model.embed_documents(chunks)
+                    filename, chunks, metadatas = processed
+                    embeddings = self.embedding_model.embed_documents(chunks)
+                    
+                    # Get document_id from the catalog (documents table)
+                    document_id = self._catalog.get_document_id(filehash)
+                    if document_id is None:
+                        logger.warning(f"No document record found for {filehash}, chunks will have NULL document_id")
 
-            for metadata in metadatas:
-                metadata["filename"] = filename
-                metadata["resource_hash"] = filehash
+                    insert_data = []
+                    for idx, (chunk, embedding, metadata) in enumerate(zip(chunks, embeddings, metadatas)):
+                        insert_data.append((
+                            document_id,  # Link to documents table
+                            idx,   # chunk_index
+                            chunk,
+                            embedding,
+                            json.dumps(metadata),
+                        ))
 
-            ids = [f"{filehash}-{idx:06d}" for idx in range(len(chunks))]
+                    psycopg2.extras.execute_values(
+                        cursor,
+                        """
+                        INSERT INTO document_chunks (document_id, chunk_index, chunk_text, embedding, metadata)
+                        VALUES %s
+                        """,
+                        insert_data,
+                        template="(%s, %s, %s, %s::vector, %s::jsonb)",
+                    )
+                    logger.debug(f"Added {len(insert_data)} chunks for {filename} (document_id={document_id})")
 
-            logger.debug(f"Adding to vectorstore ids: {ids}")
-
-            collection.add(
-                embeddings=embeddings,
-                ids=ids,
-                documents=chunks,
-                metadatas=metadatas,
-            )
+                conn.commit()
+        finally:
+            conn.close()
 
         logger.info("All files have been added to the vectorstore")
-        return collection
 
     def loader(self, file_path: str):
         """Return the document loader for a given path."""
@@ -348,19 +394,6 @@ class VectorStoreManager:
         logger.info(f"Collected {len(files_in_data)} valid indexed documents (after filtering missing/dirs)")
 
         return files_in_data
-
-    def _collect_vstore_documents(self, metadatas: List[Dict]) -> Dict[str, str]:
-        """
-        Build a mapping of resource hash -> filename currently stored in the vectorstore.
-        """
-        files_in_vstore: Dict[str, str] = {}
-        for metadata in metadatas:
-            filename = metadata.get("filename")
-            filehash = metadata.get("resource_hash")
-            if not filename or not filehash:
-                continue
-            files_in_vstore.setdefault(filehash, filename)
-        return files_in_vstore
 
     def _load_file_metadata(self, resource_hash: str) -> Dict[str, str]:
         """

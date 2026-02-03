@@ -1,6 +1,6 @@
 # Developers Guide
 
-Below is all the information developers may need to get started contributing to the A2RCHI project.
+Below is all the information developers may need to get started contributing to the Archi project.
 
 ## Editing Documentation
 
@@ -32,7 +32,7 @@ Always open a PR to merge documentation changes into `main`. Do not edit files d
 If you want the full CI-like smoke run (create deployment, wait for readiness, run checks, and clean up) you can use the shared runner:
 
 ```bash
-export A2RCHI_DIR=~/.a2rchi
+export Archi_DIR=~/.archi
 export DEPLOYMENT_NAME=local-smoke
 export USE_PODMAN=true
 export SMOKE_FORCE_CREATE=true
@@ -44,26 +44,25 @@ The shared runner performs these checks in order (ensuring the configured Ollama
 
 - Create a deployment from the preview config and wait for the chat app health endpoint.
 - Wait for initial data ingestion to complete (5 minute timeout).
-- Preflight checks: Postgres reachable, ChromaDB responsive, data-manager catalog searchable.
+- Preflight checks: Postgres reachable, data-manager catalog searchable.
 - Tool probes: catalog tools and vectorstore retriever (executed inside the chatbot container to match the agent runtime).
 - ReAct agent smoke: stream response and observe at least one tool call.
 
-The combined smoke workflow alone does not start A2rchi for you. Start a deployment first, then run the checks (it validates Postgres, ChromaDB, data-manager catalog, Ollama model availability, ReAct streaming, and direct tool probes inside the chatbot container):
+The combined smoke workflow alone does not start A2rchi for you. Start a deployment first, then run the checks (it validates Postgres, data-manager catalog, Ollama model availability, ReAct streaming, and direct tool probes inside the chatbot container):
 
 ```bash
-export A2RCHI_CONFIG_PATH=~/.a2rchi/a2rchi-<deployment-name>/configs/<config-name>.yaml
-export A2RCHI_CONFIG_NAME=<config-name>
-export A2RCHI_PIPELINE_NAME=CMSCompOpsAgent
+export Archi_CONFIG_PATH=~/.archi/archi-<deployment-name>/configs/<config-name>.yaml
+export Archi_CONFIG_NAME=<config-name>
+export Archi_PIPELINE_NAME=CMSCompOpsAgent
 export USE_PODMAN=true
 export OLLAMA_MODEL=<ollama-model-name>
 export PGHOST=localhost
 export PGPORT=<postgres-port>
-export PGUSER=a2rchi
+export PGUSER=archi
 export PGPASSWORD=<pg-password>
-export PGDATABASE=a2rchi-db
+export PGDATABASE=archi-db
 export BASE_URL=http://localhost:2786
 export DM_BASE_URL=http://localhost:<data-manager-port>  # from your deployment config
-export CHROMA_URL=http://localhost:<chroma-port>       # from your deployment config
 export OLLAMA_URL=http://localhost:11434
 ./tests/smoke/combined_smoke.sh <deployment-name>
 ```
@@ -79,14 +78,17 @@ export VECTORSTORE_QUERY="cms"
 
 ## Postgres Usage Overview
 
-A2RCHI relies on Postgres as the durable metadata store across services. Core usage falls into two buckets:
+Archi relies on Postgres as the durable metadata store across services. Core usage falls into two buckets:
 
 - **Ingestion catalog**: the `resources` table tracks persisted files and metadata for the data manager catalog (`CatalogService`).
 - **Conversation history**: the `conversation_metadata` and `conversations` tables store chat/session metadata plus message history for interfaces like the chat app and ticketing integrations (e.g., Redmine mailer).
 
+The `conversations` table tracks:
+- `model_used` (string) - The model that generated the response (e.g., "openai/gpt-4o")
+- `pipeline_used` (string) - The pipeline that processed the request (e.g., "QAPipeline")
+
 Additional supporting tables store interaction telemetry and feedback:
 
-- `configs` stores serialized configuration snapshots used by services.
 - `feedback` captures like/dislike/comment feedback tied to conversation messages.
 - `timing` tracks per-message latency milestones.
 - `agent_tool_calls` stores tool call inputs/outputs extracted from agent messages.
@@ -95,12 +97,12 @@ When extending an interface that writes to `conversations`, make sure a matching
 
 ## DockerHub Images
 
-A2RCHI loads different base images hosted on Docker Hub. The Python base image is used when GPUs are not required; otherwise the PyTorch base image is used. The Dockerfiles for these base images live in `src/cli/templates/dockerfiles/base-X-image`.
+Archi loads different base images hosted on Docker Hub. The Python base image is used when GPUs are not required; otherwise the PyTorch base image is used. The Dockerfiles for these base images live in `src/cli/templates/dockerfiles/base-X-image`.
 
 Images are hosted at:
 
-- Python: <https://hub.docker.com/r/a2rchi/a2rchi-python-base>
-- PyTorch: <https://hub.docker.com/r/a2rchi/a2rchi-pytorch-base>
+- Python: <https://hub.docker.com/r/archi/archi-python-base>
+- PyTorch: <https://hub.docker.com/r/archi/archi-pytorch-base>
 
 To rebuild a base image, navigate to the relevant `base-xxx-image` directory under `src/cli/templates/dockerfiles/`. Each directory contains the Dockerfile, requirements, and license information.
 
@@ -117,7 +119,7 @@ cat requirements/gpu-requirementsHEADER.txt requirements/requirements-base.txt >
 Build the image:
 
 ```bash
-podman build -t a2rchi/<image-name>:<tag> .
+podman build -t archi/<image-name>:<tag> .
 ```
 
 After verifying the image, log in to Docker Hub (ask a senior developer for credentials):
@@ -129,16 +131,16 @@ podman login docker.io
 Push the image:
 
 ```bash
-podman push a2rchi/<image-name>:<tag>
+podman push archi/<image-name>:<tag>
 ```
 
 ## Data Ingestion Architecture
 
-A2RCHI ingests content through **sources** which are collected by **collectors** (`data_manager/collectors`).
+Archi ingests content through **sources** which are collected by **collectors** (`data_manager/collectors`).
 These documents are written to persistent, local files via the `PersistenceService`, which uses `Resource` objects as an abstraction for different content types, and `ResourceMetadata` for associated metadata.
 A catalog of persisted files and metadata is maintained in Postgres via
 `CatalogService` (table: `resources`).
-Finally, the `VectorStoreManager` reads these files, splits them into chunks, generates embeddings, and indexes them in ChromaDB.
+Finally, the `VectorStoreManager` reads these files, splits them into chunks, generates embeddings, and indexes them in PostgreSQL with pgvector.
 
 ### Resources and `BaseResource`
 
@@ -170,11 +172,11 @@ Collectors only interact with `PersistenceService`; they should not touch the fi
 
 ### Vector Database
 
-The vector store lives under the `data_manager/vectorstore` package. `VectorStoreManager` reads the Postgres catalog and synchronises it with ChromaDB:
+The vector store lives under the `data_manager/vectorstore` package. `VectorStoreManager` reads the Postgres catalog and manages embeddings in PostgreSQL:
 
 1. Loads the tracked files and metadata hashes from the Postgres catalog.
 2. Splits documents into chunks, optional stemming, and builds embeddings via the configured model.
-3. Adds chunks to the Chroma collection with flattened metadata (including resource hash, filename, human-readable display fields, and any source-specific extras).
+3. Adds chunks to the document_chunks table with embeddings and flattened metadata (including resource hash, filename, human-readable display fields, and any source-specific extras).
 4. Deletes stale entries when the underlying files disappear or are superseded.
 
 Because the manager defers to the catalog, any resource persisted through `PersistenceService` automatically becomes eligible for indexing—no extra plumbing is required.
@@ -191,4 +193,4 @@ When integrating a new source, create a collector under `data_manager/collectors
 
 When integrating a new collector, ensure that any per-source configuration is encoded in the resource metadata so downstream consumers—such as the chat app—can honour it.
 
-When extending the embedding pipeline or storage schema, keep this flow in mind: collectors produce resources → `PersistenceService` writes files and updates the Postgres catalog → `VectorStoreManager` promotes the indexed files into Chroma. Keeping responsibilities narrowly scoped makes the ingestion stack easier to reason about and evolve.
+When extending the embedding pipeline or storage schema, keep this flow in mind: collectors produce resources → `PersistenceService` writes files and updates the Postgres catalog → `VectorStoreManager` indexes embeddings in PostgreSQL. Keeping responsibilities narrowly scoped makes the ingestion stack easier to reason about and evolve.

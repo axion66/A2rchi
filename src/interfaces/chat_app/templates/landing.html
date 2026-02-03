@@ -2,77 +2,123 @@
 <html lang="en" dir="ltr">
   <head>
     <meta charset="utf-8">
-    <title>A2rchi - AI Assistant</title>
-    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style_index.css') }}">
+    <title>Archi</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- Google Fonts Link For Icons -->
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style_index.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/archi_notext.png') }}">
   </head>
   <body>
-    <div class="landing-container">
-      <div class="landing-content">
-        <div class="landing-logo">
-          <img src="{{ url_for('static', filename='images/a2rchi.png') }}" alt="A2rchi Logo">
+    <div class="landing-page">
+      <header class="landing-header">
+        <div class="landing-brand">
+          <img src="{{ url_for('static', filename='images/archi-logo.png') }}" alt="archi logo">
+          <span>archi</span>
         </div>
-        
-        <h1 class="landing-title">Welcome to A2rchi</h1>
-        
-        <p class="landing-description">
-          Your intelligent AI assistant powered by advanced language models. 
-          Get help with documentation, code, and technical questions.
-        </p>
-        
-        <div class="landing-features">
-          <div class="feature-item">
-            <span class="material-symbols-rounded feature-icon">search</span>
-            <span>Search through documentation and resources</span>
-          </div>
-          <div class="feature-item">
-            <span class="material-symbols-rounded feature-icon">chat</span>
-            <span>Interactive conversational AI interface</span>
-          </div>
-          <div class="feature-item">
-            <span class="material-symbols-rounded feature-icon">code</span>
-            <span>Get help with code and technical issues</span>
-          </div>
-          <div class="feature-item">
-            <span class="material-symbols-rounded feature-icon">history</span>
-            <span>Save and revisit conversation history</span>
-          </div>
+        <div class="landing-header-actions">
+          <a class="ghost-btn" href="/chat">Open chat</a>
         </div>
-        
-        <div class="auth-section">
-          {% if sso_enabled %}
-          <a href="/login?method=sso" class="sso-btn">
-            <span class="material-symbols-rounded">login</span>
-            <span>Login with SSO</span>
-          </a>
-          {% endif %}
-          
-          {% if sso_enabled and basic_auth_enabled %}
-          <div class="auth-divider">or</div>
-          {% endif %}
-          
-          {% if basic_auth_enabled %}
-          <a href="/login" class="basic-auth-btn">
-            <span class="material-symbols-rounded">password</span>
-            <span>Login with Username</span>
-          </a>
-          {% endif %}
-          
-          {% if not sso_enabled and not basic_auth_enabled %}
-          <a href="/chat" class="sso-btn">
-            <span class="material-symbols-rounded">arrow_forward</span>
-            <span>Get Started</span>
-          </a>
-          {% endif %}
-        </div>
-        
-        <div class="footer-links">
-          <a href="/terms" class="footer-link">Terms of Service</a>
-          <a href="/api/health" class="footer-link">System Status</a>
-        </div>
-      </div>
+      </header>
+
+      <main class="landing-main">
+        <section class="hero">
+          <div class="hero-card">
+            <span class="hero-eyebrow">archi</span>
+            <h1 class="hero-title">Research and operations answers, ready when you are.</h1>
+            <p class="hero-subtitle">
+              Search documentation, collaborate with your tools, and keep work moving in a focused chat interface.
+            </p>
+
+            <div class="hero-actions">
+              {% if sso_enabled %}
+              <a href="/login?method=sso" class="primary-btn">
+                Login with SSO
+              </a>
+              {% endif %}
+
+              {% if sso_enabled and basic_auth_enabled %}
+              <span class="hero-divider">or</span>
+              {% endif %}
+
+              {% if basic_auth_enabled %}
+              <a href="/login" class="secondary-btn">
+                Login with Username
+              </a>
+              {% endif %}
+
+              {% if not sso_enabled and not basic_auth_enabled %}
+              <a href="/chat" class="primary-btn">
+                Get Started
+              </a>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="feature-grid">
+            <div class="feature-card">
+              <span class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+              </span>
+              <div>
+                <h3>Searchable knowledge</h3>
+                <p>Scan documentation, tickets, and local resources with precision.</p>
+              </div>
+            </div>
+            <div class="feature-card">
+              <span class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+              </span>
+              <div>
+                <h3>Focused chat</h3>
+                <p>Keep answers, context, and follow-ups in one clean workspace.</p>
+              </div>
+            </div>
+            <div class="feature-card">
+              <span class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 7h16"></path>
+                  <path d="M4 12h10"></path>
+                  <path d="M4 17h7"></path>
+                </svg>
+              </span>
+              <div>
+                <h3>Actionable outputs</h3>
+                <p>Summaries, snippets, and next steps without the noise.</p>
+              </div>
+            </div>
+            <div class="feature-card">
+              <span class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2v4"></path>
+                  <path d="M12 18v4"></path>
+                  <path d="M4.93 4.93l2.83 2.83"></path>
+                  <path d="M16.24 16.24l2.83 2.83"></path>
+                  <path d="M2 12h4"></path>
+                  <path d="M18 12h4"></path>
+                  <path d="M4.93 19.07l2.83-2.83"></path>
+                  <path d="M16.24 7.76l2.83-2.83"></path>
+                </svg>
+              </span>
+              <div>
+                <h3>Configurable workflows</h3>
+                <p>Adapt models, tools, and sources to your workflow.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="landing-footer">
+        <a href="/terms">Terms of Service</a>
+        <a href="/api/health">System Status</a>
+      </footer>
     </div>
   </body>
 </html>

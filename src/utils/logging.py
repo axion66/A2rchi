@@ -1,11 +1,21 @@
 import logging
+import os
 
-import yaml
-
-from src.utils.config_loader import load_global_config
+# Avoid importing YAML/config loaders here to prevent circular imports during startup.
+try:
+    from src.utils.config_access import get_global_config
+except Exception:
+    get_global_config = None
 
 # ignore debug logs from these modules, too verbose :)
-ignore_debug_modules = ["urllib3.connectionpool", "filelock", "httpcore", "openai._base_client"]
+ignore_debug_modules = [
+    "urllib3.connectionpool",
+    "filelock",
+    "httpcore",
+    "openai._base_client",
+    "unstructured.trace",
+    "chardet.charsetprober"
+]
 
 logging_verboseLevel = [
     logging.CRITICAL,
@@ -16,9 +26,12 @@ logging_verboseLevel = [
 ]
 
 def setup_logging():
-
-    config = load_global_config()
-    verbosity = config["verbosity"]
+    verbosity = 3
+    if get_global_config:
+        try:
+            verbosity = get_global_config().get("verbosity", verbosity)
+        except Exception:
+            pass
 
     format_str = '(%(asctime)s) [%(name)s] %(levelname)s: %(message)s'
 
@@ -41,7 +54,7 @@ def setup_cli_logging(verbosity):
     if verbosity > 3: # high verbose mode
         format_str = '[%(name)s] %(levelname)s: %(message)s'
     else: # low verbose mode
-        format_str = '[A2RCHI] %(message)s'
+        format_str = '[archi] %(message)s'
     level = logging_verboseLevel[max(0, min(4, verbosity))]
     logging.basicConfig(
         level=level,

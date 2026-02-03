@@ -6,7 +6,8 @@ from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
 from src.data_manager.collectors.tickets.ticket_manager import TicketManager
 from src.data_manager.collectors.localfile_manager import LocalFileManager
 from src.data_manager.vectorstore.manager import VectorStoreManager
-from src.utils.config_loader import load_config
+from src.utils.yaml_config import load_config_with_class_mapping
+from src.utils.config_service import ConfigService
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 
@@ -14,9 +15,9 @@ logger = get_logger(__name__)
 
 class DataManager():
 
-    def __init__(self, *, run_ingestion: bool = True):
+    def __init__(self, *, run_ingestion: bool = True, factory=None):
 
-        self.config = load_config(map=True)
+        self.config = load_config_with_class_mapping(factory=factory)
         self.global_config = self.config["global"]
         self.data_path = self.global_config["DATA_PATH"]
         self.should_run_ingestion = run_ingestion
@@ -28,6 +29,11 @@ class DataManager():
             **self.config["services"]["postgres"],
         }
         self.persistence = PersistenceService(self.data_path, pg_config=self.pg_config)
+        self.config_service = factory.config_service if factory else ConfigService(pg_config=self.pg_config)
+        static_config = self.config_service.get_static_config()
+        if not static_config or not static_config.sources_config:
+            raise RuntimeError("Static config missing sources_config; run deployment initialization first.")
+        self.config["data_manager"]["sources"] = static_config.sources_config
 
         self.localfile_manager = LocalFileManager(dm_config=self.config["data_manager"])
         self.scraper_manager = ScraperManager(dm_config=self.config["data_manager"])

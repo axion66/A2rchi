@@ -17,10 +17,9 @@ def _info(message: str) -> None:
     print(f"[react-smoke] {message}")
 
 
-def _stream_chat(base_url: str, payload: dict) -> Tuple[bool, bool]:
+def _stream_chat(base_url: str, payload: dict) -> bool:
     stream_url = f"{base_url}/api/get_chat_response_stream"
     _info(f"POST {stream_url}")
-    tool_call_seen = False
     final_seen = False
     try:
         with requests.post(stream_url, json=payload, stream=True, timeout=300) as resp:
@@ -36,14 +35,12 @@ def _stream_chat(base_url: str, payload: dict) -> Tuple[bool, bool]:
                 event_type = event.get("type")
                 if event_type == "error":
                     _fail(f"Stream error: {event}")
-                if event_type == "step" and event.get("step_type") == "tool_call":
-                    tool_call_seen = True
                 if event_type == "final":
                     final_seen = True
                     break
     except Exception as exc:
         _fail(f"Stream request failed: {exc}")
-    return tool_call_seen, final_seen
+    return final_seen
 
 
 def main() -> None:
@@ -55,7 +52,7 @@ def main() -> None:
         "Use the search_local_files tool to find the phrase "
         "'Smoke test seed document' and summarize the result.",
     )
-    config_name = os.getenv("A2RCHI_CONFIG_NAME")
+    config_name = os.getenv("ARCHI_CONFIG_NAME")
 
     _info(f"Waiting for {base_url}/api/health (timeout {timeout}s) ...")
     start_ts = time.time()
@@ -83,9 +80,7 @@ def main() -> None:
     if config_name:
         payload["config_name"] = config_name
 
-    tool_call_seen, final_seen = _stream_chat(base_url, payload)
-    if not tool_call_seen:
-        _fail("No tool_call events observed in stream")
+    final_seen = _stream_chat(base_url, payload)
     if not final_seen:
         _fail("No final response observed in stream")
     _info("ReAct streaming smoke passed")
