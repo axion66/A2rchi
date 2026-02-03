@@ -347,6 +347,12 @@ body {
   color: var(--accent);
 }
 
+.sidebar-brand img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
 .new-chat-btn {
   display: flex;
   align-items: center;
@@ -496,14 +502,20 @@ body {
   font-weight: 600;
 }
 
+.message-avatar img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
 .message.user .message-avatar {
   background: var(--bg-tertiary);
   color: var(--text-secondary);
 }
 
 .message.assistant .message-avatar {
-  background: var(--accent);
-  color: white;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
 }
 
 .message-sender {
@@ -657,6 +669,13 @@ body {
   height: 48px;
   margin-bottom: 16px;
   color: var(--accent);
+}
+
+.messages-empty-logo {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 16px;
+  object-fit: contain;
 }
 
 .messages-empty-title {

@@ -520,7 +520,7 @@ async function loadConversation(convId) {
                     </div>`
                 : `<div class="chat-content">
                         <div class="chat-details">
-                            <img src="/static/images/archi.png" alt="chatbot-img">
+                            <img src="/static/images/archi-logo.png" alt="chatbot-img">
                             <div>${msg.content}</div>
                         </div>
                         <div class="button-container">
@@ -1143,7 +1143,7 @@ const showTypingAnimation = (isRefresh = false) => {
     // Create the typing animation and append it to the chat container
     const html = `<div class="chat-content">
                     <div class="chat-details">
-                        <img src="/static/images/archi.png" alt="chatbot-img">
+                        <img src="/static/images/archi-logo.png" alt="chatbot-img">
                         <p id="loading-text"><em class="loading-text">Processing request...</em></p>
                         <div class="stream-steps" data-stream-steps></div>
                     </div>
@@ -1200,7 +1200,7 @@ const showFeedbackRequest = () => {
 
     const html = `<div class="chat-content">
                     <div class="chat-details">
-                        <img src="/static/images/archi.png" alt="chatbot-img">
+                        <img src="/static/images/archi-logo.png" alt="chatbot-img">
                         <div class=".default-text">
                             <p>I've noticed you haven't rated any of my responses in a while. Rating responses is crucial because it not only helps me improve, but it also ensures that this project remains open source and freely accessible for everyone. Your input is highly valuable in supporting the archi mission! </p>
                         </div>
