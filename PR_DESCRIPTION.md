@@ -112,9 +112,9 @@ services:
 
 1. Start PostgreSQL:
    ```bash
-   docker run -d --name a2rchi-test-postgres -p 5439:5432 \
-     -e POSTGRES_USER=a2rchi -e POSTGRES_PASSWORD=testpassword123 \
-     -e POSTGRES_DB=a2rchi postgres:15
+   docker run -d --name archi-test-postgres -p 5439:5432 \
+     -e POSTGRES_USER=archi -e POSTGRES_PASSWORD=testpassword123 \
+     -e POSTGRES_DB=archi postgres:15
    ```
 
 2. Start data-manager service:

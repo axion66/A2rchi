@@ -55,7 +55,7 @@ archi create \
   --services chatbot \
   --hostmode
 
-# This creates ~/.a2rchi/a2rchi-test-local/ with:
+# This creates ~/.archi/archi-test-local/ with:
 #   - configs/           Rendered configuration files
 #   - secrets/           Individual secret files
 #   - docker-compose.yml Generated compose file
