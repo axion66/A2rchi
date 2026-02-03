@@ -3,6 +3,8 @@
  * 
  * Manages data upload UI for files, URLs, Git repos, and Jira projects.
  * Uses Dropzone.js for file uploads.
+ * 
+ * Dependencies: utils.js, toast.js, api-client.js
  */
 
 class DataUploader {
@@ -97,13 +99,13 @@ class DataUploader {
       const data = await response.json();
       
       if (response.ok && data.success) {
-        this.showNotification('Documents processed successfully! They are now searchable.', 'success');
+        toast.success('Documents processed successfully! They are now searchable.');
       } else {
         throw new Error(data.error || 'Embedding failed');
       }
     } catch (err) {
       console.error('Embedding error:', err);
-      this.showNotification(err.message || 'Failed to process documents', 'error');
+      toast.error(err.message || 'Failed to process documents');
     } finally {
       this.isEmbedding = false;
       if (embedBtn) {
@@ -456,6 +458,67 @@ class DataUploader {
     if (refreshBtn) {
       refreshBtn.addEventListener('click', () => this.loadExistingSources());
     }
+
+    // Event delegation for dynamically rendered action buttons
+    this.bindActionDelegation();
+  }
+
+  /**
+   * Event Delegation for Dynamic Action Buttons
+   * Handles clicks on data-action buttons in rendered lists to avoid inline onclick handlers
+   */
+  bindActionDelegation() {
+    // URL queue actions
+    const urlQueueContainer = document.getElementById('url-queue');
+    if (urlQueueContainer) {
+      urlQueueContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        
+        const action = btn.dataset.action;
+        const index = parseInt(btn.dataset.index, 10);
+        
+        if (action === 'remove-url' && !isNaN(index)) {
+          this.removeUrl(index);
+        }
+      });
+    }
+
+    // Git repos actions
+    const gitReposContainer = document.getElementById('git-repos-list');
+    if (gitReposContainer) {
+      gitReposContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        
+        const action = btn.dataset.action;
+        const repo = btn.dataset.repo;
+        
+        if (action === 'refresh-git' && repo) {
+          this.refreshGitRepo(repo);
+        } else if (action === 'remove-git' && repo) {
+          this.removeGitRepo(repo);
+        }
+      });
+    }
+
+    // Jira projects actions
+    const jiraProjectsContainer = document.getElementById('jira-projects-list');
+    if (jiraProjectsContainer) {
+      jiraProjectsContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        
+        const action = btn.dataset.action;
+        const project = btn.dataset.project;
+        
+        if (action === 'refresh-jira' && project) {
+          this.refreshJiraProject(project);
+        } else if (action === 'remove-jira' && project) {
+          this.removeJiraProject(project);
+        }
+      });
+    }
   }
 
   /**
@@ -489,6 +552,8 @@ class DataUploader {
       return;
     }
 
+    const escapeHtml = archiUtils?.escapeHtml || this.escapeHtml.bind(this);
+    
     container.innerHTML = this.urlQueue.map((item, idx) => `
       <div class="source-item">
         <div class="source-item-icon">
@@ -498,11 +563,11 @@ class DataUploader {
           </svg>
         </div>
         <div class="source-item-info">
-          <div class="source-item-name">${this.escapeHtml(item.url)}</div>
+          <div class="source-item-name">${escapeHtml(item.url)}</div>
           <div class="source-item-meta">Depth: ${item.depth} • ${item.requiresSso ? 'SSO required' : 'No SSO'}</div>
         </div>
         <div class="source-item-actions">
-          <button class="btn-icon danger" onclick="uploader.removeUrl(${idx})" title="Remove">
+          <button class="btn-icon danger" data-action="remove-url" data-index="${idx}" title="Remove">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -559,16 +624,16 @@ class DataUploader {
 
       // Show appropriate notification based on results
       if (failCount === 0 && successCount > 0) {
-        this.showNotification(`Successfully scraped ${totalResources} page(s) from ${successCount} URL(s)`, 'success');
+        toast.success(`Successfully scraped ${totalResources} page(s) from ${successCount} URL(s)`);
       } else if (successCount > 0 && failCount > 0) {
-        this.showNotification(`Scraped ${totalResources} page(s) from ${successCount} URL(s). ${failCount} URL(s) failed.`, 'warning');
+        toast.warning(`Scraped ${totalResources} page(s) from ${successCount} URL(s). ${failCount} URL(s) failed.`);
         console.warn('Scrape errors:', errors);
       } else {
-        this.showNotification(`Failed to scrape URLs: ${errors[0] || 'No content found'}`, 'error');
+        toast.error(`Failed to scrape URLs: ${errors[0] || 'No content found'}`);
       }
     } catch (err) {
       console.error('Scrape error:', err);
-      this.showNotification('Failed to scrape URLs', 'error');
+      toast.error('Failed to scrape URLs');
     } finally {
       if (btn) {
         btn.disabled = false;
@@ -604,14 +669,14 @@ class DataUploader {
       const data = await response.json();
       if (response.ok && data.success) {
         input.value = '';
-        this.showNotification('Repository cloned successfully. Click Process to embed.', 'success');
+        toast.success('Repository cloned successfully. Click Process to embed.');
         this.loadGitRepos();
       } else {
         throw new Error(data.error || data.message || 'Clone failed');
       }
     } catch (err) {
       console.error('Clone error:', err);
-      this.showNotification(err.message || 'Failed to clone repository', 'error');
+      toast.error(err.message || 'Failed to clone repository');
     } finally {
       if (btn) {
         btn.disabled = false;
@@ -648,7 +713,13 @@ class DataUploader {
       return;
     }
 
-    container.innerHTML = this.gitRepos.map(repo => `
+    const escapeAttr = archiUtils?.escapeAttr || this.escapeHtml.bind(this);
+    const escapeHtml = archiUtils?.escapeHtml || this.escapeHtml.bind(this);
+    const formatDate = archiUtils?.formatRelativeTime || this.formatDate.bind(this);
+    
+    container.innerHTML = this.gitRepos.map(repo => {
+      const repoId = escapeAttr(repo.url || repo.name);
+      return `
       <div class="source-item">
         <div class="source-item-icon">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -658,17 +729,17 @@ class DataUploader {
           </svg>
         </div>
         <div class="source-item-info">
-          <div class="source-item-name">${this.escapeHtml(repo.name || repo.repo_name)}</div>
-          <div class="source-item-meta">${repo.file_count || 0} files • Updated ${this.formatDate(repo.last_updated || repo.updated_at)}</div>
+          <div class="source-item-name">${escapeHtml(repo.name || repo.repo_name)}</div>
+          <div class="source-item-meta">${repo.file_count || 0} files • Updated ${formatDate(repo.last_updated || repo.updated_at)}</div>
         </div>
         <div class="source-item-actions">
-          <button class="btn-icon" onclick="uploader.refreshGitRepo('${this.escapeHtml(repo.url || repo.name)}')" title="Refresh">
+          <button class="btn-icon" data-action="refresh-git" data-repo="${repoId}" title="Refresh">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="23 4 23 10 17 10"></polyline>
               <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
             </svg>
           </button>
-          <button class="btn-icon danger" onclick="uploader.removeGitRepo('${this.escapeHtml(repo.url || repo.name)}')" title="Remove">
+          <button class="btn-icon danger" data-action="remove-git" data-repo="${repoId}" title="Remove">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -676,20 +747,25 @@ class DataUploader {
           </button>
         </div>
       </div>
-    `).join('');
+    `}).join('');
   }
 
   async refreshGitRepo(repoName) {
     try {
-      await fetch('/api/upload/git/refresh', {
+      const response = await fetch('/api/upload/git/refresh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ repo_name: repoName })
       });
-      this.showNotification('Repository refreshed', 'success');
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Refresh failed');
+      }
+      toast.success('Repository refreshed');
       this.loadGitRepos();
     } catch (err) {
-      this.showNotification('Failed to refresh repository', 'error');
+      console.error('Refresh git error:', err);
+      toast.error(err.message || 'Failed to refresh repository');
     }
   }
 
@@ -697,15 +773,20 @@ class DataUploader {
     if (!confirm(`Remove repository "${repoName}" and all its indexed files?`)) return;
     
     try {
-      await fetch('/api/upload/git', {
+      const response = await fetch('/api/upload/git', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ repo_name: repoName })
       });
-      this.showNotification('Repository removed', 'success');
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Delete failed');
+      }
+      toast.success('Repository removed');
       this.loadGitRepos();
     } catch (err) {
-      this.showNotification('Failed to remove repository', 'error');
+      console.error('Remove git error:', err);
+      toast.error(err.message || 'Failed to remove repository');
     }
   }
 
@@ -734,14 +815,14 @@ class DataUploader {
       const data = await response.json();
       if (response.ok) {
         input.value = '';
-        this.showNotification('Jira project synced successfully', 'success');
+        toast.success('Jira project synced successfully');
         this.loadJiraProjects();
       } else {
         throw new Error(data.error || 'Sync failed');
       }
     } catch (err) {
       console.error('Sync error:', err);
-      this.showNotification(err.message || 'Failed to sync Jira project', 'error');
+      toast.error(err.message || 'Failed to sync Jira project');
     } finally {
       if (btn) {
         btn.disabled = false;
@@ -776,7 +857,13 @@ class DataUploader {
       return;
     }
 
-    container.innerHTML = this.jiraProjects.map(project => `
+    const escapeAttr = archiUtils?.escapeAttr || this.escapeHtml.bind(this);
+    const escapeHtml = archiUtils?.escapeHtml || this.escapeHtml.bind(this);
+    const formatDate = archiUtils?.formatRelativeTime || this.formatDate.bind(this);
+    
+    container.innerHTML = this.jiraProjects.map(project => {
+      const projectKey = escapeAttr(project.key);
+      return `
       <div class="source-item">
         <div class="source-item-icon">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -786,17 +873,17 @@ class DataUploader {
           </svg>
         </div>
         <div class="source-item-info">
-          <div class="source-item-name">${this.escapeHtml(project.key)} - ${this.escapeHtml(project.name || 'Project')}</div>
-          <div class="source-item-meta">${project.ticket_count || 0} tickets • Last sync: ${this.formatDate(project.last_sync)}</div>
+          <div class="source-item-name">${escapeHtml(project.key)} - ${escapeHtml(project.name || 'Project')}</div>
+          <div class="source-item-meta">${project.ticket_count || 0} tickets • Last sync: ${formatDate(project.last_sync)}</div>
         </div>
         <div class="source-item-actions">
-          <button class="btn-icon" onclick="uploader.refreshJiraProject('${this.escapeHtml(project.key)}')" title="Sync now">
+          <button class="btn-icon" data-action="refresh-jira" data-project="${projectKey}" title="Sync now">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="23 4 23 10 17 10"></polyline>
               <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
             </svg>
           </button>
-          <button class="btn-icon danger" onclick="uploader.removeJiraProject('${this.escapeHtml(project.key)}')" title="Remove">
+          <button class="btn-icon danger" data-action="remove-jira" data-project="${projectKey}" title="Remove">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -804,20 +891,25 @@ class DataUploader {
           </button>
         </div>
       </div>
-    `).join('');
+    `}).join('');
   }
 
   async refreshJiraProject(projectKey) {
     try {
-      await fetch('/api/upload/jira', {
+      const response = await fetch('/api/upload/jira', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project_key: projectKey })
       });
-      this.showNotification('Project synced', 'success');
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Sync failed');
+      }
+      toast.success('Project synced');
       this.loadJiraProjects();
     } catch (err) {
-      this.showNotification('Failed to sync project', 'error');
+      console.error('Sync jira error:', err);
+      toast.error(err.message || 'Failed to sync project');
     }
   }
 
@@ -825,15 +917,20 @@ class DataUploader {
     if (!confirm(`Remove Jira project "${projectKey}" and all synced tickets?`)) return;
     
     try {
-      await fetch('/api/sources/jira', {
+      const response = await fetch('/api/sources/jira', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project_key: projectKey })
       });
-      this.showNotification('Project removed', 'success');
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Delete failed');
+      }
+      toast.success('Project removed');
       this.loadJiraProjects();
     } catch (err) {
-      this.showNotification('Failed to remove project', 'error');
+      console.error('Remove jira error:', err);
+      toast.error(err.message || 'Failed to remove project');
     }
   }
 
@@ -893,15 +990,18 @@ class DataUploader {
       return true;
     } catch (err) {
       console.error('Failed to update schedule:', err);
-      this.showNotification(`Failed to update schedule: ${err.message}`, 'error');
+      toast.error(`Failed to update schedule: ${err.message}`);
       return false;
     }
   }
 
   /**
-   * Utility Functions
+   * Utility Functions (kept as fallbacks when archiUtils is not loaded)
    */
   isValidUrl(string) {
+    if (archiUtils?.isValidUrl) {
+      return archiUtils.isValidUrl(string);
+    }
     try {
       new URL(string);
       return true;
@@ -911,12 +1011,18 @@ class DataUploader {
   }
 
   formatFileSize(bytes) {
+    if (archiUtils?.formatSize) {
+      return archiUtils.formatSize(bytes);
+    }
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   }
 
   formatDate(dateStr) {
+    if (archiUtils?.formatRelativeTime) {
+      return archiUtils.formatRelativeTime(dateStr);
+    }
     if (!dateStr) return 'Unknown';
     const date = new Date(dateStr);
     const now = new Date();
@@ -931,6 +1037,9 @@ class DataUploader {
   }
 
   getFileIcon(filename) {
+    if (archiUtils?.getFileIcon) {
+      return archiUtils.getFileIcon(filename);
+    }
     const ext = filename.split('.').pop()?.toLowerCase();
     const iconMap = {
       pdf: '📄',
@@ -952,19 +1061,13 @@ class DataUploader {
   }
 
   escapeHtml(text) {
+    if (archiUtils?.escapeHtml) {
+      return archiUtils.escapeHtml(text);
+    }
     if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
-  }
-
-  showNotification(message, type = 'info') {
-    // Simple alert for now - can be replaced with toast notifications
-    if (type === 'error') {
-      alert('Error: ' + message);
-    } else {
-      console.log(`[${type}] ${message}`);
-    }
   }
 }
 

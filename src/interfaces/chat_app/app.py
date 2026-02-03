@@ -1701,7 +1701,8 @@ class FlaskAppWrapper(object):
 
         # Data manager service URL for upload proxy
         dm_config = self.services_config.get("data_manager", {})
-        dm_host = dm_config.get("host", "localhost")
+        # Use 'hostname' for service discovery (Docker network name), fallback to 'host' for local dev
+        dm_host = dm_config.get("hostname") or dm_config.get("host", "localhost")
         dm_port = dm_config.get("port", 5001)
         self.data_manager_url = f"http://{dm_host}:{dm_port}"
         logger.info(f"Data manager service URL: {self.data_manager_url}")
@@ -1788,12 +1789,13 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/upload', 'upload_page', self.require_auth(self.upload_page))
         self.add_endpoint('/api/upload/file', 'upload_file', self.require_auth(self.upload_file), methods=["POST"])
         self.add_endpoint('/api/upload/url', 'upload_url', self.require_auth(self.upload_url), methods=["POST"])
-        self.add_endpoint('/api/upload/git', 'upload_git', self.require_auth(self.upload_git), methods=["POST"])
+        self.add_endpoint('/api/upload/git', 'upload_git', self.require_auth(self.upload_git), methods=["POST", "DELETE"])
+        self.add_endpoint('/api/upload/git/refresh', 'refresh_git', self.require_auth(self.refresh_git), methods=["POST"])
         self.add_endpoint('/api/upload/jira', 'upload_jira', self.require_auth(self.upload_jira), methods=["POST"])
         self.add_endpoint('/api/upload/embed', 'trigger_embedding', self.require_auth(self.trigger_embedding), methods=["POST"])
         self.add_endpoint('/api/upload/status', 'get_embedding_status', self.require_auth(self.get_embedding_status), methods=["GET"])
         self.add_endpoint('/api/sources/git', 'list_git_sources', self.require_auth(self.list_git_sources), methods=["GET"])
-        self.add_endpoint('/api/sources/jira', 'list_jira_sources', self.require_auth(self.list_jira_sources), methods=["GET"])
+        self.add_endpoint('/api/sources/jira', 'list_jira_sources', self.require_auth(self.list_jira_sources), methods=["GET", "DELETE"])
         self.add_endpoint('/api/sources/schedules', 'get_source_schedules', self.require_auth(self.get_source_schedules), methods=["GET"])
         self.add_endpoint('/api/sources/schedules', 'update_source_schedule', self.require_auth(self.update_source_schedule), methods=["PUT"])
 
@@ -3504,10 +3506,13 @@ class FlaskAppWrapper(object):
 
     def upload_git(self):
         """
-        Clone and ingest a Git repository.
+        Clone and ingest a Git repository (POST), or delete a git repo (DELETE).
         Proxies to data-manager service.
         """
         try:
+            if request.method == 'DELETE':
+                return self._delete_git_repo()
+            
             data = request.json or {}
             repo_url = data.get("repo_url", "").strip()
 
@@ -3536,6 +3541,137 @@ class FlaskAppWrapper(object):
             return jsonify({"error": "data_manager_unavailable"}), 503
         except Exception as e:
             logger.error(f"Error cloning Git repo: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def _delete_git_repo(self):
+        """
+        Delete a Git repository and all its indexed documents.
+        Marks documents as deleted in the database and removes their chunks.
+        """
+        try:
+            data = request.json or {}
+            repo_name = data.get("repo_name", "").strip()
+            
+            if not repo_name:
+                return jsonify({"error": "missing_repo_name"}), 400
+            
+            # Build a pattern to match the repo URL
+            # repo_name could be a URL (https://github.com/org/repo) or just a repo name (org/repo)
+            # URLs in database are like: https://github.com/pallets/click/blob/main/file.py
+            conn = psycopg2.connect(**self.chat.pg_config)
+            try:
+                with conn.cursor() as cursor:
+                    # First, get the resource hashes of documents to delete
+                    cursor.execute("""
+                        SELECT resource_hash FROM documents 
+                        WHERE source_type = 'git' 
+                          AND NOT is_deleted
+                          AND (
+                              url LIKE %s
+                              OR url LIKE %s
+                          )
+                    """, (f'{repo_name}/%', f'%/{repo_name}/%'))
+                    hashes_to_delete = [row[0] for row in cursor.fetchall()]
+                    
+                    if hashes_to_delete:
+                        # Delete chunks for these documents
+                        cursor.execute("""
+                            DELETE FROM document_chunks 
+                            WHERE metadata->>'resource_hash' = ANY(%s)
+                        """, (hashes_to_delete,))
+                        chunks_deleted = cursor.rowcount
+                        logger.info(f"Deleted {chunks_deleted} chunks for {len(hashes_to_delete)} documents")
+                    
+                    # Mark documents as deleted
+                    cursor.execute("""
+                        UPDATE documents 
+                        SET is_deleted = TRUE, deleted_at = NOW()
+                        WHERE source_type = 'git' 
+                          AND NOT is_deleted
+                          AND (
+                              url LIKE %s
+                              OR url LIKE %s
+                          )
+                    """, (f'{repo_name}/%', f'%/{repo_name}/%'))
+                    deleted_count = cursor.rowcount
+                    conn.commit()
+                    
+                logger.info(f"Deleted {deleted_count} documents from git repo: {repo_name}")
+                return jsonify({
+                    "success": True,
+                    "deleted_count": deleted_count,
+                    "message": f"Removed {deleted_count} documents from repository"
+                }), 200
+            finally:
+                conn.close()
+                
+        except Exception as e:
+            logger.error(f"Error deleting Git repo: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def refresh_git(self):
+        """
+        Refresh (re-clone) a Git repository to get latest changes.
+        Proxies to data-manager service.
+        """
+        try:
+            data = request.json or {}
+            repo_name = data.get("repo_name", "").strip()
+
+            if not repo_name:
+                return jsonify({"error": "missing_repo_name"}), 400
+
+            # The repo_name might be a URL or just a name
+            # Try to reconstruct the full URL if needed
+            if repo_name.startswith('http'):
+                repo_url = repo_name
+            else:
+                # Query the database to find the full URL
+                conn = psycopg2.connect(**self.chat.pg_config)
+                try:
+                    with conn.cursor() as cursor:
+                        cursor.execute("""
+                            SELECT DISTINCT 
+                                CASE 
+                                    WHEN url LIKE 'https://github.com/%' THEN
+                                        regexp_replace(url, '^(https://github.com/[^/]+/[^/]+).*', '\\1')
+                                    WHEN url LIKE 'https://gitlab.com/%' THEN
+                                        regexp_replace(url, '^(https://gitlab.com/[^/]+/[^/]+).*', '\\1')
+                                    ELSE url
+                                END as repo_url
+                            FROM documents 
+                            WHERE source_type = 'git' 
+                              AND NOT is_deleted
+                              AND url LIKE %s
+                            LIMIT 1
+                        """, (f'%/{repo_name}%',))
+                        row = cursor.fetchone()
+                        repo_url = row[0] if row else repo_name
+                finally:
+                    conn.close()
+
+            # Proxy to data-manager service to re-clone
+            resp = requests.post(
+                f"{self.data_manager_url}/document_index/add_git_repo",
+                data={"repo_url": repo_url},
+                timeout=300
+            )
+            dm_data = resp.json()
+
+            if resp.status_code == 200 and dm_data.get("status") == "ok":
+                return jsonify({
+                    "success": True,
+                    "repo_url": repo_url,
+                    "message": "Repository refreshed."
+                }), 200
+            else:
+                return jsonify({"error": dm_data.get("error", "git_refresh_failed")}), resp.status_code
+
+        except requests.exceptions.ConnectionError:
+            logger.error("Data manager service unavailable")
+            return jsonify({"error": "data_manager_unavailable"}), 503
+        except Exception as e:
+            logger.error(f"Error refreshing Git repo: {str(e)}")
             return jsonify({"error": str(e)}), 500
 
     def upload_jira(self):
@@ -3695,12 +3831,15 @@ class FlaskAppWrapper(object):
 
     def list_jira_sources(self):
         """
-        List currently synced Jira projects.
+        List currently synced Jira projects (GET), or delete a project (DELETE).
 
         Returns:
-            JSON with list of jira sources
+            JSON with list of jira sources or deletion status
         """
         try:
+            if request.method == 'DELETE':
+                return self._delete_jira_project()
+                
             sources = []
             seen_projects = set()
 
@@ -3722,6 +3861,63 @@ class FlaskAppWrapper(object):
 
         except Exception as e:
             logger.error(f"Error listing Jira sources: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def _delete_jira_project(self):
+        """
+        Delete a Jira project and all its synced tickets.
+        Marks documents as deleted in the database and removes their chunks.
+        """
+        try:
+            data = request.json or {}
+            project_key = data.get("project_key", "").strip()
+            
+            if not project_key:
+                return jsonify({"error": "missing_project_key"}), 400
+            
+            conn = psycopg2.connect(**self.chat.pg_config)
+            try:
+                with conn.cursor() as cursor:
+                    # First, get the resource hashes of documents to delete
+                    cursor.execute("""
+                        SELECT resource_hash FROM documents 
+                        WHERE source_type = 'jira' 
+                          AND NOT is_deleted
+                          AND display_name LIKE %s
+                    """, (f'{project_key}-%',))
+                    hashes_to_delete = [row[0] for row in cursor.fetchall()]
+                    
+                    if hashes_to_delete:
+                        # Delete chunks for these documents
+                        cursor.execute("""
+                            DELETE FROM document_chunks 
+                            WHERE metadata->>'resource_hash' = ANY(%s)
+                        """, (hashes_to_delete,))
+                        chunks_deleted = cursor.rowcount
+                        logger.info(f"Deleted {chunks_deleted} chunks for {len(hashes_to_delete)} Jira documents")
+                    
+                    # Mark documents from this Jira project as deleted
+                    cursor.execute("""
+                        UPDATE documents 
+                        SET is_deleted = TRUE, deleted_at = NOW()
+                        WHERE source_type = 'jira' 
+                          AND NOT is_deleted
+                          AND display_name LIKE %s
+                    """, (f'{project_key}-%',))
+                    deleted_count = cursor.rowcount
+                    conn.commit()
+                    
+                logger.info(f"Deleted {deleted_count} documents from Jira project: {project_key}")
+                return jsonify({
+                    "success": True,
+                    "deleted_count": deleted_count,
+                    "message": f"Removed {deleted_count} tickets from project {project_key}"
+                }), 200
+            finally:
+                conn.close()
+                
+        except Exception as e:
+            logger.error(f"Error deleting Jira project: {str(e)}")
             return jsonify({"error": str(e)}), 500
 
     def get_source_schedules(self):

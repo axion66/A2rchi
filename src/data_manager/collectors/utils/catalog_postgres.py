@@ -374,10 +374,27 @@ class PostgresCatalogService:
         return self._row_to_metadata(row)
 
     def get_filepath_for_hash(self, hash: str) -> Optional[Path]:
-        """Get the file path for a resource hash."""
+        """Get the file path for a resource hash.
+        
+        First checks the in-memory cache, then falls back to database query
+        to handle documents added after service startup.
+        """
         stored = self._file_index.get(hash)
         if not stored:
-            return None
+            # Fall back to database query for documents added after startup
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT file_path FROM documents WHERE resource_hash = %s AND NOT is_deleted",
+                        (hash,)
+                    )
+                    row = cur.fetchone()
+            if row:
+                stored = row[0]
+                # Update cache for future lookups
+                self._file_index[hash] = stored
+            else:
+                return None
         path = self._resolve_path(stored)
         return path if path.exists() else None
 

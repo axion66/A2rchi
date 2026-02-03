@@ -18,9 +18,10 @@ class DatabaseViewer {
     this.quickQueries = {
       stats: `SELECT 
   (SELECT COUNT(*) FROM documents) as documents,
+  (SELECT COUNT(*) FROM documents WHERE deleted_at IS NULL) as active_documents,
   (SELECT COUNT(*) FROM document_chunks) as chunks,
   (SELECT COUNT(*) FROM conversations) as conversations,
-  (SELECT COUNT(*) FROM messages) as messages;`,
+  (SELECT COUNT(*) FROM feedback) as feedback_count;`,
       
       recent_docs: `SELECT id, display_name, source_type, 
        pg_size_pretty(size_bytes) as size, created_at
@@ -36,16 +37,14 @@ GROUP BY d.id, d.display_name
 ORDER BY chunk_count ASC
 LIMIT 20;`,
       
-      recent_chats: `SELECT c.id, c.title, 
-       COUNT(m.id) as message_count,
-       c.created_at
-FROM conversations c
-LEFT JOIN messages m ON m.conversation_id = c.id
-GROUP BY c.id, c.title, c.created_at
-ORDER BY c.created_at DESC
+      recent_chats: `SELECT cm.conversation_id, cm.title, cm.user_id,
+       cm.created_at, cm.last_message_at,
+       (SELECT COUNT(*) FROM conversations c WHERE c.conversation_id = cm.conversation_id) as message_count
+FROM conversation_metadata cm
+ORDER BY cm.last_message_at DESC
 LIMIT 20;`,
       
-      orphans: `SELECT c.id, LEFT(c.content, 100) as content_preview
+      orphans: `SELECT c.id, LEFT(c.chunk_text, 100) as content_preview
 FROM document_chunks c
 LEFT JOIN documents d ON c.document_id = d.id
 WHERE d.id IS NULL

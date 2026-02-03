@@ -8,7 +8,6 @@ from langchain_community.document_loaders import (
     BSHTMLLoader,
     PyPDFLoader,
     PythonLoader,
-    UnstructuredMarkdownLoader,
 )
 from langchain_community.document_loaders.text import TextLoader
 from src.utils.logging import get_logger
@@ -25,13 +24,22 @@ def select_loader(file_path: str | Path):
     path = Path(file_path)
     _, file_extension = path.suffix, path.suffix
     file_extension = file_extension.lower()
-    if file_extension in {".txt", ".c", ".C", ".sh", ".h", ".php"}:
+    # Text-based files that can be loaded directly
+    text_extensions = {
+        ".txt", ".c", ".C", ".sh", ".h", ".php",
+        ".json", ".yaml", ".yml", ".toml",  # Data formats
+        ".js", ".ts", ".jsx", ".tsx",  # JavaScript/TypeScript
+        ".java", ".go", ".rs", ".rb",  # Other languages
+        ".css", ".scss", ".less",  # Stylesheets
+        ".xml", ".csv", ".tsv",  # Other structured data
+        ".rst", ".log", ".ini", ".cfg", ".conf",  # Config/docs
+        ".md",  # Markdown (use TextLoader to preserve all content including comments)
+    }
+    if file_extension in text_extensions:
         return TextLoader(str(path))
-    if file_extension == ".md":
-        return UnstructuredMarkdownLoader(str(path))
     if file_extension == ".py":
         return PythonLoader(str(path))
-    if file_extension == ".html":
+    if file_extension in {".html", ".htm"}:
         return BSHTMLLoader(str(path), bs_kwargs={"features": "html.parser"})
     if file_extension == ".pdf":
         return PyPDFLoader(str(path))
@@ -65,7 +73,7 @@ def load_text_from_path(file_path: str | Path) -> Optional[str]:
     path = Path(file_path)
     try:
         # For simple text files prefer direct read for speed and encoding handling
-        if path.suffix.lower() in {".txt", ".md", ".rst", ".log", ".json", ".yaml", ".yml", ".csv", ".tsv", ".html", ".htm"}:
+        if path.suffix.lower() in {".txt", ".md", ".rst", ".log", ".json", ".yaml", ".yml", ".toml", ".csv", ".tsv", ".html", ".htm"}:
             return path.read_text(encoding="utf-8", errors="ignore")
 
         loader = select_loader(path)

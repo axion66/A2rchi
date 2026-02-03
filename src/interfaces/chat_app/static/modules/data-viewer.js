@@ -3,6 +3,8 @@
  * 
  * Manages the data viewer UI, coordinating between FileTree and ContentRenderer modules.
  * Handles document loading, selection, filtering, and API communication.
+ * 
+ * Dependencies: utils.js, toast.js, file-tree.js, content-renderer.js
  */
 
 class DataViewer {
@@ -293,8 +295,10 @@ class DataViewer {
     // URL field
     const urlEl = document.getElementById('preview-url');
     if (urlEl) {
-      if (doc.url && doc.source_type === 'web') {
-        urlEl.innerHTML = `<a href="${this.escapeHtml(doc.url)}" target="_blank" rel="noopener">${this.escapeHtml(doc.url)}</a>`;
+      // Sanitize URL to prevent javascript: XSS attacks
+      const sanitizedUrl = this.sanitizeUrl(doc.url);
+      if (sanitizedUrl && doc.source_type === 'web') {
+        urlEl.innerHTML = `<a href="${this.escapeHtml(sanitizedUrl)}" target="_blank" rel="noopener">${this.escapeHtml(doc.url)}</a>`;
         urlEl.parentElement.style.display = 'flex';
       } else {
         urlEl.parentElement.style.display = 'none';
@@ -413,7 +417,7 @@ class DataViewer {
    */
   async toggleDocument(hash, enabled) {
     if (!this.conversationId) {
-      this.showToast('Cannot modify documents without a chat session', 'warning');
+      toast.warning('Cannot modify documents without a chat session');
       return;
     }
     
@@ -440,11 +444,11 @@ class DataViewer {
         }
       }
       
-      this.showToast(`Document ${enabled ? 'enabled' : 'disabled'}`, 'success');
+      toast.success(`Document ${enabled ? 'enabled' : 'disabled'}`);
       this.loadStats();
     } catch (error) {
       console.error(`Error ${endpoint}ing document:`, error);
-      this.showToast(`Failed to ${endpoint} document`, 'error');
+      toast.error(`Failed to ${endpoint} document`);
       this.renderDocuments();
     }
   }
@@ -454,7 +458,7 @@ class DataViewer {
    */
   async bulkEnable() {
     if (!this.conversationId) {
-      this.showToast('Cannot modify documents without a chat session', 'warning');
+      toast.warning('Cannot modify documents without a chat session');
       return;
     }
     
@@ -474,11 +478,11 @@ class DataViewer {
       
       this.documents.forEach(d => d.enabled = true);
       this.renderDocuments();
-      this.showToast('All documents enabled', 'success');
+      toast.success('All documents enabled');
       this.loadStats();
     } catch (error) {
       console.error('Error enabling all:', error);
-      this.showToast('Failed to enable all documents', 'error');
+      toast.error('Failed to enable all documents');
     }
   }
 
@@ -487,7 +491,7 @@ class DataViewer {
    */
   async bulkDisable() {
     if (!this.conversationId) {
-      this.showToast('Cannot modify documents without a chat session', 'warning');
+      toast.warning('Cannot modify documents without a chat session');
       return;
     }
     
@@ -507,11 +511,11 @@ class DataViewer {
       
       this.documents.forEach(d => d.enabled = false);
       this.renderDocuments();
-      this.showToast('All documents disabled', 'success');
+      toast.success('All documents disabled');
       this.loadStats();
     } catch (error) {
       console.error('Error disabling all:', error);
-      this.showToast('Failed to disable all documents', 'error');
+      toast.error('Failed to disable all documents');
     }
   }
 
@@ -550,7 +554,7 @@ class DataViewer {
     ]);
     
     if (refreshBtn) refreshBtn.classList.remove('loading');
-    this.showToast('Data refreshed', 'success');
+    toast.success('Data refreshed');
   }
 
   /**
@@ -573,48 +577,12 @@ class DataViewer {
   }
 
   /**
-   * Show toast notification
-   */
-  showToast(message, type = 'info') {
-    const container = document.getElementById('toast-container');
-    if (!container) return;
-    
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.innerHTML = `
-      <span class="toast-icon">${this.getToastIcon(type)}</span>
-      <span class="toast-message">${this.escapeHtml(message)}</span>
-    `;
-    
-    container.appendChild(toast);
-    
-    // Animate in
-    requestAnimationFrame(() => toast.classList.add('show'));
-    
-    // Remove after delay
-    setTimeout(() => {
-      toast.classList.remove('show');
-      setTimeout(() => toast.remove(), 200);
-    }, 3000);
-  }
-
-  /**
-   * Get icon for toast type
-   */
-  getToastIcon(type) {
-    const icons = {
-      success: '✓',
-      error: '✕',
-      warning: '⚠',
-      info: 'ℹ'
-    };
-    return icons[type] || icons.info;
-  }
-
-  /**
-   * Format file size
+   * Utility Functions (kept as fallbacks when archiUtils is not loaded)
    */
   formatSize(bytes) {
+    if (archiUtils?.formatSize) {
+      return archiUtils.formatSize(bytes);
+    }
     if (!bytes) return '0 B';
     const units = ['B', 'KB', 'MB', 'GB'];
     let i = 0;
@@ -625,10 +593,10 @@ class DataViewer {
     return `${bytes.toFixed(1)} ${units[i]}`;
   }
 
-  /**
-   * Format relative time
-   */
   formatRelativeTime(dateString) {
+    if (archiUtils?.formatRelativeTime) {
+      return archiUtils.formatRelativeTime(dateString);
+    }
     const date = new Date(dateString);
     const now = new Date();
     const diffMs = now - date;
@@ -646,14 +614,36 @@ class DataViewer {
     return date.toLocaleDateString();
   }
 
-  /**
-   * Escape HTML
-   */
   escapeHtml(text) {
+    if (archiUtils?.escapeHtml) {
+      return archiUtils.escapeHtml(text);
+    }
     if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  /**
+   * Sanitize URL to prevent XSS from javascript: and other dangerous schemes
+   */
+  sanitizeUrl(url) {
+    if (archiUtils?.sanitizeUrl) {
+      return archiUtils.sanitizeUrl(url);
+    }
+    if (!url) return '';
+    
+    // Only allow safe URL schemes
+    const safeSchemes = ['http:', 'https:', 'mailto:', 'tel:'];
+    try {
+      const parsed = new URL(url);
+      if (safeSchemes.includes(parsed.protocol)) {
+        return url;
+      }
+    } catch (e) {
+      // Invalid URL
+    }
+    return '';
   }
 }
 
