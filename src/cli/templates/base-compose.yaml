@@ -76,7 +76,7 @@ services:
       retries: 5
   
   config-seed:
-    image: {{ chatbot_image }}:{{ chatbot_tag }}
+    image: {{ chatbot_image | default(benchmarking_image) }}:{{ chatbot_tag | default(benchmarking_tag) }}
     build:
       context: .
       dockerfile: archi_code/cli/templates/dockerfiles/Dockerfile-chat
@@ -536,7 +536,19 @@ services:
       context: .
       dockerfile: archi_code/cli/templates/dockerfiles/Dockerfile-benchmarks{{ '-gpu' if gpu_ids else '' }}
     container_name: {{ benchmarking_container_name }}
+    {% if postgres_enabled -%}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      config-seed:
+        condition: service_completed_successfully
+    {% endif -%}
     environment:
+      PGHOST: {{ 'localhost' if host_mode else 'postgres' }}
+      PGPORT: {{ postgres_port }}
+      PGDATABASE: archi-db
+      PGUSER: archi
+      PG_PASSWORD: ${PG_PASSWORD}
       {% for secret in required_secrets | default([]) -%}
       {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
       {% endfor %}
