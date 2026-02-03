@@ -413,8 +413,8 @@ class TestPostgresServiceFactory:
         # Pool should be closed
         mock_pool.close.assert_called_once()
     
-    def test_from_yaml_config(self):
-        """Test factory creation from YAML config structure."""
+    def test_from_yaml_config_deprecated(self):
+        """from_yaml_config should still parse postgres settings for ingest."""
         config = {
             'database': {
                 'postgres': {
@@ -430,10 +430,10 @@ class TestPostgresServiceFactory:
                 }
             }
         }
-        
+
         with patch('src.utils.postgres_service_factory.ConnectionPool') as mock_pool_class:
             factory = PostgresServiceFactory.from_yaml_config(config)
-            
+
             # Verify connection params were extracted correctly
             call_kwargs = mock_pool_class.call_args[1]
             assert call_kwargs['connection_params']['host'] == 'db.example.com'

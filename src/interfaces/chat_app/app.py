@@ -32,7 +32,7 @@ from src.data_manager.data_viewer_service import DataViewerService
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.utils.config_access import get_full_config, get_services_config, get_global_config
-from src.utils.yaml_config import load_config_with_class_mapping
+from src.utils.config_access import get_full_config
 from src.utils.sql import (
     SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO,
     SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP,
@@ -83,7 +83,7 @@ class AnswerRenderer(mt.HTMLRenderer):
         }
 
     def __init__(self):
-        self.config = load_config_with_class_mapping()
+        self.config = get_full_config()
         super().__init__()
 
     def block_code(self, code, info=None):
@@ -128,7 +128,7 @@ class ChatWrapper:
     """
     def __init__(self):
         # load configs
-        self.config = load_config_with_class_mapping()
+        self.config = get_full_config()
         self.global_config = self.config["global"]
         self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -213,7 +213,7 @@ class ChatWrapper:
 
     def _get_config_payload(self, config_name):
         if config_name not in self._config_cache:
-            self._config_cache[config_name] = load_config_with_class_mapping()
+            self._config_cache[config_name] = get_full_config()
         return self._config_cache[config_name]
 
     @staticmethod
@@ -1656,7 +1656,7 @@ class FlaskAppWrapper(object):
         logger.info("Entering FlaskAppWrapper")
         self.app = app
         self.configs(**configs)
-        self.config = load_config_with_class_mapping()
+        self.config = get_full_config()
         self.global_config = self.config["global"]
         self.services_config = self.config["services"]
         self.chat_app_config = self.config["services"]["chat_app"]
@@ -1954,7 +1954,7 @@ class FlaskAppWrapper(object):
         for name in config_names:
             description = ""
             try:
-                payload = load_config_with_class_mapping()
+                payload = get_full_config()
                 description = payload.get("archi", {}).get("agent_description", "No description provided")
             except Exception as exc:
                 logger.warning(f"Failed to load config {name} for description: {exc}")
@@ -2025,39 +2025,32 @@ class FlaskAppWrapper(object):
         Get the default model configured for the active chat pipeline.
 
         Returns:
-            JSON with pipeline name, model class name, and model_name (if available).
+            JSON with pipeline name and provider/model reference (if available).
         """
         try:
             pipeline_name = self.config.get("services", {}).get("chat_app", {}).get("pipeline")
             archi_config = self.config.get("archi", {})
             pipeline_map = archi_config.get("pipeline_map", {})
-            model_class_map = archi_config.get("model_class_map", {})
 
             pipeline_cfg = pipeline_map.get(pipeline_name, {})
             models_cfg = pipeline_cfg.get("models", {})
             required_models = models_cfg.get("required", {})
 
             model_key = None
-            model_class_name = None
+            model_ref = None
             if "agent_model" in required_models:
                 model_key = "agent_model"
-                model_class_name = required_models["agent_model"]
+                model_ref = required_models["agent_model"]
             elif "chat_model" in required_models:
                 model_key = "chat_model"
-                model_class_name = required_models["chat_model"]
+                model_ref = required_models["chat_model"]
             elif required_models:
-                model_key, model_class_name = next(iter(required_models.items()))
-
-            model_entry = model_class_map.get(model_class_name, {}) if model_class_name else {}
-            model_kwargs = model_entry.get("kwargs", {}) if isinstance(model_entry, dict) else {}
-            model_name = model_kwargs.get("model_name") or model_kwargs.get("model")
+                model_key, model_ref = next(iter(required_models.items()))
 
             return jsonify({
                 "pipeline": pipeline_name,
                 "model_key": model_key,
-                "model_class": model_class_name,
-                "model_name": model_name,
-                "model_kwargs": model_kwargs,
+                "model": model_ref,
             }), 200
         except Exception as e:
             logger.error(f"Error getting pipeline default model: {e}")

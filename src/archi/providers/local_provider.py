@@ -15,81 +15,6 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
-# Common local models - these are just suggestions, actual models depend on what's installed
-DEFAULT_LOCAL_MODELS = [
-    ModelInfo(
-        id="llama3.2",
-        name="llama3.2",
-        display_name="Llama 3.2 (Local)",
-        context_window=128000,
-        supports_tools=True,
-        supports_streaming=True,
-        supports_vision=True,
-        max_output_tokens=8192,
-    ),
-    ModelInfo(
-        id="llama3.1:8b",
-        name="llama3.1:8b",
-        display_name="Llama 3.1 8B (Local)",
-        context_window=128000,
-        supports_tools=True,
-        supports_streaming=True,
-        supports_vision=False,
-        max_output_tokens=8192,
-    ),
-    ModelInfo(
-        id="llama3.1:70b",
-        name="llama3.1:70b",
-        display_name="Llama 3.1 70B (Local)",
-        context_window=128000,
-        supports_tools=True,
-        supports_streaming=True,
-        supports_vision=False,
-        max_output_tokens=8192,
-    ),
-    ModelInfo(
-        id="qwen2.5:7b",
-        name="qwen2.5:7b",
-        display_name="Qwen 2.5 7B (Local)",
-        context_window=32768,
-        supports_tools=True,
-        supports_streaming=True,
-        supports_vision=False,
-        max_output_tokens=8192,
-    ),
-    ModelInfo(
-        id="mistral",
-        name="mistral",
-        display_name="Mistral (Local)",
-        context_window=32768,
-        supports_tools=True,
-        supports_streaming=True,
-        supports_vision=False,
-        max_output_tokens=8192,
-    ),
-    ModelInfo(
-        id="deepseek-r1:8b",
-        name="deepseek-r1:8b",
-        display_name="DeepSeek R1 8B (Local)",
-        context_window=64000,
-        supports_tools=False,
-        supports_streaming=True,
-        supports_vision=False,
-        max_output_tokens=8192,
-    ),
-    ModelInfo(
-        id="phi3",
-        name="phi3",
-        display_name="Phi-3 (Local)",
-        context_window=4096,
-        supports_tools=False,
-        supports_streaming=True,
-        supports_vision=False,
-        max_output_tokens=4096,
-    ),
-]
-
-
 class LocalProvider(BaseProvider):
     """
     Provider for local LLM servers (Ollama, vLLM, LM Studio, etc.)
@@ -117,8 +42,8 @@ class LocalProvider(BaseProvider):
             config = ProviderConfig(
                 provider_type=ProviderType.LOCAL,
                 base_url=ollama_host,
-                models=[],  # Empty list triggers dynamic fetch
-                default_model="",  # Will be set from first available model
+                models=[],  # dynamic fetch
+                default_model="",  # set from first available model if present
                 # Default to Ollama mode
                 extra_kwargs={"local_mode": "ollama"},
             )
@@ -188,20 +113,20 @@ class LocalProvider(BaseProvider):
     def list_models(self) -> List[ModelInfo]:
         """
         List available local models.
-        
+
         For Ollama, dynamically queries the Ollama API to get installed models.
-        Falls back to configured models if the query fails.
+        Falls back to configured models if the query fails; returns empty list otherwise.
         """
         if self.local_mode == "ollama":
             # Try to get installed models dynamically
             installed = self._fetch_ollama_models()
             if installed:
                 return installed
-        
+
         # Fall back to configured models
         if self.config.models:
             return self.config.models
-        return DEFAULT_LOCAL_MODELS
+        return []
     
     def _fetch_ollama_models(self) -> List[ModelInfo]:
         """
