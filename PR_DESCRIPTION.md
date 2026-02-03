@@ -4,7 +4,24 @@
 
 This PR consolidates the data viewing and upload functionality into the chat_app interface, implementing a proxy pattern where the chat service forwards data management requests to the data-manager service. This enables a unified user experience while maintaining separation of concerns.
 
+Additionally, this PR includes:
+- **A2rchi → Archi Rename**: Standardized all references from A2rchi/A2RCHI to Archi/ARCHI throughout the codebase
+- **Dynamic Schedule Reload**: Cron schedules can now be updated without service restart
+
 ## Key Changes
+
+### 🔄 Naming Standardization (A2rchi → Archi)
+
+- Environment variable: `A2RCHI_CONFIGS_PATH` → `ARCHI_CONFIGS_PATH`
+- Container paths: `/root/A2rchi/` → `/root/archi/`
+- Database columns documented: `a2rchi_version` → `archi_version`, etc.
+- Product name in all docs and configs
+
+### ⏰ Dynamic Schedule Reload
+
+- Cron schedules for auto-sync can now be changed at runtime
+- No service restart required when updating schedule in config
+- Scheduler checks for config changes every minute
 
 ### 🎨 New UI Pages
 
