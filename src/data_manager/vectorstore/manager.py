@@ -64,6 +64,9 @@ class VectorStoreManager:
 
         # Build embedding model
         embedding_class_map = self._data_manager_config["embedding_class_map"]
+        from src.utils.config_service import ConfigService
+        embedding_class_map = ConfigService._resolve_embedding_classes(embedding_class_map)
+
         embedding_entry = embedding_class_map[embedding_name]
         embedding_class = embedding_entry["class"]
         embedding_kwargs = embedding_entry.get("kwargs", {})

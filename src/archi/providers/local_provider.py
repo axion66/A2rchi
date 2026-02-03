@@ -31,12 +31,21 @@ class LocalProvider(BaseProvider):
     
     DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
     DEFAULT_OPENAI_COMPAT_BASE_URL = "http://localhost:8000/v1"
+
+    @staticmethod
+    def _normalize_base_url(url: Optional[str]) -> Optional[str]:
+        """Ensure the base URL has a scheme so urllib requests succeed."""
+        if not url:
+            return url
+        if url.startswith(("http://", "https://")):
+            return url
+        return f"http://{url}"
     
     def __init__(self, config: Optional[ProviderConfig] = None):
         import os
         
         # Check for OLLAMA_HOST environment variable (supports Docker deployments)
-        ollama_host = os.environ.get("OLLAMA_HOST", self.DEFAULT_OLLAMA_BASE_URL)
+        ollama_host = self._normalize_base_url(os.environ.get("OLLAMA_HOST", self.DEFAULT_OLLAMA_BASE_URL))
         
         if config is None:
             config = ProviderConfig(
@@ -51,6 +60,7 @@ class LocalProvider(BaseProvider):
             # If config provided but no base_url, use env var
             if not config.base_url:
                 config.base_url = ollama_host
+            config.base_url = self._normalize_base_url(config.base_url)
         super().__init__(config)
     
     @property
@@ -140,6 +150,7 @@ class LocalProvider(BaseProvider):
         
         try:
             base_url = self.config.base_url or self.DEFAULT_OLLAMA_BASE_URL
+            logger.debug(f"[LocalProvider] Fetching Ollama models from {base_url}")
             url = f"{base_url}/api/tags"
             
             req = urllib.request.Request(url, method="GET")
@@ -173,9 +184,13 @@ class LocalProvider(BaseProvider):
                             supports_vision=supports_vision,
                             max_output_tokens=8192,
                         ))
+                    logger.debug(
+                        f"[LocalProvider] Discovered {len(models)} models from Ollama: "
+                        f"{[m.id for m in models]}"
+                    )
                     return models
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError) as e:
-            logger.debug(f"Failed to fetch Ollama models: {e}")
+            logger.warning(f"[LocalProvider] Failed to fetch Ollama models from {self.config.base_url}: {e}")
         
         return []
     
