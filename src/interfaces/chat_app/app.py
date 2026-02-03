@@ -3986,9 +3986,25 @@ class FlaskAppWrapper(object):
                 updated_by=user_id
             )
 
+            # Notify data-manager to reload schedules immediately
+            reload_result = None
+            try:
+                response = requests.post(
+                    f"{self.data_manager_url}/api/reload-schedules",
+                    timeout=10
+                )
+                if response.ok:
+                    reload_result = response.json()
+                    logger.info(f"Data-manager reloaded schedules: {reload_result}")
+                else:
+                    logger.warning(f"Data-manager schedule reload failed: {response.status_code}")
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"Could not notify data-manager to reload schedules: {e}")
+
             return jsonify({
                 "success": True,
-                "schedules": schedules
+                "schedules": schedules,
+                "reload_result": reload_result
             }), 200
 
         except Exception as e:
