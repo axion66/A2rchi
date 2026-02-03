@@ -50,6 +50,51 @@ from src.interfaces.chat_app.utils import collapse_assistant_sequences
 
 logger = get_logger(__name__)
 
+
+def _build_provider_config_from_payload(config_payload: Dict[str, Any], provider_type: ProviderType) -> Optional[ProviderConfig]:
+    """Helper to build ProviderConfig from loaded YAML for a provider."""
+    archi_cfg = config_payload.get("archi", {}) or {}
+    providers_cfg = archi_cfg.get("providers", {}) or {}
+    cfg = providers_cfg.get(provider_type.value, {})
+    if not cfg:
+        return None
+
+    models = [ModelInfo(id=m, name=m, display_name=m) for m in cfg.get("models", [])]
+    extra = {}
+    if provider_type == ProviderType.LOCAL and cfg.get("mode"):
+        extra["local_mode"] = cfg.get("mode")
+
+    return ProviderConfig(
+        provider_type=provider_type,
+        enabled=cfg.get("enabled", True),
+        base_url=cfg.get("base_url"),
+        models=models,
+        default_model=cfg.get("default_model"),
+        extra_kwargs=extra,
+    )
+
+def _build_provider_config_from_payload(config_payload: Dict[str, Any], provider_type: ProviderType) -> Optional[ProviderConfig]:
+    """Helper to build ProviderConfig from loaded YAML for a provider."""
+    archi_cfg = config_payload.get("archi", {}) or {}
+    providers_cfg = archi_cfg.get("providers", {}) or {}
+    cfg = providers_cfg.get(provider_type.value, {})
+    if not cfg:
+        return None
+
+    models = [ModelInfo(id=m, name=m, display_name=m) for m in cfg.get("models", [])]
+    extra = {}
+    if provider_type == ProviderType.LOCAL and cfg.get("mode"):
+        extra["local_mode"] = cfg.get("mode")
+
+    return ProviderConfig(
+        provider_type=provider_type,
+        enabled=cfg.get("enabled", True),
+        base_url=cfg.get("base_url"),
+        models=models,
+        default_model=cfg.get("default_model"),
+        extra_kwargs=extra,
+    )
+
 def _config_names():
     cfg = get_full_config()
     return [cfg.get("name", "default")]
@@ -1093,7 +1138,7 @@ class ChatWrapper:
             from src.archi.providers import get_provider
 
             # Build provider config from YAML so base_url/mode/default_model are respected
-            cfg = self._build_provider_config(ProviderType(provider))
+            cfg = _build_provider_config_from_payload(self.config, ProviderType(provider))
             provider_instance = get_provider(provider, config=cfg, use_cache=False) if cfg else get_provider(provider)
             if api_key:
                 provider_instance.set_api_key(api_key)
@@ -1937,29 +1982,8 @@ class FlaskAppWrapper(object):
         self.app.run(**kwargs)
 
     def _build_provider_config(self, provider_type: ProviderType) -> Optional[ProviderConfig]:
-        """
-        Build a ProviderConfig from the loaded YAML for the given provider type.
-        Returns None if no matching provider config is present.
-        """
-        archi_cfg = self.config.get("archi", {}) or {}
-        providers_cfg = archi_cfg.get("providers", {}) or {}
-        cfg = providers_cfg.get(provider_type.value, {})
-        if not cfg:
-            return None
-
-        models = [ModelInfo(id=m, name=m, display_name=m) for m in cfg.get("models", [])]
-        extra = {}
-        if provider_type == ProviderType.LOCAL and cfg.get("mode"):
-            extra["local_mode"] = cfg.get("mode")
-
-        return ProviderConfig(
-            provider_type=provider_type,
-            enabled=cfg.get("enabled", True),
-            base_url=cfg.get("base_url"),
-            models=models,
-            default_model=cfg.get("default_model"),
-            extra_kwargs=extra,
-        )
+        """Legacy shim: build ProviderConfig from the currently loaded YAML."""
+        return _build_provider_config_from_payload(self.config, provider_type)
 
     def update_config(self):
         """
@@ -2010,7 +2034,7 @@ class FlaskAppWrapper(object):
             providers_data = []
             for provider_type in list_provider_types():
                 try:
-                    cfg = self._build_provider_config(provider_type)
+                    cfg = _build_provider_config_from_payload(self.config, provider_type)
                     provider = get_provider(provider_type, config=cfg) if cfg else get_provider(provider_type)
                     models = provider.list_models()
                     providers_data.append({
