@@ -77,6 +77,8 @@ runs:
         mkdir -p /var/lib/a2rchi/run/containers
         chmod 700 /var/lib/a2rchi/run/containers
         mkdir -p /var/lib/a2rchi/.config/containers
+        mkdir -p /var/lib/a2rchi/run/systemd
+        chmod 700 /var/lib/a2rchi/run/systemd
         mkdir -p /var/lib/a2rchi/.local/share/containers/storage
 
     - name: Run shared smoke runner
