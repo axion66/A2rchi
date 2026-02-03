@@ -76,14 +76,6 @@ runs:
         set -euo pipefail
         mkdir -p /var/lib/a2rchi/run/containers
         chmod 700 /var/lib/a2rchi/run/containers
-        mkdir -p /var/lib/a2rchi/.config/containers
-        mkdir -p /var/lib/a2rchi/.local/share/containers/storage
-        cat > /var/lib/a2rchi/.config/containers/storage.conf <<'EOF'
-[storage]
-  driver = "overlay"
-  runroot = "/var/lib/a2rchi/run/containers"
-  graphroot = "/var/lib/a2rchi/.local/share/containers/storage"
-EOF
 
     - name: Run shared smoke runner
       shell: bash
