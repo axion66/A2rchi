@@ -17,7 +17,7 @@ Clone the Archi repository:
 git clone https://github.com/mit-submit/archi.git
 ```
 
-Check out the latest stable tag:
+Check out the latest stable tag (recommended for users; stay on `main` only if you're actively developing):
 
 ```bash
 cd archi
@@ -47,7 +47,8 @@ git clone https://github.com/mit-submit/archi.git
 cd archi
 export Archi_DIR=$(pwd)
 
-# (Optional) Checkout the latest stable tag
+# (Optional) Checkout the latest stable tag (recommended for users)
+# Skip this if you're developing and want the tip of main.
 git checkout $(git describe --tags $(git rev-list --tags --max-count=1))
 
 # (Optional) Create and activate a virtual environment
