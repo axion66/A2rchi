@@ -26,6 +26,7 @@ from pygments.lexers import (BashLexer, CLexer, CppLexer, FortranLexer,
                              TypeScriptLexer)
 
 from src.archi.archi import archi
+from src.archi.providers.base import ModelInfo, ProviderConfig, ProviderType
 from src.archi.utils.output_dataclass import PipelineOutput
 # from src.data_manager.data_manager import DataManager
 from src.data_manager.data_viewer_service import DataViewerService
@@ -1089,12 +1090,14 @@ class ChatWrapper:
             A LangChain BaseChatModel instance, or None if creation fails
         """
         try:
+            from src.archi.providers import get_provider
+
+            # Build provider config from YAML so base_url/mode/default_model are respected
+            cfg = self._build_provider_config(ProviderType(provider))
+            provider_instance = get_provider(provider, config=cfg, use_cache=False) if cfg else get_provider(provider)
             if api_key:
-                from src.archi.providers import get_chat_model_with_api_key
-                return get_chat_model_with_api_key(provider, model, api_key)
-            else:
-                from src.archi.providers import get_model
-                return get_model(provider, model)
+                provider_instance.set_api_key(api_key)
+            return provider_instance.get_chat_model(model)
         except ImportError as e:
             logger.warning(f"Providers module not available: {e}")
             return None
@@ -1933,6 +1936,31 @@ class FlaskAppWrapper(object):
     def run(self, **kwargs):
         self.app.run(**kwargs)
 
+    def _build_provider_config(self, provider_type: ProviderType) -> Optional[ProviderConfig]:
+        """
+        Build a ProviderConfig from the loaded YAML for the given provider type.
+        Returns None if no matching provider config is present.
+        """
+        archi_cfg = self.config.get("archi", {}) or {}
+        providers_cfg = archi_cfg.get("providers", {}) or {}
+        cfg = providers_cfg.get(provider_type.value, {})
+        if not cfg:
+            return None
+
+        models = [ModelInfo(id=m, name=m, display_name=m) for m in cfg.get("models", [])]
+        extra = {}
+        if provider_type == ProviderType.LOCAL and cfg.get("mode"):
+            extra["local_mode"] = cfg.get("mode")
+
+        return ProviderConfig(
+            provider_type=provider_type,
+            enabled=cfg.get("enabled", True),
+            base_url=cfg.get("base_url"),
+            models=models,
+            default_model=cfg.get("default_model"),
+            extra_kwargs=extra,
+        )
+
     def update_config(self):
         """
         Updates the config used by archi for responding to messages.
@@ -1978,11 +2006,12 @@ class FlaskAppWrapper(object):
                 get_provider,
                 ProviderType,
             )
-            
+
             providers_data = []
             for provider_type in list_provider_types():
                 try:
-                    provider = get_provider(provider_type)
+                    cfg = self._build_provider_config(provider_type)
+                    provider = get_provider(provider_type, config=cfg) if cfg else get_provider(provider_type)
                     models = provider.list_models()
                     providers_data.append({
                         'type': provider_type.value,
@@ -2011,7 +2040,7 @@ class FlaskAppWrapper(object):
                         'error': str(e),
                         'models': [],
                     })
-            
+
             return jsonify({'providers': providers_data}), 200
         except ImportError as e:
             logger.error(f"Providers module not available: {e}")
