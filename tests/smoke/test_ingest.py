@@ -4,7 +4,7 @@ import os
 import sys
 
 # Set environment before imports
-os.environ["A2RCHI_CONFIGS_PATH"] = os.path.join(os.path.dirname(__file__), "local_dev_config/")
+os.environ["ARCHI_CONFIGS_PATH"] = os.path.join(os.path.dirname(__file__), "local_dev_config/")
 os.environ["PG_PASSWORD"] = "testpassword123"
 
 from src.utils.yaml_config import load_config_with_class_mapping
@@ -12,7 +12,7 @@ from src.data_manager.vectorstore.manager import VectorStoreManager
 
 def main():
     print("=" * 60)
-    print("A2rchi Document Ingestion Test")
+    print("Archi Document Ingestion Test")
     print("=" * 60)
     
     # Use load_config_with_class_mapping to resolve embedding class names to actual classes
@@ -20,7 +20,7 @@ def main():
     print(f"Loaded config: {config.get('name', 'unknown')}")
 
     global_config = config.get("global", {})
-    data_path = global_config.get("DATA_PATH", "/tmp/a2rchi-data")
+    data_path = global_config.get("DATA_PATH", "/tmp/archi-data")
     print(f"Data path: {data_path}")
 
     pg_config = {

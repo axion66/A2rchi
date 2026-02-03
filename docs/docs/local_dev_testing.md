@@ -1,10 +1,10 @@
 # Local Development Testing Guide
 
-This guide explains how to run A2rchi services for local testing and development.
+This guide explains how to run Archi services for local testing and development.
 
 ## Architecture Overview
 
-A2rchi is designed to run as a **containerized deployment** via Docker or Podman. The CLI (`a2rchi`) handles:
+Archi is designed to run as a **containerized deployment** via Docker or Podman. The CLI (`archi`) handles:
 
 1. Configuration merging (your config + base-config.yaml template)
 2. Secrets management (from `.env` files → individual secret files)
@@ -44,11 +44,11 @@ The local dev script automatically:
 ### 1. Create a deployment using the CLI
 
 ```bash
-# Install A2rchi in editable mode
+# Install Archi in editable mode
 pip install -e .
 
 # Create a deployment with the basic-ollama example
-a2rchi create \
+archi create \
   --name test-local \
   --config examples/deployments/basic-ollama/config.yaml \
   --env-file examples/deployments/basic-ollama/secrets.env \
@@ -68,7 +68,7 @@ After deployment, the chatbot is available at the configured port (default: http
 ### 3. Delete when done
 
 ```bash
-a2rchi delete --name test-local
+archi delete --name test-local
 ```
 
 ## Configuration Structure
@@ -81,22 +81,22 @@ Configs are YAML files that override the base template (`src/cli/templates/base-
 name: my_deployment
 
 global:
-  DATA_PATH: /root/A2rchi/output/     # Inside container
-  ACCOUNTS_PATH: /root/A2rchi/accounts/
+  DATA_PATH: /root/archi/output/     # Inside container
+  ACCOUNTS_PATH: /root/archi/accounts/
   verbosity: 2                        # 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG, 4=TRACE
 
 services:
   postgres:
     host: postgres                    # Service name in docker network
     port: 5432
-    database: a2rchi
-    user: a2rchi
+    database: archi
+    user: archi
   chat_app:
     host: "0.0.0.0"
     port: 2786
     external_port: 2786
-    template_folder: /root/A2rchi/src/interfaces/chat_app/templates
-    static_folder: /root/A2rchi/src/interfaces/chat_app/static
+    template_folder: /root/archi/src/interfaces/chat_app/templates
+    static_folder: /root/archi/src/interfaces/chat_app/static
     auth:
       enabled: false
 ```
@@ -137,8 +137,8 @@ docker compose -f docker-compose.integration.yaml down
 The test database runs on port 5439 with credentials:
 - Host: localhost
 - Port: 5439
-- Database: a2rchi
-- User: a2rchi
+- Database: archi
+- User: archi
 - Password: testpassword123
 
 ## Direct Service Execution (Advanced)
@@ -148,7 +148,7 @@ If you need to run services directly (not recommended for normal use):
 ### Required Environment Variables
 
 ```bash
-export A2RCHI_CONFIGS_PATH=/path/to/configs/directory/  # Must end with /
+export ARCHI_CONFIGS_PATH=/path/to/configs/directory/  # Must end with /
 export PG_PASSWORD=your-password
 export OPENAI_API_KEY=your-key
 # ... other secrets as direct env vars
@@ -160,16 +160,16 @@ The config file must include all keys from `base-config.yaml`:
 
 ```yaml
 global:
-  DATA_PATH: /tmp/a2rchi-data
-  ACCOUNTS_PATH: /tmp/a2rchi-accounts
+  DATA_PATH: /tmp/archi-data
+  ACCOUNTS_PATH: /tmp/archi-accounts
   verbosity: 2
 
 services:
   postgres:
     host: localhost
     port: 5439
-    database: a2rchi
-    user: a2rchi
+    database: archi
+    user: archi
   chat_app:
     host: "0.0.0.0"
     hostname: localhost
@@ -181,7 +181,7 @@ services:
     auth:
       enabled: false
 
-a2rchi:
+archi:
   agent_description: "Test agent"
   pipelines: [...]
   pipeline_map: {...}
@@ -191,7 +191,7 @@ a2rchi:
 ### Why Direct Execution is Complicated
 
 1. **Config merging**: The CLI merges your config with `base-config.yaml` Jinja template
-2. **Path resolution**: Templates use `/root/A2rchi/` paths (container paths)
+2. **Path resolution**: Templates use `/root/archi/` paths (container paths)
 3. **Secret injection**: Secrets are written as files, not env vars
 4. **Service dependencies**: Services expect PostgreSQL, vectorstore, etc. to be available
 
@@ -214,8 +214,8 @@ This is sufficient for testing:
 
 | Component | Container Path | Purpose |
 |-----------|---------------|---------|
-| Configs | `/root/A2rchi/configs/` | YAML configuration files |
-| Secrets | `/root/A2rchi/secrets/` | Individual secret files |
-| Data | `/root/A2rchi/output/` | Ingested documents, indexes |
-| Templates | `/root/A2rchi/src/interfaces/chat_app/templates/` | HTML templates |
-| Static | `/root/A2rchi/src/interfaces/chat_app/static/` | JS, CSS, images |
+| Configs | `/root/archi/configs/` | YAML configuration files |
+| Secrets | `/root/archi/secrets/` | Individual secret files |
+| Data | `/root/archi/output/` | Ingested documents, indexes |
+| Templates | `/root/archi/src/interfaces/chat_app/templates/` | HTML templates |
+| Static | `/root/archi/src/interfaces/chat_app/static/` | JS, CSS, images |

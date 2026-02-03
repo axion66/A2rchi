@@ -11,7 +11,7 @@ class FileTree {
       commonPrefixStrip: options.commonPrefixStrip ?? true,
       defaultExpanded: options.defaultExpanded ?? 1, // Expand first N levels
       persistState: options.persistState ?? true,
-      storageKey: options.storageKey ?? 'a2rchi-filetree-state',
+      storageKey: options.storageKey ?? 'archi-filetree-state',
       ...options
     };
     

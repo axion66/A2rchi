@@ -34,16 +34,16 @@ if [ ! -f "$CONFIG_FILE" ]; then
 name: local-dev
 
 global:
-  DATA_PATH: /tmp/a2rchi-data/
-  ACCOUNTS_PATH: /tmp/a2rchi-accounts/
+  DATA_PATH: /tmp/archi-data/
+  ACCOUNTS_PATH: /tmp/archi-accounts/
   verbosity: 2
 
 services:
   postgres:
     host: localhost
     port: 5439
-    database: a2rchi
-    user: a2rchi
+    database: archi
+    user: archi
   chat_app:
     host: "0.0.0.0"
     hostname: localhost
@@ -56,7 +56,7 @@ services:
     auth:
       enabled: false
 
-a2rchi:
+archi:
   agent_description: "Local development test agent"
   model_class_map:
     openai: gpt-4o-mini
@@ -91,10 +91,10 @@ sed -i.bak "s|static_folder:.*|static_folder: \"${PROJECT_ROOT}/src/interfaces/c
 rm -f "$CONFIG_FILE.bak"
 
 # Create directories
-mkdir -p /tmp/a2rchi-data /tmp/a2rchi-accounts
+mkdir -p /tmp/archi-data /tmp/archi-accounts
 
 # Check if test database is running
-if ! docker ps --format "{{.Names}}" | grep -q "a2rchi-test-postgres"; then
+if ! docker ps --format "{{.Names}}" | grep -q "archi-test-postgres"; then
     echo "❌ Test database not running!"
     echo "   Start it with:"
     echo "   cd tests/smoke && docker compose -f docker-compose.integration.yaml up -d"
@@ -103,7 +103,7 @@ fi
 echo "✅ Test database is running"
 
 # Set environment variables
-export A2RCHI_CONFIGS_PATH="$CONFIG_DIR/"
+export ARCHI_CONFIGS_PATH="$CONFIG_DIR/"
 export PG_PASSWORD=testpassword123
 
 # Check for optional API keys

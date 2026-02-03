@@ -4,7 +4,7 @@ import os
 import sys
 
 # Set environment before imports
-os.environ["A2RCHI_CONFIGS_PATH"] = os.path.join(os.path.dirname(__file__), "local_dev_config/")
+os.environ["ARCHI_CONFIGS_PATH"] = os.path.join(os.path.dirname(__file__), "local_dev_config/")
 os.environ["PG_PASSWORD"] = "testpassword123"
 
 import psycopg2
@@ -21,8 +21,8 @@ def main():
     pg_config = {
         "host": "localhost",
         "port": 5439,
-        "database": "a2rchi",
-        "user": "a2rchi",
+        "database": "archi",
+        "user": "archi",
         "password": "testpassword123",
     }
 

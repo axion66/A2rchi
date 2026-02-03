@@ -1,4 +1,4 @@
-# A2rchi Database Schema
+# Archi Database Schema
 
 > PostgreSQL schema v2.0 — Consolidated from PostgreSQL (conversations), ChromaDB (vectors), and SQLite (catalog)  
 > **Requires:** PostgreSQL 17+ with `pgvector`, `pgcrypto`, `pg_trgm` (and optionally `pg_textsearch` for BM25)
@@ -7,7 +7,7 @@
 
 ## Overview
 
-The A2rchi database is organized into these major areas:
+The Archi database is organized into these major areas:
 
 | Area | Tables | Purpose |
 |------|--------|---------|
@@ -25,7 +25,7 @@ The A2rchi database is organized into these major areas:
 
 ## Configuration Management
 
-A2rchi uses a **two-tier configuration system** separating immutable deploy-time settings from runtime-adjustable parameters.
+Archi uses a **two-tier configuration system** separating immutable deploy-time settings from runtime-adjustable parameters.
 
 ### Static Configuration (`static_config`)
 
@@ -41,7 +41,7 @@ CREATE TABLE static_config (
     
     -- Paths
     data_path TEXT NOT NULL DEFAULT '/root/data/',
-    prompts_path TEXT NOT NULL DEFAULT '/root/A2rchi/data/prompts/',
+    prompts_path TEXT NOT NULL DEFAULT '/root/archi/data/prompts/',
     
     -- Embedding configuration (affects vector dimensions)
     embedding_model VARCHAR(200) NOT NULL,
