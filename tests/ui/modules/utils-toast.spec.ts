@@ -138,7 +138,7 @@ test.describe('Utils Module', () => {
         const utils = window.archiUtils;
         if (!utils) return null;
         
-        const now = new Date();
+        const now = Date.now();
         const fiveMinAgo = new Date(now - 5 * 60 * 1000);
         const oneHourAgo = new Date(now - 60 * 60 * 1000);
         const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
@@ -352,7 +352,7 @@ test.describe('Toast Module', () => {
 
     // Dismiss it
     await page.evaluate((id) => {
-      window.toast?.dismiss(id);
+      if (id) window.toast?.dismiss(id);
     }, toastId);
 
     // Give time for animation/removal

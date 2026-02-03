@@ -212,7 +212,7 @@ test.describe('API Security - Input Validation', () => {
 
   test('handles malformed JSON', async ({ request }) => {
     const response = await request.post('/api/upload/git/refresh', {
-      body: 'not valid json {{{',
+      data: 'not valid json {{{',
       headers: { 'Content-Type': 'application/json' },
     });
 
