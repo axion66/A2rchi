@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List, Optional, Sequence, Iterator, AsyncIterator, Set
+from typing import Any, Callable, Dict, List, Optional, Sequence, Iterator, AsyncIterator, Set, Tuple
 import time
 
 from langchain.agents import create_agent
@@ -348,7 +348,7 @@ class BaseReActAgent:
             initialised_models[model_class_name] = instance
 
     @staticmethod
-    def _parse_provider_model(model_ref: str) -> (str, str):
+    def _parse_provider_model(model_ref: str) -> Tuple[str, str]:
         """Expect model_ref as 'provider/model'. Raise if malformed."""
         if not isinstance(model_ref, str) or "/" not in model_ref:
             raise ValueError(f"Model reference must be 'provider/model', got '{model_ref}'")
