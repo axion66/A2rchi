@@ -39,7 +39,6 @@ def setup_logging():
         for module in ignore_debug_modules:
             logging.getLogger(module).setLevel(logging_verboseLevel[3])
 
-    print(f"CORRECTLY SET UP VERBOSITY {verbosity}")
 
 def setup_cli_logging(verbosity):
     

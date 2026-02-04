@@ -99,7 +99,6 @@ class RemoteCatalogClient:
         resp = requests.get(
             f"{self.base_url}/api/catalog/search",
             params=params,
-            headers=self._headers(),
             timeout=self.timeout,
         )
         resp.raise_for_status()
@@ -110,7 +109,6 @@ class RemoteCatalogClient:
         resp = requests.get(
             f"{self.base_url}/api/catalog/document/{resource_hash}",
             params={"max_chars": max_chars},
-            headers=self._headers(),
             timeout=self.timeout,
         )
         if resp.status_code == 404:
@@ -121,7 +119,6 @@ class RemoteCatalogClient:
     def schema(self) -> Dict[str, object]:
         resp = requests.get(
             f"{self.base_url}/api/catalog/schema",
-            headers=self._headers(),
             timeout=self.timeout,
         )
         resp.raise_for_status()
