@@ -44,22 +44,26 @@ class LocalProvider(BaseProvider):
     def __init__(self, config: Optional[ProviderConfig] = None):
         import os
         
-        # Check for OLLAMA_HOST environment variable (supports Docker deployments)
-        ollama_host = self._normalize_base_url(os.environ.get("OLLAMA_HOST", self.DEFAULT_OLLAMA_BASE_URL))
-        
+        # Check for OLLAMA_HOST environment variable (supports Docker/Podman deployments)
+        # If set, prefer it over the config value so runners can override host/port
+        env_ollama_host = self._normalize_base_url(os.environ.get("OLLAMA_HOST"))
+        default_ollama_host = env_ollama_host or self.DEFAULT_OLLAMA_BASE_URL
+
         if config is None:
             config = ProviderConfig(
                 provider_type=ProviderType.LOCAL,
-                base_url=ollama_host,
+                base_url=default_ollama_host,
                 models=[],  # dynamic fetch
                 default_model="",  # set from first available model if present
                 # Default to Ollama mode
                 extra_kwargs={"local_mode": "ollama"},
             )
         else:
-            # If config provided but no base_url, use env var
-            if not config.base_url:
-                config.base_url = ollama_host
+            # Let env override the config base_url when provided (useful in CI)
+            if env_ollama_host:
+                config.base_url = env_ollama_host
+            elif not config.base_url:
+                config.base_url = default_ollama_host
             config.base_url = self._normalize_base_url(config.base_url)
         super().__init__(config)
     

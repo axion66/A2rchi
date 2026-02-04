@@ -131,6 +131,8 @@ services:
       PGUSER: archi
       PG_PASSWORD: ${PG_PASSWORD}
       VERBOSITY: {{ verbosity }}
+      # Allow overriding Ollama host via env so containers can reach host daemon
+      OLLAMA_HOST: ${OLLAMA_HOST:-}
       {% for secret in required_secrets | default([]) -%}
       {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
       {% endfor %}
