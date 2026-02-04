@@ -147,7 +147,7 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
             return
         
         # Actual deployment
-        template_manager = TemplateManager(env,verbosity)
+        template_manager = TemplateManager(env, verbosity)
         base_dir.mkdir(parents=True, exist_ok=True)
         
         secrets_manager.write_secrets_to_files(base_dir, all_secrets)
@@ -381,7 +381,7 @@ def restart(
             tag=tag,
         )
 
-        template_manager = TemplateManager(env)
+        template_manager = TemplateManager(env, verbosity)
         template_manager.prepare_deployment_files(
             compose_config,
             config_manager,
@@ -552,7 +552,7 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_m
                 )
 
 
-        template_manager = TemplateManager(env)
+        template_manager = TemplateManager(env, verbosity)
         base_dir.mkdir(parents=True, exist_ok=True)
         
         secrets_manager.write_secrets_to_files(base_dir, all_secrets)
