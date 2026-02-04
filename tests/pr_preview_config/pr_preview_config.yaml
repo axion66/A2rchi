@@ -45,7 +45,6 @@ archi:
       mode: ollama
       default_model: "qwen3:32b"
       models:
-        - "gpt-oss:latest"
         - "qwen3:32b"
   pipeline_map:
     CMSCompOpsAgent:
