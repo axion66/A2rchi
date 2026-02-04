@@ -53,4 +53,4 @@ archi:
           agent_prompt: tests/pr_preview_config/agent.prompt
       models:
         required:
-          agent_model: OllamaInterface
+          agent_model: local/qwen3:32b
