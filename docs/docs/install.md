@@ -45,18 +45,18 @@ The command prints the path to the `archi` executable.
 # Clone the repository
 git clone https://github.com/mit-submit/archi.git
 cd archi
-export Archi_DIR=$(pwd)
+export ARCHI_DIR=$(pwd)
 
 # (Optional) Checkout the latest stable tag (recommended for users)
 # Skip this if you're developing and want the tip of main.
 git checkout $(git describe --tags $(git rev-list --tags --max-count=1))
 
 # (Optional) Create and activate a virtual environment
-python3 -m venv .archi_venv
-source .archi_venv/bin/activate
+python3 -m venv archi_venv
+source archi_venv/bin/activate
 
 # Install dependencies
-cd "$Archi_DIR"
+cd "$ARCHI_DIR"
 pip install -e .
 
 # Verify installation

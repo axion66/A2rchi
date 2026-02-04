@@ -26,13 +26,14 @@ from pygments.lexers import (BashLexer, CLexer, CppLexer, FortranLexer,
                              TypeScriptLexer)
 
 from src.archi.archi import archi
+from src.archi.providers.base import ModelInfo, ProviderConfig, ProviderType
 from src.archi.utils.output_dataclass import PipelineOutput
 # from src.data_manager.data_manager import DataManager
 from src.data_manager.data_viewer_service import DataViewerService
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.utils.config_access import get_full_config, get_services_config, get_global_config
-from src.utils.yaml_config import load_config_with_class_mapping
+from src.utils.config_access import get_full_config
 from src.utils.sql import (
     SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO,
     SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP,
@@ -48,6 +49,29 @@ from src.interfaces.chat_app.utils import collapse_assistant_sequences
 
 
 logger = get_logger(__name__)
+
+
+def _build_provider_config_from_payload(config_payload: Dict[str, Any], provider_type: ProviderType) -> Optional[ProviderConfig]:
+    """Helper to build ProviderConfig from loaded YAML for a provider."""
+    archi_cfg = config_payload.get("archi", {}) or {}
+    providers_cfg = archi_cfg.get("providers", {}) or {}
+    cfg = providers_cfg.get(provider_type.value, {})
+    if not cfg:
+        return None
+
+    models = [ModelInfo(id=m, name=m, display_name=m) for m in cfg.get("models", [])]
+    extra = {}
+    if provider_type == ProviderType.LOCAL and cfg.get("mode"):
+        extra["local_mode"] = cfg.get("mode")
+
+    return ProviderConfig(
+        provider_type=provider_type,
+        enabled=cfg.get("enabled", True),
+        base_url=cfg.get("base_url"),
+        models=models,
+        default_model=cfg.get("default_model"),
+        extra_kwargs=extra,
+    )
 
 def _config_names():
     cfg = get_full_config()
@@ -83,7 +107,7 @@ class AnswerRenderer(mt.HTMLRenderer):
         }
 
     def __init__(self):
-        self.config = load_config_with_class_mapping()
+        self.config = get_full_config()
         super().__init__()
 
     def block_code(self, code, info=None):
@@ -128,7 +152,7 @@ class ChatWrapper:
     """
     def __init__(self):
         # load configs
-        self.config = load_config_with_class_mapping()
+        self.config = get_full_config()
         self.global_config = self.config["global"]
         self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -213,7 +237,7 @@ class ChatWrapper:
 
     def _get_config_payload(self, config_name):
         if config_name not in self._config_cache:
-            self._config_cache[config_name] = load_config_with_class_mapping()
+            self._config_cache[config_name] = get_full_config()
         return self._config_cache[config_name]
 
     @staticmethod
@@ -1089,12 +1113,14 @@ class ChatWrapper:
             A LangChain BaseChatModel instance, or None if creation fails
         """
         try:
+            from src.archi.providers import get_provider
+
+            # Build provider config from YAML so base_url/mode/default_model are respected
+            cfg = _build_provider_config_from_payload(self.config, ProviderType(provider))
+            provider_instance = get_provider(provider, config=cfg, use_cache=False) if cfg else get_provider(provider)
             if api_key:
-                from src.archi.providers import get_chat_model_with_api_key
-                return get_chat_model_with_api_key(provider, model, api_key)
-            else:
-                from src.archi.providers import get_model
-                return get_model(provider, model)
+                provider_instance.set_api_key(api_key)
+            return provider_instance.get_chat_model(model)
         except ImportError as e:
             logger.warning(f"Providers module not available: {e}")
             return None
@@ -1656,7 +1682,7 @@ class FlaskAppWrapper(object):
         logger.info("Entering FlaskAppWrapper")
         self.app = app
         self.configs(**configs)
-        self.config = load_config_with_class_mapping()
+        self.config = get_full_config()
         self.global_config = self.config["global"]
         self.services_config = self.config["services"]
         self.chat_app_config = self.config["services"]["chat_app"]
@@ -1933,6 +1959,10 @@ class FlaskAppWrapper(object):
     def run(self, **kwargs):
         self.app.run(**kwargs)
 
+    def _build_provider_config(self, provider_type: ProviderType) -> Optional[ProviderConfig]:
+        """Legacy shim: build ProviderConfig from the currently loaded YAML."""
+        return _build_provider_config_from_payload(self.config, provider_type)
+
     def update_config(self):
         """
         Updates the config used by archi for responding to messages.
@@ -1954,7 +1984,7 @@ class FlaskAppWrapper(object):
         for name in config_names:
             description = ""
             try:
-                payload = load_config_with_class_mapping()
+                payload = get_full_config()
                 description = payload.get("archi", {}).get("agent_description", "No description provided")
             except Exception as exc:
                 logger.warning(f"Failed to load config {name} for description: {exc}")
@@ -1978,11 +2008,12 @@ class FlaskAppWrapper(object):
                 get_provider,
                 ProviderType,
             )
-            
+
             providers_data = []
             for provider_type in list_provider_types():
                 try:
-                    provider = get_provider(provider_type)
+                    cfg = _build_provider_config_from_payload(self.config, provider_type)
+                    provider = get_provider(provider_type, config=cfg) if cfg else get_provider(provider_type)
                     models = provider.list_models()
                     providers_data.append({
                         'type': provider_type.value,
@@ -2011,7 +2042,7 @@ class FlaskAppWrapper(object):
                         'error': str(e),
                         'models': [],
                     })
-            
+
             return jsonify({'providers': providers_data}), 200
         except ImportError as e:
             logger.error(f"Providers module not available: {e}")
@@ -2025,39 +2056,32 @@ class FlaskAppWrapper(object):
         Get the default model configured for the active chat pipeline.
 
         Returns:
-            JSON with pipeline name, model class name, and model_name (if available).
+            JSON with pipeline name and provider/model reference (if available).
         """
         try:
             pipeline_name = self.config.get("services", {}).get("chat_app", {}).get("pipeline")
             archi_config = self.config.get("archi", {})
             pipeline_map = archi_config.get("pipeline_map", {})
-            model_class_map = archi_config.get("model_class_map", {})
 
             pipeline_cfg = pipeline_map.get(pipeline_name, {})
             models_cfg = pipeline_cfg.get("models", {})
             required_models = models_cfg.get("required", {})
 
             model_key = None
-            model_class_name = None
+            model_ref = None
             if "agent_model" in required_models:
                 model_key = "agent_model"
-                model_class_name = required_models["agent_model"]
+                model_ref = required_models["agent_model"]
             elif "chat_model" in required_models:
                 model_key = "chat_model"
-                model_class_name = required_models["chat_model"]
+                model_ref = required_models["chat_model"]
             elif required_models:
-                model_key, model_class_name = next(iter(required_models.items()))
-
-            model_entry = model_class_map.get(model_class_name, {}) if model_class_name else {}
-            model_kwargs = model_entry.get("kwargs", {}) if isinstance(model_entry, dict) else {}
-            model_name = model_kwargs.get("model_name") or model_kwargs.get("model")
+                model_key, model_ref = next(iter(required_models.items()))
 
             return jsonify({
                 "pipeline": pipeline_name,
                 "model_key": model_key,
-                "model_class": model_class_name,
-                "model_name": model_name,
-                "model_kwargs": model_kwargs,
+                "model": model_ref,
             }), 200
         except Exception as e:
             logger.error(f"Error getting pipeline default model: {e}")
