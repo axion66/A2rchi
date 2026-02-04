@@ -322,7 +322,7 @@ class ScraperManager:
                 count += 1
             logger.info(f"Scraped {count} resources from {url}")
         except Exception as exc:
-            logger.error(f"Failed to scrape {url}: {exc}")
+            logger.error(f"Failed to scrape {url}: {exc}", exc_info=exc)
         return count
 
     def _extract_urls_from_file(self, path: Path) -> List[str]:
