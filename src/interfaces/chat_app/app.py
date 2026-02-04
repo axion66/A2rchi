@@ -73,28 +73,6 @@ def _build_provider_config_from_payload(config_payload: Dict[str, Any], provider
         extra_kwargs=extra,
     )
 
-def _build_provider_config_from_payload(config_payload: Dict[str, Any], provider_type: ProviderType) -> Optional[ProviderConfig]:
-    """Helper to build ProviderConfig from loaded YAML for a provider."""
-    archi_cfg = config_payload.get("archi", {}) or {}
-    providers_cfg = archi_cfg.get("providers", {}) or {}
-    cfg = providers_cfg.get(provider_type.value, {})
-    if not cfg:
-        return None
-
-    models = [ModelInfo(id=m, name=m, display_name=m) for m in cfg.get("models", [])]
-    extra = {}
-    if provider_type == ProviderType.LOCAL and cfg.get("mode"):
-        extra["local_mode"] = cfg.get("mode")
-
-    return ProviderConfig(
-        provider_type=provider_type,
-        enabled=cfg.get("enabled", True),
-        base_url=cfg.get("base_url"),
-        models=models,
-        default_model=cfg.get("default_model"),
-        extra_kwargs=extra,
-    )
-
 def _config_names():
     cfg = get_full_config()
     return [cfg.get("name", "default")]
