@@ -15,6 +15,14 @@ data_manager:
 archi:
   pipelines: 
    - QAPipeline
+  providers:
+    local:
+      enabled: true
+      base_url: http://localhost:7870 # make sure this matches your ollama server URL!
+      mode: ollama
+      default_model: "gemma3"
+      models:
+        - "gemma3"
   pipeline_map:
     QAPipeline:
       prompts:
@@ -23,13 +31,8 @@ archi:
           chat_prompt: examples/benchmarking/qa.prompt  
       models:
         required:
-          chat_model: OllamaInterface
-          condense_model: OllamaInterface
-  model_class_map:
-    OllamaInterface:
-      kwargs:
-        url: http://localhost:7870 # make sure this matches your ollama server URL!
-        base_model: "gemma3" # make sure this matches a model you have downloaded locally with ollama
+          chat_model: local/gemma3
+          condense_model: local/gemma3
 
 services:
 

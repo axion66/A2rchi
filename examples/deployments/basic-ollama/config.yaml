@@ -39,6 +39,15 @@ data_manager:
 archi:
   pipelines:
     - CMSCompOpsAgent
+  providers:
+    local:
+      enabled: true
+      base_url: http://localhost:7870 # make sure this matches your ollama server URL!
+      mode: ollama
+      default_model: "qwen3:32b" # make sure this matches a model you have downloaded locally with ollama
+      models:
+        - "gpt-oss:120b"
+        - "qwen3:32b"
   pipeline_map:
     CMSCompOpsAgent:
       prompts:
@@ -46,9 +55,4 @@ archi:
           agent_prompt: examples/deployments/basic-ollama/agent.prompt
       models:
         required:
-          chat_model: OllamaInterface
-  model_class_map:
-    OllamaInterface:
-      kwargs:
-        url: http://localhost:7870 # make sure this matches your ollama server URL!
-        base_model: "gpt-oss:120b" # make sure this matches a model you have downloaded locally with ollama
+          agent_model: local/qwen3:32b

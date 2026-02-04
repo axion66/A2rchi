@@ -18,7 +18,7 @@ from ragas.metrics import (answer_relevancy, context_precision, context_recall,
                            faithfulness)
 
 from src.archi.archi import archi
-from src.archi.models import HuggingFaceOpenLLM
+from src.archi.providers import get_model
 from src.utils.env import read_secret
 from src.utils.logging import get_logger, setup_logging
 from src.utils.generate_benchmark_report import parse_benchmark_results, format_html_output
@@ -185,7 +185,8 @@ class Benchmarker:
                 base_url = provider_settings['base_url']
                 return ChatOllama(model=model_name, base_url=base_url,num_predict=-2,model_kwargs={'format': 'json'})
             case "huggingface":
-                return HuggingFaceOpenLLM(base_model=model_name)
+                base_url = provider_settings.get("base_url") or "http://localhost:8000/v1"
+                return get_model("local", model_name, base_url=base_url, local_mode="openai_compat")
             case "anthropic":
                 from langchain_anthropic import ChatAnthropic
                 return ChatAnthropic(model=model_name)
