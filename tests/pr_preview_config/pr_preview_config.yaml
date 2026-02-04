@@ -53,4 +53,4 @@ archi:
           agent_prompt: tests/pr_preview_config/agent.prompt
       models:
         required:
-          chat_model: OllamaInterface
+          agent_model: OllamaInterface
