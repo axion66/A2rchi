@@ -9,7 +9,6 @@ global:
     {%- endfor %}
   LOGGING:
     input_output_filename: "{{ global.LOGGING.input_output_filename | default('chain_input_output.log', true) }}"
-  verbosity: {{ verbosity | default(3, true) }}
 
 services:
   benchmarking:
