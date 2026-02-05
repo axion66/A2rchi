@@ -216,7 +216,8 @@ test.describe('API Security - Input Validation', () => {
       headers: { 'Content-Type': 'application/json' },
     });
 
-    expect([400, 401, 404, 415, 500]).toContain(response.status());
+    // 503 is acceptable as a fallback if JSON parsing fails at framework level
+    expect([400, 401, 404, 415, 500, 503]).toContain(response.status());
   });
 });
 

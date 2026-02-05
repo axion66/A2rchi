@@ -162,16 +162,16 @@ class TestIngestionPipelineIsolation:
         
         This tests that the splitter correctly chunks documents.
         """
-        from langchain_text_splitters.character import CharacterTextSplitter
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
         from langchain_core.documents import Document
         
-        splitter = CharacterTextSplitter(
+        splitter = RecursiveCharacterTextSplitter(
             chunk_size=500,
             chunk_overlap=50,
         )
         
-        # Test with substantial content
-        long_text = "This is a test sentence. " * 100  # ~2500 chars
+        # Test with substantial content - use newlines for natural split points
+        long_text = ("This is a test sentence.\n" * 100)  # ~2600 chars with newlines
         doc = Document(page_content=long_text, metadata={"source": "test"})
         
         chunks = splitter.split_documents([doc])
@@ -585,23 +585,6 @@ class TestDockerDeploymentDiagnostics:
             "chunks": chunk_count,
             "status": status,
         }
-
-
-class TestIntegration:
-    """
-    Integration test that can be run to verify the full pipeline.
-    """
-
-    def test_full_embedding_pipeline_with_temp_file(self):
-        """
-        Create a temporary file, add it to the catalog, and verify
-        it gets embedded into chunks.
-        
-        This is an end-to-end test of the embedding pipeline.
-        """
-        # This would require a running PostgreSQL instance
-        # Skip if not available
-        pytest.skip("Requires PostgreSQL; use docker deployment tests instead")
 
 
 # Standalone diagnostic script

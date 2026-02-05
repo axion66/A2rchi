@@ -12,129 +12,53 @@ services:
     port: 5439
     database: archi
     user: archi
-    password: testpassword123
-  redmine_mailbox:
-    answer_tag: "[ANSWER]"
   chat_app:
-    pipeline: QAPipeline
-    trained_on: "Test agent - local development"
     host: "0.0.0.0"
     hostname: localhost
     port: 2786
     external_port: 2786
+    pipeline: CMSCompOpsAgent
     # These will be filled in by the script
     template_folder: "/Users/jason/projects/A2rchi/src/interfaces/chat_app/templates"
     static_folder: "/Users/jason/projects/A2rchi/src/interfaces/chat_app/static"
     num_responses_until_feedback: 5
-    include_copy_button: true
-    flask_debug_mode: true
     auth:
       enabled: false
-  data_manager:
-    host: "0.0.0.0"
-    port: 5001
-    template_folder: "/Users/jason/projects/A2rchi/src/interfaces/uploader_app/templates"
-    static_folder: "/Users/jason/projects/A2rchi/src/interfaces/uploader_app/static"
-    flask_debug_mode: true
 
 data_manager:
-  collection_name: default_collection
-  embedding_name: HuggingFaceEmbeddings
+  collection_name: local_dev
+  embedding_name: all-MiniLM-L6-v2
+  embedding_dimensions: 384
+  chunk_size: 1000
+  chunk_overlap: 150
+  distance_metric: cosine
   embedding_class_map:
-    HuggingFaceEmbeddings:
+    all-MiniLM-L6-v2:
       class: HuggingFaceEmbeddings
       kwargs:
-        model_name: sentence-transformers/all-MiniLM-L6-v2
-      similarity_score_reference: 10
-      dimensions: 384
-    OpenAIEmbeddings:
-      class: OpenAIEmbeddings
-      kwargs:
-        model: text-embedding-3-small
-      similarity_score_reference: 10
-  chunk_size: 1000
-  chunk_overlap: 0
-  parallel_workers: 32
-  reset_collection: true
-  stemming:
-    enabled: false
-  distance_metric: cosine
-  retrievers:
-    semantic_retriever:
-      num_documents_to_retrieve: 5
-    bm25_retriever:
-      num_documents_to_retrieve: 5
-      k: 1.5
-      b: 0.75
-    hybrid_retriever:
-      num_documents_to_retrieve: 5
-      bm25_weight: 0.6
-      semantic_weight: 0.4
-      bm25_k1: 0.5
-      bm25_b: 0.75
-  rerank:
-    enabled: false
-  sources:
-    local_files:
-      enabled: true
-      visible: true
-      schedule: ''
-      paths: []
-    links:
-      base_source_depth: 1
-      max_pages: null
-      enabled: true
-      visible: true
-      schedule: ''
-      input_lists: []
-    git:
-      enabled: true
-      visible: true
-      schedule: ''
-    sso:
-      enabled: false
-      visible: false
+        model_name: all-MiniLM-L6-v2
+      similarity_score_reference: 0.45
+  sources: {}
 
 archi:
   agent_description: "Local development test agent"
-  mcp_servers: {}
+  providers:
+    local:
+      enabled: true
+      base_url: http://localhost:11434
+      mode: ollama
+      default_model: "qwen3:4b"
+      models:
+        - "qwen3:4b"
+        - "qwen2.5-coder:3b"
   pipelines:
     - CMSCompOpsAgent
-    - QAPipeline
   pipeline_map:
-    QAPipeline:
-      max_tokens: 4096
-      prompts:
-        required:
-          condense_prompt: "/Users/jason/projects/A2rchi/examples/defaults/prompts/condense/default.prompt"
-          chat_prompt: "/Users/jason/projects/A2rchi/examples/defaults/prompts/chat/default.prompt"
-      models:
-        required:
-          condense_model: DumbLLM
-          chat_model: DumbLLM
     CMSCompOpsAgent:
       recursion_limit: 100
       prompts:
         required:
-          agent_prompt: "/Users/jason/projects/A2rchi/examples/deployments/basic-agent/agent.prompt"
+          agent_prompt: examples/deployments/basic-ollama/agent.prompt
       models:
         required:
-          agent_model: DumbLLM
-  model_class_map:
-    OpenAILLM:
-      class: OpenAILLM
-      kwargs:
-        model_name: gpt-4o-mini
-        temperature: 1
-    DumbLLM:
-      class: DumbLLM
-      kwargs:
-        sleep_time_mean: 1
-        filler: "I am a test response from DumbLLM."
-  providers:
-    - type: openai
-      name: OpenAI
-      api_key_secret: OPENAI_API_KEY
-      models:
-        - model: gpt-4o-mini
-          display_name: GPT-4o Mini
+          agent_model: local/qwen3:4b

@@ -49,6 +49,7 @@ services:
     hostname: localhost
     port: 2786
     external_port: 2786
+    pipeline: CMSCompOpsAgent
     # These will be filled in by the script
     template_folder: "PLACEHOLDER"
     static_folder: "PLACEHOLDER"
@@ -56,31 +57,43 @@ services:
     auth:
       enabled: false
 
+data_manager:
+  collection_name: local_dev
+  embedding_name: all-MiniLM-L6-v2
+  embedding_dimensions: 384
+  chunk_size: 1000
+  chunk_overlap: 150
+  distance_metric: cosine
+  embedding_class_map:
+    all-MiniLM-L6-v2:
+      class: HuggingFaceEmbeddings
+      kwargs:
+        model_name: all-MiniLM-L6-v2
+      similarity_score_reference: 0.45
+  sources: {}
+
 archi:
   agent_description: "Local development test agent"
-  model_class_map:
-    openai: gpt-4o-mini
-    ollama: llama3.2
-    anthropic: claude-3-5-sonnet-20241022
   providers:
-    - type: openai
-      name: OpenAI
-      api_key_secret: OPENAI_API_KEY
+    local:
+      enabled: true
+      base_url: http://localhost:11434
+      mode: ollama
+      default_model: "qwen3:4b"
       models:
-        - model: gpt-4o-mini
-          display_name: GPT-4o Mini
+        - "qwen3:4b"
+        - "qwen2.5-coder:3b"
   pipelines:
-    - name: main
-      condense: null
-      respond: null
-      insert: null
-      remove: null
-      model: openai
+    - CMSCompOpsAgent
   pipeline_map:
-    condense: main
-    respond: main
-    insert: main
-    remove: main
+    CMSCompOpsAgent:
+      recursion_limit: 100
+      prompts:
+        required:
+          agent_prompt: examples/deployments/basic-ollama/agent.prompt
+      models:
+        required:
+          agent_model: local/qwen3:4b
 EOF
     echo "Created config file: $CONFIG_FILE"
 fi
@@ -102,9 +115,13 @@ if ! docker ps --format "{{.Names}}" | grep -q "archi-test-postgres"; then
 fi
 echo "✅ Test database is running"
 
-# Set environment variables
+# Set environment variables for PostgresServiceFactory.from_env()
 export ARCHI_CONFIGS_PATH="$CONFIG_DIR/"
 export PG_PASSWORD=testpassword123
+export PGHOST=localhost
+export PGPORT=5439
+export PGDATABASE=archi
+export PGUSER=archi
 
 # Check for optional API keys
 if [ -n "${OPENAI_API_KEY:-}" ]; then
@@ -120,6 +137,75 @@ echo "  Database: localhost:5439"
 echo "  Chat UI: http://localhost:2786"
 echo "  Python: $(which python)"
 echo ""
+
+# Bootstrap config into Postgres (the service expects config in DB, not YAML)
+echo "📝 Bootstrapping config into Postgres..."
+python -c "
+import json
+import yaml
+import psycopg2
+import psycopg2.extras
+import os
+
+# Load YAML config
+with open('$CONFIG_FILE') as f:
+    config = yaml.safe_load(f)
+
+# Extract nested config values
+data_manager = config.get('data_manager', {})
+services = config.get('services', {})
+chat_app = services.get('chat_app', {})
+auth = chat_app.get('auth', {})
+
+# Connect to DB
+conn = psycopg2.connect(
+    host=os.environ['PGHOST'],
+    port=os.environ['PGPORT'],
+    database=os.environ['PGDATABASE'],
+    user=os.environ['PGUSER'],
+    password=os.environ['PG_PASSWORD']
+)
+
+with conn.cursor() as cur:
+    # Use INSERT ON CONFLICT to upsert the config
+    cur.execute('''
+        INSERT INTO static_config (
+            id, deployment_name, embedding_model, embedding_dimensions,
+            chunk_size, chunk_overlap, auth_enabled,
+            services_config, data_manager_config,
+            archi_config, global_config, sources_config
+        ) VALUES (
+            1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+        )
+        ON CONFLICT (id) DO UPDATE SET
+            deployment_name = EXCLUDED.deployment_name,
+            embedding_model = EXCLUDED.embedding_model,
+            embedding_dimensions = EXCLUDED.embedding_dimensions,
+            chunk_size = EXCLUDED.chunk_size,
+            chunk_overlap = EXCLUDED.chunk_overlap,
+            auth_enabled = EXCLUDED.auth_enabled,
+            services_config = EXCLUDED.services_config,
+            data_manager_config = EXCLUDED.data_manager_config,
+            archi_config = EXCLUDED.archi_config,
+            global_config = EXCLUDED.global_config,
+            sources_config = EXCLUDED.sources_config
+    ''', (
+        config.get('name', 'local-dev'),
+        data_manager.get('embedding_name', 'all-MiniLM-L6-v2'),
+        data_manager.get('embedding_dimensions', 384),
+        data_manager.get('chunk_size', 1000),
+        data_manager.get('chunk_overlap', 150),
+        auth.get('enabled', False),
+        psycopg2.extras.Json(services),
+        psycopg2.extras.Json(data_manager),
+        psycopg2.extras.Json(config.get('archi', {})),
+        psycopg2.extras.Json(config.get('global', {})),
+        psycopg2.extras.Json(config.get('sources', {}))
+    ))
+    conn.commit()
+conn.close()
+print('✅ Config loaded into Postgres')
+"
 
 # Run the chat service
 cd "$PROJECT_ROOT"

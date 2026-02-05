@@ -32,10 +32,10 @@ from src.archi.providers.base import ModelInfo, ProviderConfig, ProviderType
 from src.archi.utils.output_dataclass import PipelineOutput
 # from src.data_manager.data_manager import DataManager
 from src.data_manager.data_viewer_service import DataViewerService
+from src.data_manager.vectorstore.manager import VectorStoreManager
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.utils.config_access import get_full_config, get_services_config, get_global_config
-from src.utils.yaml_config import load_config_with_class_mapping
 from src.utils.config_service import ConfigService
 from src.utils.sql import (
     SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO,
@@ -173,7 +173,7 @@ class ChatWrapper:
         self.sources_config = self.config["data_manager"]["sources"]
 
         # initialize vectorstore manager for embedding uploads (needs class-mapped config)
-        vectorstore_config = load_config_with_class_mapping()
+        vectorstore_config = get_full_config(resolve_embeddings=True)
         self.vector_manager = VectorStoreManager(
             config=vectorstore_config,
             global_config=vectorstore_config["global"],
@@ -3602,11 +3602,29 @@ class FlaskAppWrapper(object):
         Proxies to data-manager service.
         """
         try:
-            data = request.json or {}
-            repo_name = data.get("repo_name", "").strip()
+            # Handle JSON parsing errors gracefully
+            try:
+                data = request.json
+            except Exception:
+                return jsonify({"error": "invalid_json"}), 400
+            
+            if data is None:
+                return jsonify({"error": "invalid_json"}), 400
+            
+            repo_name = data.get("repo_name")
+            
+            # Type validation: repo_name must be a string
+            if repo_name is None or not isinstance(repo_name, str):
+                return jsonify({"error": "invalid_repo_name_type"}), 400
+            
+            repo_name = repo_name.strip()
 
             if not repo_name:
                 return jsonify({"error": "missing_repo_name"}), 400
+            
+            # Input validation: reject overly long inputs (max 500 chars for repo names/URLs)
+            if len(repo_name) > 500:
+                return jsonify({"error": "repo_name_too_long"}), 400
 
             # The repo_name might be a URL or just a name
             # Try to reconstruct the full URL if needed
@@ -3614,7 +3632,11 @@ class FlaskAppWrapper(object):
                 repo_url = repo_name
             else:
                 # Query the database to find the full URL
-                conn = psycopg2.connect(**self.chat.pg_config)
+                try:
+                    conn = psycopg2.connect(**self.chat.pg_config)
+                except Exception as db_err:
+                    logger.error(f"Database connection failed: {db_err}")
+                    return jsonify({"error": "database_unavailable"}), 503
                 try:
                     with conn.cursor() as cursor:
                         cursor.execute("""
@@ -3633,7 +3655,9 @@ class FlaskAppWrapper(object):
                             LIMIT 1
                         """, (f'%/{repo_name}%',))
                         row = cursor.fetchone()
-                        repo_url = row[0] if row else repo_name
+                        if not row:
+                            return jsonify({"error": "repo_not_found"}), 404
+                        repo_url = row[0]
                 finally:
                     conn.close()
 
@@ -3643,7 +3667,15 @@ class FlaskAppWrapper(object):
                 data={"repo_url": repo_url},
                 timeout=300
             )
-            dm_data = resp.json()
+            
+            # Try to parse JSON response, handle non-JSON gracefully
+            try:
+                dm_data = resp.json()
+            except (ValueError, requests.exceptions.JSONDecodeError):
+                logger.warning(f"Data manager returned non-JSON response: {resp.status_code}")
+                if resp.status_code >= 500:
+                    return jsonify({"error": "data_manager_error"}), 503
+                return jsonify({"error": "git_refresh_failed"}), resp.status_code or 400
 
             if resp.status_code == 200 and dm_data.get("status") == "ok":
                 return jsonify({
@@ -3652,14 +3684,19 @@ class FlaskAppWrapper(object):
                     "message": "Repository refreshed."
                 }), 200
             else:
-                return jsonify({"error": dm_data.get("error", "git_refresh_failed")}), resp.status_code
+                # Return the data manager's status code but cap at 503 for server errors
+                status = resp.status_code if resp.status_code < 500 else 503
+                return jsonify({"error": dm_data.get("error", "git_refresh_failed")}), status
 
         except requests.exceptions.ConnectionError:
             logger.error("Data manager service unavailable")
             return jsonify({"error": "data_manager_unavailable"}), 503
+        except requests.exceptions.Timeout:
+            logger.error("Data manager request timed out")
+            return jsonify({"error": "data_manager_timeout"}), 503
         except Exception as e:
             logger.error(f"Error refreshing Git repo: {str(e)}")
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": "internal_error"}), 503
 
     def upload_jira(self):
         """

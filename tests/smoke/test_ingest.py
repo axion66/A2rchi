@@ -7,7 +7,7 @@ import sys
 os.environ["ARCHI_CONFIGS_PATH"] = os.path.join(os.path.dirname(__file__), "local_dev_config/")
 os.environ["PG_PASSWORD"] = "testpassword123"
 
-from src.utils.yaml_config import load_config_with_class_mapping
+from src.utils.config_access import get_full_config
 from src.data_manager.vectorstore.manager import VectorStoreManager
 
 def main():
@@ -15,8 +15,8 @@ def main():
     print("Archi Document Ingestion Test")
     print("=" * 60)
     
-    # Use load_config_with_class_mapping to resolve embedding class names to actual classes
-    config = load_config_with_class_mapping("local-dev")
+    # Use get_full_config with resolve_embeddings to resolve embedding class names to actual classes
+    config = get_full_config(resolve_embeddings=True)
     print(f"Loaded config: {config.get('name', 'unknown')}")
 
     global_config = config.get("global", {})
