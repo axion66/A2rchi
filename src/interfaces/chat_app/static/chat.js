@@ -42,6 +42,9 @@ const CONFIG = {
     CLEAR_PROVIDER_KEY: '/api/providers/keys/clear',
     PIPELINE_DEFAULT_MODEL: '/api/pipeline/default_model',
     AGENT_INFO: '/api/agent/info',
+    AGENT_TEMPLATE: '/api/agents/template',
+    AGENT_SAVE: '/api/agents',
+    AGENTS_LIST: '/api/agents/list',
   },
   STREAMING: {
     TIMEOUT: 300000, // 5 minutes
@@ -323,6 +326,29 @@ const API = {
     return this.fetchJson(url);
   },
 
+  async getAgentTemplate(name = null) {
+    const url = name
+      ? `${CONFIG.ENDPOINTS.AGENT_TEMPLATE}?name=${encodeURIComponent(name)}`
+      : CONFIG.ENDPOINTS.AGENT_TEMPLATE;
+    return this.fetchJson(url);
+  },
+
+  async getAgentsList() {
+    return this.fetchJson(CONFIG.ENDPOINTS.AGENTS_LIST);
+  },
+
+  async saveAgentSpec(filename, content) {
+    return this.fetchJson(CONFIG.ENDPOINTS.AGENT_SAVE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename,
+        content,
+        client_id: this.clientId,
+      }),
+    });
+  },
+
   async getProviderModels(providerType) {
     const url = `${CONFIG.ENDPOINTS.PROVIDER_MODELS}?provider=${encodeURIComponent(providerType)}`;
     return this.fetchJson(url);
@@ -493,6 +519,16 @@ const UI = {
       agentInfoBackdrop: document.querySelector('.agent-info-backdrop'),
       agentInfoClose: document.querySelector('.agent-info-close'),
       agentInfoContent: document.getElementById('agent-info-content'),
+      agentLabelBtn: document.querySelector('.agent-label-btn'),
+      agentLabelText: document.querySelector('.agent-label-text'),
+      agentSpecModal: document.querySelector('.agent-spec-modal'),
+      agentSpecBackdrop: document.querySelector('.agent-spec-backdrop'),
+      agentSpecClose: document.querySelector('.agent-spec-close'),
+      agentSpecEditor: document.getElementById('agent-spec-editor'),
+      agentSpecFilename: document.getElementById('agent-spec-filename'),
+      agentSpecStatus: document.getElementById('agent-spec-status'),
+      agentSpecSave: document.querySelector('.agent-spec-save'),
+      agentSpecReset: document.querySelector('.agent-spec-reset'),
       // Provider selection elements
       providerSelect: document.getElementById('provider-select'),
       modelSelectPrimary: document.getElementById('model-select-primary'),
@@ -578,6 +614,21 @@ const UI = {
     this.elements.agentInfoClose?.addEventListener('click', () => {
       this.closeAgentInfo();
     });
+    this.elements.agentLabelBtn?.addEventListener('click', () => {
+      this.openAgentSpecEditor();
+    });
+    this.elements.agentSpecBackdrop?.addEventListener('click', () => {
+      this.closeAgentSpecEditor();
+    });
+    this.elements.agentSpecClose?.addEventListener('click', () => {
+      this.closeAgentSpecEditor();
+    });
+    this.elements.agentSpecReset?.addEventListener('click', () => {
+      this.loadAgentSpecTemplate();
+    });
+    this.elements.agentSpecSave?.addEventListener('click', () => {
+      this.saveAgentSpec();
+    });
     
     // A/B toggle in settings
     this.elements.abCheckbox?.addEventListener('change', (e) => {
@@ -651,6 +702,9 @@ const UI = {
       if (e.key === 'Escape' && this.elements.agentInfoModal?.style.display !== 'none') {
         this.closeAgentInfo();
       }
+      if (e.key === 'Escape' && this.elements.agentSpecModal?.style.display !== 'none') {
+        this.closeAgentSpecEditor();
+      }
     });
     
     // Settings navigation
@@ -722,15 +776,27 @@ const UI = {
     try {
       const configName = this.getSelectedConfig('A');
       const info = await API.getAgentInfo(configName);
-      const agentLabel = Chat.getAgentLabel();
+      const agentLabel = info?.agent_name || Chat.getAgentLabel();
+      if (info?.agent_name && !Chat.state.activeAgentName) {
+        Chat.state.activeAgentName = info.agent_name;
+        if (this.elements.agentLabelText) {
+          this.elements.agentLabelText.textContent = info.agent_name;
+        }
+      }
       const modelLabel = Chat.getCurrentModelLabel();
       const pipelineLabel = info?.pipeline || 'Unknown';
       const embeddingLabel = info?.embedding_name || 'Not specified';
       const sources = Array.isArray(info?.data_sources) ? info.data_sources : [];
+      const tools = Array.isArray(info?.agent_tools) ? info.agent_tools : [];
+      const prompt = info?.agent_prompt || '';
 
       const sourcesHtml = sources.length
         ? `<ul class="agent-info-list">${sources.map(source => `<li>${Utils.escapeHtml(source)}</li>`).join('')}</ul>`
         : '<p>No data sources configured.</p>';
+
+      const toolsHtml = tools.length
+        ? `<ul class="agent-info-list">${tools.map(tool => `<li>${Utils.escapeHtml(tool)}</li>`).join('')}</ul>`
+        : '<p>No tools configured.</p>';
 
       this.elements.agentInfoContent.innerHTML = `
         <div class="agent-info-section">
@@ -752,11 +818,93 @@ const UI = {
         <div class="agent-info-section">
           <h4>Data sources</h4>
           ${sourcesHtml}
+        </div>
+        <div class="agent-info-section">
+          <h4>Tools</h4>
+          ${toolsHtml}
+        </div>
+        <div class="agent-info-section">
+          <h4>Prompt</h4>
+          <pre class="agent-info-prompt">${Utils.escapeHtml(prompt)}</pre>
         </div>`;
     } catch (e) {
       console.error('Failed to load agent info:', e);
       this.elements.agentInfoContent.innerHTML = `
         <p class="agent-info-loading">Unable to load agent info. Please try again.</p>`;
+    }
+  },
+
+  renderAgentsList(agents = [], activeName = null) {
+    if (this.elements.agentLabelText) {
+      this.elements.agentLabelText.textContent = activeName || 'Agent';
+    }
+  },
+
+  async openAgentSpecEditor() {
+    if (!this.elements.agentSpecModal) return;
+    this.elements.agentSpecModal.style.display = 'flex';
+    if (this.elements.agentSpecFilename && !this.elements.agentSpecFilename.value) {
+      this.elements.agentSpecFilename.value = 'new-agent.md';
+    }
+    this.setAgentSpecStatus('');
+    await this.loadAgentSpecTemplate();
+  },
+
+  closeAgentSpecEditor() {
+    if (this.elements.agentSpecModal) {
+      this.elements.agentSpecModal.style.display = 'none';
+    }
+  },
+
+  setAgentSpecStatus(message, type = '') {
+    if (!this.elements.agentSpecStatus) return;
+    this.elements.agentSpecStatus.textContent = message || '';
+    this.elements.agentSpecStatus.classList.remove('error', 'success');
+    if (type) {
+      this.elements.agentSpecStatus.classList.add(type);
+    }
+  },
+
+  async loadAgentSpecTemplate() {
+    if (!this.elements.agentSpecEditor) return;
+    this.elements.agentSpecEditor.value = 'Loading template...';
+    this.setAgentSpecStatus('');
+    try {
+      const response = await API.getAgentTemplate();
+      this.elements.agentSpecEditor.value = response?.template || '';
+    } catch (e) {
+      console.error('Failed to load agent template:', e);
+      this.elements.agentSpecEditor.value = '';
+      this.setAgentSpecStatus('Unable to load agent template.', 'error');
+    }
+  },
+
+  async saveAgentSpec() {
+    const filename = this.elements.agentSpecFilename?.value?.trim() || '';
+    const content = this.elements.agentSpecEditor?.value || '';
+    if (!filename) {
+      this.setAgentSpecStatus('Filename is required.', 'error');
+      return;
+    }
+    if (!content) {
+      this.setAgentSpecStatus('Agent markdown is required.', 'error');
+      return;
+    }
+    if (this.elements.agentSpecSave) {
+      this.elements.agentSpecSave.disabled = true;
+    }
+    this.setAgentSpecStatus('Saving...');
+    try {
+      await API.saveAgentSpec(filename, content);
+      this.setAgentSpecStatus('Saved agent spec.', 'success');
+      await Chat.loadAgents();
+    } catch (e) {
+      console.error('Failed to save agent spec:', e);
+      this.setAgentSpecStatus(e.message || 'Unable to save agent spec.', 'error');
+    } finally {
+      if (this.elements.agentSpecSave) {
+        this.elements.agentSpecSave.disabled = false;
+      }
     }
   },
 
@@ -1685,6 +1833,8 @@ const Chat = {
     selectedCustomModel: localStorage.getItem(CONFIG.STORAGE_KEYS.SELECTED_MODEL_CUSTOM) || null,
     selectedProviderB: localStorage.getItem(CONFIG.STORAGE_KEYS.SELECTED_PROVIDER_B) || null,
     selectedModelB: localStorage.getItem(CONFIG.STORAGE_KEYS.SELECTED_MODEL_B) || null,
+    agents: [],
+    activeAgentName: null,
   },
 
   async init() {
@@ -1698,6 +1848,7 @@ const Chat = {
       this.loadProviders(),
       this.loadPipelineDefaultModel(),
       this.loadApiKeyStatus(),
+      this.loadAgents(),
     ]);
 
     // Update model label after all data is loaded (configs, providers, pipeline default)
@@ -1717,6 +1868,18 @@ const Chat = {
       UI.renderConfigs(this.state.configs);
     } catch (e) {
       console.error('Failed to load configs:', e);
+    }
+  },
+
+  async loadAgents() {
+    try {
+      const data = await API.getAgentsList();
+      this.state.agents = data?.agents || [];
+      this.state.activeAgentName = data?.active_name || null;
+      UI.renderAgentsList(this.state.agents, this.state.activeAgentName);
+      this.updateActiveModelLabel();
+    } catch (e) {
+      console.error('Failed to load agents list:', e);
     }
   },
 
@@ -1778,9 +1941,10 @@ const Chat = {
   },
 
   getAgentLabel() {
-    const selectedConfig = UI.getSelectedConfig('A');
-    if (selectedConfig) return selectedConfig;
-    return this.state.configs[0]?.name || 'Default agent';
+    if (this.state.activeAgentName) {
+      return this.state.activeAgentName;
+    }
+    return 'Default agent';
   },
 
   getCurrentModelLabel() {

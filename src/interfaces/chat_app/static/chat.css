@@ -902,6 +902,31 @@ body {
   cursor: not-allowed;
 }
 
+.agent-label-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--surface-alt);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  transition: all var(--transition-fast);
+}
+
+.agent-label-btn:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+.agent-label-text {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
 .agent-info-btn {
   display: inline-flex;
   align-items: center;
@@ -920,6 +945,7 @@ body {
   background: var(--bg-tertiary);
   color: var(--text-primary);
 }
+
 
 .send-btn.stop-mode {
   background: rgba(239, 68, 68, 0.1);
@@ -2278,6 +2304,133 @@ body {
 .agent-info-list {
   margin: 0;
   padding-left: 18px;
+}
+
+.agent-info-prompt {
+  background: var(--surface-alt);
+  border-radius: 8px;
+  padding: 12px;
+  white-space: pre-wrap;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  max-height: 240px;
+  overflow: auto;
+}
+
+/* -----------------------------------------------------------------------------
+   Agent Spec Editor Modal
+   ----------------------------------------------------------------------------- */
+.agent-spec-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 115;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agent-spec-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+}
+
+.agent-spec-panel {
+  position: relative;
+  width: 92%;
+  max-width: 720px;
+  max-height: 85vh;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-spec-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.agent-spec-body {
+  padding: 16px 20px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.agent-spec-label {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.agent-spec-input,
+.agent-spec-editor {
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--surface-alt);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  padding: 10px 12px;
+}
+
+.agent-spec-editor {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  min-height: 280px;
+  resize: vertical;
+  white-space: pre;
+}
+
+.agent-spec-status {
+  min-height: 18px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.agent-spec-status.error {
+  color: var(--error-text);
+}
+
+.agent-spec-status.success {
+  color: var(--accent);
+}
+
+.agent-spec-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.agent-spec-reset,
+.agent-spec-save {
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.agent-spec-reset {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.agent-spec-save {
+  background: var(--accent);
+  color: white;
+}
+
+.agent-spec-save:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* -----------------------------------------------------------------------------
