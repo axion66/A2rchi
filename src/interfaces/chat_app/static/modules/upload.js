@@ -15,6 +15,20 @@ class DataUploader {
     this.jiraProjects = [];
     this.isEmbedding = false;
     
+    // Unified ingestion status state
+    this._statusPollTimer = null;
+    this._searchDebounceTimer = null;
+    this._showAll = false;      // show all groups vs only actionable
+    this._fullListMode = false;  // show full flat table
+    this._expandedGroups = new Set();
+    this.docStatusFilter = '';
+    this.docSearchQuery = '';
+    this.docPage = 0;
+    this.docLimit = 20;
+    this.docTotal = 0;
+    this._statusCounts = {};
+    this._groups = [];
+    
     this.init();
   }
 
@@ -24,6 +38,7 @@ class DataUploader {
     this.bindFormEvents();
     this.loadExistingSources();
     this.initEmbeddingStatus();
+    this.initIngestionStatus();
   }
 
   /**
@@ -90,6 +105,9 @@ class DataUploader {
       embedBtn.querySelector('span').textContent = 'Processing...';
     }
     
+    // Start polling during embedding
+    this.startStatusPolling();
+    
     try {
       const response = await fetch('/api/upload/embed', {
         method: 'POST',
@@ -111,7 +129,9 @@ class DataUploader {
       if (embedBtn) {
         embedBtn.querySelector('span').textContent = 'Process Documents';
       }
+      this.stopStatusPolling();
       this.refreshEmbeddingStatus();
+      this.loadIngestionStatus();
     }
   }
 
@@ -345,8 +365,9 @@ class DataUploader {
       `;
     }
     
-    // Refresh embedding status to show new pending documents
+    // Refresh both status areas — new pending doc appears immediately
     this.refreshEmbeddingStatus();
+    this.loadIngestionStatus();
   }
 
   onUploadError(file, errorMessage) {
@@ -639,8 +660,9 @@ class DataUploader {
         btn.disabled = false;
         btn.textContent = 'Start Scraping';
       }
-      // Refresh embedding status after scraping
+      // Refresh both status areas
       this.refreshEmbeddingStatus();
+      this.loadIngestionStatus();
     }
   }
 
@@ -682,8 +704,9 @@ class DataUploader {
         btn.disabled = false;
         btn.textContent = 'Clone';
       }
-      // Refresh embedding status after cloning
+      // Refresh both status areas
       this.refreshEmbeddingStatus();
+      this.loadIngestionStatus();
     }
   }
 
@@ -1068,6 +1091,402 @@ class DataUploader {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  // ===========================================================
+  // Unified Ingestion Status
+  // ===========================================================
+
+  initIngestionStatus() {
+    // Retry All Failed button
+    const retryAllBtn = document.getElementById('retry-all-btn');
+    if (retryAllBtn) {
+      retryAllBtn.addEventListener('click', () => this.retryAllFailed());
+    }
+
+    // Show all toggle
+    const showAllToggle = document.getElementById('show-all-toggle');
+    if (showAllToggle) {
+      showAllToggle.addEventListener('click', () => this.toggleShowAll());
+    }
+
+    // Filter buttons in full-list mode
+    document.querySelectorAll('#ingestion-filters .status-filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#ingestion-filters .status-filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.docStatusFilter = btn.dataset.status || '';
+        this.docPage = 0;
+        this.loadFullList();
+      });
+    });
+
+    // Search input with debounce
+    const searchInput = document.getElementById('doc-status-search');
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        clearTimeout(this._searchDebounceTimer);
+        this._searchDebounceTimer = setTimeout(() => {
+          this.docSearchQuery = searchInput.value.trim();
+          this.docPage = 0;
+          this.loadFullList();
+        }, 300);
+      });
+    }
+
+    // Pagination
+    const prevBtn = document.getElementById('doc-prev-btn');
+    const nextBtn = document.getElementById('doc-next-btn');
+    if (prevBtn) prevBtn.addEventListener('click', () => { if (this.docPage > 0) { this.docPage--; this.loadFullList(); } });
+    if (nextBtn) nextBtn.addEventListener('click', () => { 
+      if (this.docPage + 1 < Math.ceil(this.docTotal / this.docLimit)) { this.docPage++; this.loadFullList(); }
+    });
+
+    // Event delegation for group expand/collapse and per-doc retry
+    const groupsContainer = document.getElementById('ingestion-groups');
+    if (groupsContainer) {
+      groupsContainer.addEventListener('click', (e) => {
+        const groupHeader = e.target.closest('.group-header');
+        if (groupHeader) {
+          const name = groupHeader.dataset.group;
+          if (this._expandedGroups.has(name)) {
+            this._expandedGroups.delete(name);
+            this.renderGroups();
+          } else {
+            this._expandedGroups.add(name);
+            this.loadGroupDocuments(name);
+          }
+          return;
+        }
+        const retryBtn = e.target.closest('.btn-retry');
+        if (retryBtn) {
+          const hash = retryBtn.dataset.hash;
+          if (hash) this.retryDocument(hash);
+        }
+      });
+    }
+
+    // Also delegation in full list table
+    const tableBody = document.getElementById('ingestion-table-tbody');
+    if (tableBody) {
+      tableBody.addEventListener('click', (e) => {
+        const retryBtn = e.target.closest('.btn-retry');
+        if (retryBtn) {
+          const hash = retryBtn.dataset.hash;
+          if (hash) this.retryDocument(hash);
+        }
+      });
+    }
+
+    // Initial load
+    this.loadIngestionStatus();
+  }
+
+  async loadIngestionStatus() {
+    try {
+      const showAll = this._showAll ? 'true' : 'false';
+      const response = await fetch(`/api/upload/documents/grouped?show_all=${showAll}`);
+      if (!response.ok) throw new Error('Failed to fetch grouped status');
+      const data = await response.json();
+      
+      this._statusCounts = data.status_counts || {};
+      this._groups = data.groups || [];
+      
+      this.renderIngestionSection();
+    } catch (err) {
+      console.error('Failed to load ingestion status:', err);
+    }
+  }
+
+  renderIngestionSection() {
+    const counts = this._statusCounts;
+    const total = (counts.pending || 0) + (counts.embedding || 0) + (counts.embedded || 0) + (counts.failed || 0);
+    const actionable = (counts.pending || 0) + (counts.embedding || 0) + (counts.failed || 0);
+    const allSynced = actionable === 0 && total > 0;
+
+    // Update summary text
+    const summaryText = document.getElementById('ingestion-summary-text');
+    const section = document.getElementById('ingestion-status-section');
+    if (summaryText) {
+      if (total === 0) {
+        summaryText.innerHTML = 'No documents uploaded yet';
+      } else if (allSynced) {
+        summaryText.innerHTML = `<span class="summary-check">✓</span> All ${total} documents embedded`;
+      } else {
+        const parts = [];
+        if (counts.pending > 0) parts.push(`<span class="summary-count pending"><span class="status-dot pending"></span>${counts.pending} pending</span>`);
+        if (counts.embedding > 0) parts.push(`<span class="summary-count embedding"><span class="status-dot embedding"></span>${counts.embedding} embedding</span>`);
+        if (counts.failed > 0) parts.push(`<span class="summary-count failed"><span class="status-dot failed"></span>${counts.failed} failed</span>`);
+        parts.push(`<span class="summary-count embedded"><span class="status-dot embedded"></span>${counts.embedded || 0} embedded</span>`);
+        summaryText.innerHTML = parts.join('  ');
+      }
+    }
+
+    // Update section class for theming
+    if (section) {
+      section.classList.remove('synced', 'needs-attention');
+      section.classList.add(allSynced ? 'synced' : (actionable > 0 ? 'needs-attention' : ''));
+    }
+
+    // Show/hide retry all button
+    const retryAllBtn = document.getElementById('retry-all-btn');
+    if (retryAllBtn) {
+      retryAllBtn.style.display = (counts.failed > 0) ? '' : 'none';
+    }
+
+    // Show/hide toggle
+    const showAllToggle = document.getElementById('show-all-toggle');
+    if (showAllToggle) {
+      showAllToggle.style.display = total > 0 ? '' : 'none';
+      showAllToggle.textContent = this._fullListMode ? '← Back to groups' : (allSynced ? 'Show all documents ▸' : 'Show all documents ▸');
+    }
+
+    // Show/hide detail panel
+    const detail = document.getElementById('ingestion-detail');
+    if (detail) {
+      if (this._fullListMode) {
+        detail.style.display = '';
+        document.getElementById('ingestion-groups').style.display = 'none';
+        document.getElementById('ingestion-full-list').style.display = '';
+      } else if (actionable > 0 || this._showAll) {
+        detail.style.display = '';
+        document.getElementById('ingestion-groups').style.display = '';
+        document.getElementById('ingestion-full-list').style.display = 'none';
+        this.renderGroups();
+      } else {
+        detail.style.display = 'none';
+      }
+    }
+
+    // Update filter counts in full list mode
+    const countPending = document.getElementById('count-pending');
+    const countFailed = document.getElementById('count-failed');
+    const countEmbedded = document.getElementById('count-embedded');
+    if (countPending) countPending.textContent = counts.pending || 0;
+    if (countFailed) countFailed.textContent = counts.failed || 0;
+    if (countEmbedded) countEmbedded.textContent = counts.embedded || 0;
+  }
+
+  renderGroups() {
+    const container = document.getElementById('ingestion-groups');
+    if (!container) return;
+
+    if (this._groups.length === 0) {
+      container.innerHTML = '<div class="empty-list-message">No documents to display</div>';
+      return;
+    }
+
+    container.innerHTML = this._groups.map(group => {
+      const expanded = this._expandedGroups.has(group.source_name);
+      const arrow = expanded ? '▾' : '▸';
+      const hasActionable = group.has_actionable;
+      
+      // Build summary line
+      const parts = [];
+      if (group.failed > 0) parts.push(`${group.failed} failed`);
+      if (group.pending > 0) parts.push(`${group.pending} pending`);
+      if (group.embedding > 0) parts.push(`${group.embedding} embedding`);
+      const summary = parts.length > 0 
+        ? `${parts.join(', ')} (${group.total} total)` 
+        : `all embedded (${group.total})`;
+
+      let docsHtml = '';
+      if (expanded && group.documents && group.documents.length > 0) {
+        docsHtml = `<div class="group-documents">${group.documents.map(doc => this._renderDocRow(doc)).join('')}</div>`;
+      } else if (expanded && (!group.documents || group.documents.length === 0)) {
+        docsHtml = '<div class="group-documents"><div class="group-loading">Loading...</div></div>';
+      }
+
+      return `
+        <div class="source-group ${hasActionable ? 'actionable' : 'synced'}">
+          <div class="group-header" data-group="${this.escapeHtml(group.source_name)}">
+            <span class="group-arrow">${arrow}</span>
+            <span class="group-name">${this.escapeHtml(group.source_name)}</span>
+            <span class="group-summary"> — ${summary}</span>
+          </div>
+          ${docsHtml}
+        </div>`;
+    }).join('');
+  }
+
+  _renderDocRow(doc) {
+    const status = doc.ingestion_status || 'pending';
+    const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+    let actions = '';
+    if (status === 'failed') {
+      actions = `<button class="btn-retry" data-hash="${doc.hash}">Retry</button>`;
+    }
+    let errorHtml = '';
+    if (status === 'failed' && doc.ingestion_error) {
+      errorHtml = `<span class="doc-error">${this.escapeHtml(doc.ingestion_error.substring(0, 150))}</span>`;
+    }
+    return `
+      <div class="group-doc-row ${status}">
+        <span class="doc-name">${this.escapeHtml(doc.display_name)}</span>
+        <span class="status-badge ${status}"><span class="status-dot ${status}"></span>${statusLabel}</span>
+        ${errorHtml}
+        ${actions}
+      </div>`;
+  }
+
+  async loadGroupDocuments(groupName) {
+    try {
+      const response = await fetch(`/api/upload/documents/grouped?show_all=${this._showAll}&expand=${encodeURIComponent(groupName)}`);
+      if (!response.ok) throw new Error('Failed to load group');
+      const data = await response.json();
+      
+      // Merge documents into our local group data
+      const groups = data.groups || [];
+      for (const g of groups) {
+        if (g.source_name === groupName) {
+          const local = this._groups.find(lg => lg.source_name === groupName);
+          if (local) local.documents = g.documents || [];
+          break;
+        }
+      }
+      this.renderGroups();
+    } catch (err) {
+      console.error('Failed to load group documents:', err);
+    }
+  }
+
+  toggleShowAll() {
+    if (this._fullListMode) {
+      // Go back to group view
+      this._fullListMode = false;
+      this.renderIngestionSection();
+    } else {
+      // Enter full list mode
+      this._fullListMode = true;
+      this.docPage = 0;
+      this.renderIngestionSection();
+      this.loadFullList();
+    }
+  }
+
+  async loadFullList() {
+    const tbody = document.getElementById('ingestion-table-tbody');
+    if (!tbody) return;
+
+    const params = new URLSearchParams();
+    if (this.docStatusFilter) params.set('status', this.docStatusFilter);
+    if (this.docSearchQuery) params.set('search', this.docSearchQuery);
+    params.set('limit', this.docLimit);
+    params.set('offset', this.docPage * this.docLimit);
+
+    try {
+      const response = await fetch(`/api/upload/documents?${params}`);
+      if (!response.ok) throw new Error('Failed to fetch documents');
+      const data = await response.json();
+
+      this.docTotal = data.total;
+      this.renderFullListRows(data.documents);
+      this.updatePagination();
+    } catch (err) {
+      console.error('Failed to load full document list:', err);
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Failed to load documents</td></tr>';
+    }
+  }
+
+  renderFullListRows(documents) {
+    const tbody = document.getElementById('ingestion-table-tbody');
+    if (!tbody) return;
+
+    if (!documents || documents.length === 0) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No documents found</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = documents.map(doc => {
+      const name = this.escapeHtml(doc.display_name);
+      const sourceType = this.escapeHtml(doc.source_type || 'unknown');
+      const status = doc.ingestion_status || 'pending';
+      const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+      
+      let statusHtml = `<span class="status-badge ${status}"><span class="status-dot ${status}"></span>${statusLabel}</span>`;
+      if (status === 'failed' && doc.ingestion_error) {
+        const errorText = this.escapeHtml(doc.ingestion_error.substring(0, 200));
+        statusHtml = `<span class="status-badge ${status} error-tooltip" data-error="${errorText}"><span class="status-dot ${status}"></span>${statusLabel}</span>`;
+      }
+
+      let actionsHtml = '';
+      if (status === 'failed') {
+        actionsHtml = `<button class="btn-retry" data-hash="${doc.hash}">Retry</button>`;
+      }
+
+      return `<tr>
+        <td><span class="doc-name">${name}</span></td>
+        <td><span class="source-badge">${sourceType}</span></td>
+        <td>${statusHtml}</td>
+        <td>${actionsHtml}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  updatePagination() {
+    const prevBtn = document.getElementById('doc-prev-btn');
+    const nextBtn = document.getElementById('doc-next-btn');
+    const info = document.getElementById('pagination-info');
+
+    const totalPages = Math.max(1, Math.ceil(this.docTotal / this.docLimit));
+    const currentPage = this.docPage + 1;
+
+    if (info) info.textContent = `Page ${currentPage} of ${totalPages} (${this.docTotal} documents)`;
+    if (prevBtn) prevBtn.disabled = this.docPage === 0;
+    if (nextBtn) nextBtn.disabled = currentPage >= totalPages;
+  }
+
+  async retryDocument(hash) {
+    try {
+      const response = await fetch(`/api/upload/documents/${hash}/retry`, { method: 'POST' });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        toast.success('Document queued for retry');
+        this.loadIngestionStatus();
+        if (this._fullListMode) this.loadFullList();
+        this.refreshEmbeddingStatus();
+      } else {
+        toast.error(data.error || 'Failed to retry document');
+      }
+    } catch (err) {
+      console.error('Error retrying document:', err);
+      toast.error('Failed to retry document');
+    }
+  }
+
+  async retryAllFailed() {
+    try {
+      const response = await fetch('/api/upload/documents/retry-all-failed', { method: 'POST' });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        toast.success(data.message || 'All failed documents queued for retry');
+        this.loadIngestionStatus();
+        if (this._fullListMode) this.loadFullList();
+        this.refreshEmbeddingStatus();
+      } else {
+        toast.error(data.error || 'Failed to retry documents');
+      }
+    } catch (err) {
+      console.error('Error retrying all failed:', err);
+      toast.error('Failed to retry documents');
+    }
+  }
+
+  // Polling for real-time status during embedding
+  startStatusPolling() {
+    this.stopStatusPolling();
+    this._statusPollTimer = setInterval(() => {
+      this.refreshEmbeddingStatus();
+      this.loadIngestionStatus();
+      if (this._fullListMode) this.loadFullList();
+    }, 3000);
+  }
+
+  stopStatusPolling() {
+    if (this._statusPollTimer) {
+      clearInterval(this._statusPollTimer);
+      this._statusPollTimer = null;
+    }
   }
 }
 

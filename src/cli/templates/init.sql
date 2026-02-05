@@ -233,17 +233,23 @@ CREATE TABLE IF NOT EXISTS documents (
     indexed_at TIMESTAMP,        -- When embeddings were created
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     
+    -- Ingestion tracking
+    ingestion_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    ingestion_error TEXT,
+    
     -- Soft delete
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
     deleted_at TIMESTAMP,
     
-    CONSTRAINT valid_source CHECK (source_type IN ('local_files', 'web', 'ticket', 'git', 'sso', 'unknown'))
+    CONSTRAINT valid_source CHECK (source_type IN ('local_files', 'web', 'ticket', 'git', 'sso', 'unknown')),
+    CONSTRAINT valid_ingestion_status CHECK (ingestion_status IN ('pending', 'embedding', 'embedded', 'failed'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(resource_hash);
 CREATE INDEX IF NOT EXISTS idx_documents_source ON documents(source_type);
 CREATE INDEX IF NOT EXISTS idx_documents_name ON documents USING gin (display_name gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_documents_active ON documents(is_deleted) WHERE NOT is_deleted;
+CREATE INDEX IF NOT EXISTS idx_documents_ingestion_status ON documents(ingestion_status);
 
 -- Document chunks with embeddings
 -- Note: Vector dimension ({{ embedding_dimensions }}) must match static_config.embedding_dimensions

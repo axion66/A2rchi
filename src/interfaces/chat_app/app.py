@@ -1822,6 +1822,10 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/upload/jira', 'upload_jira', self.require_auth(self.upload_jira), methods=["POST"])
         self.add_endpoint('/api/upload/embed', 'trigger_embedding', self.require_auth(self.trigger_embedding), methods=["POST"])
         self.add_endpoint('/api/upload/status', 'get_embedding_status', self.require_auth(self.get_embedding_status), methods=["GET"])
+        self.add_endpoint('/api/upload/documents', 'list_upload_documents', self.require_auth(self.list_upload_documents), methods=["GET"])
+        self.add_endpoint('/api/upload/documents/grouped', 'list_upload_documents_grouped', self.require_auth(self.list_upload_documents_grouped), methods=["GET"])
+        self.add_endpoint('/api/upload/documents/<document_hash>/retry', 'retry_document', self.require_auth(self.retry_document), methods=["POST"])
+        self.add_endpoint('/api/upload/documents/retry-all-failed', 'retry_all_failed', self.require_auth(self.retry_all_failed), methods=["POST"])
         self.add_endpoint('/api/sources/git', 'list_git_sources', self.require_auth(self.list_git_sources), methods=["GET"])
         self.add_endpoint('/api/sources/jira', 'list_jira_sources', self.require_auth(self.list_jira_sources), methods=["GET", "DELETE"])
         self.add_endpoint('/api/sources/schedules', 'get_source_schedules', self.require_auth(self.get_source_schedules), methods=["GET"])
@@ -3762,41 +3766,155 @@ class FlaskAppWrapper(object):
         Get the current embedding/ingestion status.
 
         Returns:
-            JSON with counts of documents in catalog vs vectorstore
+            JSON with counts of documents by ingestion status
         """
         try:
-            from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
-            
-            # Get count of documents in catalog (load_sources_catalog returns hash->path dict)
-            sources = PostgresCatalogService.load_sources_catalog(self.chat.data_path, self.chat.pg_config)
-            docs_in_catalog = len(sources)
-            
-            # Get count of unique documents in vectorstore
             conn = psycopg2.connect(**self.chat.pg_config)
             try:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         """
-                        SELECT COUNT(DISTINCT metadata->>'resource_hash')
-                        FROM document_chunks
-                        WHERE metadata->>'resource_hash' IS NOT NULL
+                        SELECT ingestion_status, COUNT(*) as count
+                        FROM documents
+                        WHERE NOT is_deleted
+                        GROUP BY ingestion_status
                         """
                     )
-                    docs_in_vectorstore = cursor.fetchone()[0] or 0
+                    status_counts = {row[0]: row[1] for row in cursor.fetchall()}
             finally:
                 conn.close()
 
-            pending = max(0, docs_in_catalog - docs_in_vectorstore)
+            pending = status_counts.get("pending", 0)
+            embedding = status_counts.get("embedding", 0)
+            embedded = status_counts.get("embedded", 0)
+            failed = status_counts.get("failed", 0)
+            total = pending + embedding + embedded + failed
             
             return jsonify({
-                "documents_in_catalog": docs_in_catalog,
-                "documents_embedded": docs_in_vectorstore,
-                "pending_embedding": pending,
-                "is_synced": pending == 0
+                "documents_in_catalog": total,
+                "documents_embedded": embedded,
+                "pending_embedding": pending + failed,
+                "is_synced": pending == 0 and embedding == 0 and failed == 0,
+                "status_counts": {
+                    "pending": pending,
+                    "embedding": embedding,
+                    "embedded": embedded,
+                    "failed": failed,
+                },
             }), 200
 
         except Exception as e:
             logger.error(f"Error getting embedding status: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def list_upload_documents(self):
+        """
+        List documents with their ingestion status for the upload page.
+
+        Query params:
+            status: Filter by ingestion status (pending, embedding, embedded, failed)
+            source_type: Filter by source type
+            search: Search by display name
+            limit: Max results (default 50)
+            offset: Pagination offset (default 0)
+        
+        Returns:
+            JSON with documents, total, status_counts
+        """
+        try:
+            from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
+            
+            catalog = PostgresCatalogService(
+                data_path=self.chat.data_path,
+                pg_config=self.chat.pg_config,
+            )
+            
+            result = catalog.list_documents_with_status(
+                status_filter=request.args.get("status"),
+                source_type=request.args.get("source_type"),
+                search=request.args.get("search"),
+                limit=int(request.args.get("limit", 50)),
+                offset=int(request.args.get("offset", 0)),
+            )
+            return jsonify(result), 200
+        except Exception as e:
+            logger.error(f"Error listing upload documents: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def retry_document(self, document_hash):
+        """
+        Reset a failed document back to pending so it can be retried.
+
+        Args:
+            document_hash: The resource_hash of the document to retry
+        
+        Returns:
+            JSON with success status
+        """
+        try:
+            from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
+            
+            catalog = PostgresCatalogService(
+                data_path=self.chat.data_path,
+                pg_config=self.chat.pg_config,
+            )
+            
+            reset = catalog.reset_failed_document(document_hash)
+            if reset:
+                return jsonify({"success": True, "message": "Document reset to pending"}), 200
+            else:
+                return jsonify({"error": "Document not found or not in failed state"}), 404
+        except Exception as e:
+            logger.error(f"Error retrying document: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def retry_all_failed(self):
+        """
+        Reset all failed documents back to pending so they can be retried.
+
+        Returns:
+            JSON with count of documents reset
+        """
+        try:
+            from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
+
+            catalog = PostgresCatalogService(
+                data_path=self.chat.data_path,
+                pg_config=self.chat.pg_config,
+            )
+
+            count = catalog.reset_all_failed_documents()
+            return jsonify({"success": True, "count": count, "message": f"{count} document(s) reset to pending"}), 200
+        except Exception as e:
+            logger.error(f"Error retrying all failed documents: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def list_upload_documents_grouped(self):
+        """
+        List documents grouped by source origin for the unified status section.
+
+        Query params:
+            show_all: If 'true', include all groups (not just actionable). Default false.
+            expand: Source group name to load full document list for.
+
+        Returns:
+            JSON with groups and aggregate status_counts
+        """
+        try:
+            from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
+
+            catalog = PostgresCatalogService(
+                data_path=self.chat.data_path,
+                pg_config=self.chat.pg_config,
+            )
+
+            result = catalog.list_documents_grouped(
+                show_all=request.args.get("show_all", "false").lower() == "true",
+                expand=request.args.get("expand"),
+            )
+            return jsonify(result), 200
+        except Exception as e:
+            logger.error(f"Error listing grouped documents: {str(e)}")
             return jsonify({"error": str(e)}), 500
 
     def list_git_sources(self):

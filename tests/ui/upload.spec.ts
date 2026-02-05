@@ -20,8 +20,92 @@ test.describe('Upload Page', () => {
           documents_in_catalog: 184,
           documents_embedded: 159,
           pending_embedding: 25,
-          is_synced: false
+          is_synced: false,
+          status_counts: {
+            pending: 20,
+            embedding: 0,
+            embedded: 159,
+            failed: 5
+          }
         }
+      });
+    });
+
+    // Mock grouped document status - matches /api/upload/documents/grouped endpoint
+    await page.route('**/api/upload/documents/grouped**', async (route) => {
+      const url = new URL(route.request().url());
+      const showAll = url.searchParams.get('show_all') === 'true';
+      const expand = url.searchParams.get('expand');
+
+      const groups = [
+        {
+          source_name: 'https://docs.example.com',
+          total: 150,
+          pending: 1,
+          embedding: 0,
+          embedded: 148,
+          failed: 1,
+          has_actionable: true,
+          documents: expand === 'https://docs.example.com' ? [
+            { hash: 'def456', display_name: 'guide.pdf', source_type: 'web', suffix: '.pdf', size_bytes: 50000, ingestion_status: 'pending', ingestion_error: null },
+            { hash: 'ghi789', display_name: 'broken.txt', source_type: 'web', suffix: '.txt', size_bytes: 100, ingestion_status: 'failed', ingestion_error: 'Failed to parse file' },
+          ] : [],
+        },
+        {
+          source_name: 'Local files',
+          total: 34,
+          pending: 0,
+          embedding: 0,
+          embedded: 34,
+          failed: 0,
+          has_actionable: false,
+          documents: [],
+        },
+      ];
+
+      // If not show_all, only return actionable groups
+      const filtered = showAll ? groups : groups.filter(g => g.has_actionable);
+
+      await route.fulfill({
+        status: 200,
+        json: {
+          groups: filtered,
+          status_counts: { pending: 1, embedding: 0, embedded: 182, failed: 1 },
+        }
+      });
+    });
+
+    // Mock flat document list - matches /api/upload/documents endpoint (for full list mode)
+    await page.route(/\/api\/upload\/documents(\?|$)/, async (route) => {
+      const url = new URL(route.request().url());
+      const statusFilter = url.searchParams.get('status') || '';
+      
+      const allDocs = [
+        { hash: 'abc123', display_name: 'readme.md', source_type: 'local_files', suffix: '.md', size_bytes: 1234, ingestion_status: 'embedded', ingestion_error: null },
+        { hash: 'def456', display_name: 'guide.pdf', source_type: 'web', suffix: '.pdf', size_bytes: 50000, ingestion_status: 'pending', ingestion_error: null },
+        { hash: 'ghi789', display_name: 'broken.txt', source_type: 'web', suffix: '.txt', size_bytes: 100, ingestion_status: 'failed', ingestion_error: 'Failed to parse file' },
+        { hash: 'jkl012', display_name: 'https://docs.example.com', source_type: 'web', suffix: '.html', size_bytes: 8500, ingestion_status: 'embedded', ingestion_error: null },
+      ];
+
+      const filtered = statusFilter ? allDocs.filter(d => d.ingestion_status === statusFilter) : allDocs;
+
+      await route.fulfill({
+        status: 200,
+        json: {
+          documents: filtered,
+          total: filtered.length,
+          limit: 50,
+          offset: 0,
+          status_counts: { pending: 1, embedding: 0, embedded: 2, failed: 1 }
+        }
+      });
+    });
+
+    // Mock retry all failed
+    await page.route('**/api/upload/documents/retry-all-failed', async (route) => {
+      await route.fulfill({
+        status: 200,
+        json: { success: true, count: 1, message: '1 document(s) reset to pending' }
       });
     });
 
@@ -420,5 +504,269 @@ test.describe('Upload Page', () => {
     // Use first() to avoid strict mode error
     const activeTab = page.locator('.source-tab.active').first();
     await expect(activeTab).toBeVisible();
+  });
+
+  // ============================================================
+  // 9. Unified Ingestion Status Tests
+  // ============================================================
+  test.describe('Ingestion Status Section', () => {
+    test('shows ingestion status section', async ({ page }) => {
+      await page.goto('/upload');
+      
+      await expect(page.locator('.ingestion-status-section')).toBeVisible();
+      await expect(page.locator('.ingestion-header')).toBeVisible();
+    });
+
+    test('shows status counts in summary', async ({ page }) => {
+      await page.goto('/upload');
+      
+      // Summary should include pending and failed counts
+      await expect(page.locator('.summary-count.pending')).toBeVisible();
+      await expect(page.locator('.summary-count.failed')).toBeVisible();
+      await expect(page.locator('.summary-count.embedded')).toBeVisible();
+    });
+
+    test('shows source groups when docs need attention', async ({ page }) => {
+      await page.goto('/upload');
+      
+      // Detail panel should be expanded with groups
+      await expect(page.locator('.ingestion-detail')).toBeVisible();
+      await expect(page.locator('.source-group')).toHaveCount(1); // only actionable group by default
+      await expect(page.getByText('https://docs.example.com')).toBeVisible();
+    });
+
+    test('group header shows counts', async ({ page }) => {
+      await page.goto('/upload');
+      
+      // The actionable group should show its summary
+      await expect(page.locator('.group-summary').first()).toContainText('1 failed');
+      await expect(page.locator('.group-summary').first()).toContainText('1 pending');
+    });
+
+    test('clicking group header expands documents', async ({ page }) => {
+      await page.goto('/upload');
+      
+      // Click on the group header to expand
+      await page.locator('.group-header').first().click();
+      
+      // Should show documents
+      await expect(page.locator('.group-doc-row').first()).toBeVisible({ timeout: 3000 });
+    });
+
+    test('expanded group shows document details', async ({ page }) => {
+      await page.goto('/upload');
+      
+      // Expand the group
+      await page.locator('.group-header').first().click();
+      
+      // Wait for documents to load
+      await expect(page.locator('.group-doc-row').first()).toBeVisible({ timeout: 3000 });
+      
+      // Should show individual doc names and status badges
+      await expect(page.locator('.group-documents .doc-name').first()).toBeVisible();
+      await expect(page.locator('.group-documents .status-badge').first()).toBeVisible();
+    });
+
+    test('failed document in group has retry button', async ({ page }) => {
+      await page.goto('/upload');
+      
+      // Expand the group
+      await page.locator('.group-header').first().click();
+      await expect(page.locator('.group-doc-row').first()).toBeVisible({ timeout: 3000 });
+      
+      // Failed doc should have retry button
+      await expect(page.locator('.group-documents .btn-retry').first()).toBeVisible();
+    });
+
+    test('failed document shows error message', async ({ page }) => {
+      await page.goto('/upload');
+      
+      // Expand the group
+      await page.locator('.group-header').first().click();
+      await expect(page.locator('.group-doc-row').first()).toBeVisible({ timeout: 3000 });
+      
+      // Failed doc should show error
+      await expect(page.locator('.doc-error').first()).toContainText('Failed to parse file');
+    });
+
+    test('retry all failed button visible when failures exist', async ({ page }) => {
+      await page.goto('/upload');
+      
+      await expect(page.locator('#retry-all-btn')).toBeVisible();
+    });
+
+    test('retry all failed calls correct API', async ({ page }) => {
+      let retryAllRequested = false;
+      await page.route('**/api/upload/documents/retry-all-failed', async (route) => {
+        retryAllRequested = true;
+        await route.fulfill({
+          status: 200,
+          json: { success: true, count: 1, message: '1 document(s) reset to pending' }
+        });
+      });
+      
+      await page.goto('/upload');
+      
+      await page.locator('#retry-all-btn').click();
+      await page.waitForTimeout(500);
+      expect(retryAllRequested).toBe(true);
+    });
+
+    test('show all toggle switches to full list mode', async ({ page }) => {
+      await page.goto('/upload');
+      
+      // Click "Show all documents"
+      await page.locator('#show-all-toggle').click();
+      
+      // Full list table should appear
+      await expect(page.locator('.ingestion-full-list')).toBeVisible();
+      await expect(page.locator('.ingestion-table')).toBeVisible();
+    });
+
+    test('full list mode shows filter buttons', async ({ page }) => {
+      await page.goto('/upload');
+      await page.locator('#show-all-toggle').click();
+      
+      await expect(page.locator('#ingestion-filters .status-filter-btn').filter({ hasText: 'All' })).toBeVisible();
+      await expect(page.locator('#ingestion-filters .status-filter-btn').filter({ hasText: 'Pending' })).toBeVisible();
+      await expect(page.locator('#ingestion-filters .status-filter-btn').filter({ hasText: 'Failed' })).toBeVisible();
+      await expect(page.locator('#ingestion-filters .status-filter-btn').filter({ hasText: 'Embedded' })).toBeVisible();
+    });
+
+    test('full list mode shows documents', async ({ page }) => {
+      await page.goto('/upload');
+      await page.locator('#show-all-toggle').click();
+      
+      await expect(page.getByText('readme.md')).toBeVisible();
+      await expect(page.getByText('guide.pdf')).toBeVisible();
+    });
+
+    test('full list has search input', async ({ page }) => {
+      await page.goto('/upload');
+      await page.locator('#show-all-toggle').click();
+      
+      await expect(page.locator('#doc-status-search')).toBeVisible();
+    });
+
+    test('full list has pagination', async ({ page }) => {
+      await page.goto('/upload');
+      await page.locator('#show-all-toggle').click();
+      
+      await expect(page.locator('#doc-prev-btn')).toBeVisible();
+      await expect(page.locator('#doc-next-btn')).toBeVisible();
+      await expect(page.locator('#pagination-info')).toBeVisible();
+    });
+
+    test('back to groups from full list', async ({ page }) => {
+      await page.goto('/upload');
+      
+      // Go to full list
+      await page.locator('#show-all-toggle').click();
+      await expect(page.locator('.ingestion-full-list')).toBeVisible();
+      
+      // Click back (toggle text changes)
+      await page.locator('#show-all-toggle').click();
+      
+      // Should show groups again
+      await expect(page.locator('.ingestion-groups')).toBeVisible();
+      await expect(page.locator('.ingestion-full-list')).not.toBeVisible();
+    });
+
+    test('per-document retry in group calls API', async ({ page }) => {
+      let retryHash = '';
+      await page.route('**/api/upload/documents/*/retry', async (route) => {
+        const url = route.request().url();
+        retryHash = url.split('/documents/')[1].split('/retry')[0];
+        await route.fulfill({
+          status: 200,
+          json: { success: true, message: 'Document reset to pending' }
+        });
+      });
+      
+      await page.goto('/upload');
+      
+      // Expand group and click retry
+      await page.locator('.group-header').first().click();
+      await expect(page.locator('.group-documents .btn-retry').first()).toBeVisible({ timeout: 3000 });
+      await page.locator('.group-documents .btn-retry').first().click();
+      
+      await page.waitForTimeout(500);
+      expect(retryHash).toBe('ghi789');
+    });
+  });
+
+  // ============================================================
+  // 10. Synced State Tests
+  // ============================================================
+  test.describe('Synced State', () => {
+    test('shows compact summary when all synced', async ({ page }) => {
+      // Override grouped endpoint for synced state
+      await page.route('**/api/upload/documents/grouped**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          json: {
+            groups: [],
+            status_counts: { pending: 0, embedding: 0, embedded: 100, failed: 0 }
+          }
+        });
+      });
+      
+      await page.route('**/api/upload/status', async (route) => {
+        await route.fulfill({
+          status: 200,
+          json: {
+            documents_in_catalog: 100,
+            documents_embedded: 100,
+            pending_embedding: 0,
+            is_synced: true,
+            status_counts: { pending: 0, embedding: 0, embedded: 100, failed: 0 }
+          }
+        });
+      });
+      
+      await page.goto('/upload');
+      
+      // Should show "All N documents embedded"
+      await expect(page.getByText(/All .* documents embedded/)).toBeVisible();
+      
+      // Section should have synced class
+      await expect(page.locator('.ingestion-status-section.synced')).toBeVisible();
+      
+      // Detail panel should be hidden
+      await expect(page.locator('.ingestion-detail')).not.toBeVisible();
+      
+      // Retry all button should be hidden
+      await expect(page.locator('#retry-all-btn')).not.toBeVisible();
+    });
+
+    test('synced state still has show all toggle', async ({ page }) => {
+      await page.route('**/api/upload/documents/grouped**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          json: {
+            groups: [],
+            status_counts: { pending: 0, embedding: 0, embedded: 100, failed: 0 }
+          }
+        });
+      });
+      
+      await page.route('**/api/upload/status', async (route) => {
+        await route.fulfill({
+          status: 200,
+          json: {
+            documents_in_catalog: 100,
+            documents_embedded: 100,
+            pending_embedding: 0,
+            is_synced: true,
+            status_counts: { pending: 0, embedding: 0, embedded: 100, failed: 0 }
+          }
+        });
+      });
+      
+      await page.goto('/upload');
+      
+      // Show all toggle should still be available
+      await expect(page.locator('#show-all-toggle')).toBeVisible();
+    });
   });
 });

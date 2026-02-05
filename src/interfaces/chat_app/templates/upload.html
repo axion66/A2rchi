@@ -311,6 +311,66 @@
           </div>
         </div>
       </div>
+
+      <!-- Unified Ingestion Status Section -->
+      <div class="ingestion-status-section" id="ingestion-status-section">
+        <!-- Header bar: summary + actions -->
+        <div class="ingestion-header" id="ingestion-header">
+          <div class="ingestion-summary" id="ingestion-summary">
+            <span class="ingestion-summary-text" id="ingestion-summary-text">Loading status...</span>
+          </div>
+          <div class="ingestion-actions" id="ingestion-actions">
+            <button class="btn btn-sm btn-danger" id="retry-all-btn" style="display:none;">Retry All Failed</button>
+            <button class="btn-text" id="show-all-toggle" style="display:none;">Show all documents</button>
+          </div>
+        </div>
+
+        <!-- Detail panel: source groups (hidden when all synced) -->
+        <div class="ingestion-detail" id="ingestion-detail" style="display:none;">
+          <div class="ingestion-groups" id="ingestion-groups">
+            <!-- Rendered by JS -->
+          </div>
+
+          <!-- Full list mode (hidden by default) -->
+          <div class="ingestion-full-list" id="ingestion-full-list" style="display:none;">
+            <div class="ingestion-full-list-controls">
+              <div class="ingestion-filters" id="ingestion-filters">
+                <button class="status-filter-btn active" data-status="">All</button>
+                <button class="status-filter-btn" data-status="pending">
+                  <span class="status-dot pending"></span> Pending <span class="filter-count" id="count-pending">0</span>
+                </button>
+                <button class="status-filter-btn" data-status="failed">
+                  <span class="status-dot failed"></span> Failed <span class="filter-count" id="count-failed">0</span>
+                </button>
+                <button class="status-filter-btn" data-status="embedded">
+                  <span class="status-dot embedded"></span> Embedded <span class="filter-count" id="count-embedded">0</span>
+                </button>
+              </div>
+              <input type="text" class="form-input ingestion-search" id="doc-status-search" placeholder="Search documents...">
+            </div>
+            <div class="ingestion-table-wrapper">
+              <table class="ingestion-table" id="ingestion-table">
+                <thead>
+                  <tr>
+                    <th>Document</th>
+                    <th>Source</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="ingestion-table-tbody">
+                  <tr class="empty-row"><td colspan="4">Loading...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="ingestion-pagination" id="ingestion-pagination">
+              <button class="btn btn-sm" id="doc-prev-btn" disabled>Previous</button>
+              <span class="pagination-info" id="pagination-info">Page 1</span>
+              <button class="btn btn-sm" id="doc-next-btn" disabled>Next</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 

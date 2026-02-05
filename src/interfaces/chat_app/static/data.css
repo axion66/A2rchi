@@ -541,6 +541,34 @@
   text-decoration: underline;
 }
 
+/* Status badges (used in preview header) */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.status-badge .status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-badge.pending { background-color: rgba(210, 153, 34, 0.12); color: var(--warning-color, #d29922); }
+.status-badge.pending .status-dot { background-color: var(--warning-color, #d29922); }
+.status-badge.embedding { background-color: rgba(88, 166, 255, 0.12); color: var(--accent-color, #58a6ff); }
+.status-badge.embedding .status-dot { background-color: var(--accent-color, #58a6ff); }
+.status-badge.embedded { background-color: rgba(63, 185, 80, 0.12); color: var(--success-color, #3fb950); }
+.status-badge.embedded .status-dot { background-color: var(--success-color, #3fb950); }
+.status-badge.failed { background-color: rgba(248, 81, 73, 0.12); color: var(--danger-color, #f85149); }
+.status-badge.failed .status-dot { background-color: var(--danger-color, #f85149); }
+
 /* Preview Body */
 .preview-body {
   flex: 1;
@@ -835,6 +863,25 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Tree Status Dots */
+.tree-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+.tree-status-dot.pending { background-color: var(--warning-color, #d29922); }
+.tree-status-dot.embedding { background-color: var(--accent-color, #58a6ff); animation: pulse-dot 1.5s ease-in-out infinite; }
+.tree-status-dot.embedded { background-color: var(--success-color, #3fb950); }
+.tree-status-dot.failed { background-color: var(--danger-color, #f85149); }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 /* Tree Icons */

@@ -431,6 +431,8 @@ class FileTree {
       for (const file of sortedFiles) {
         const isSelected = file.hash === selectedHash;
         const fileIcon = type === 'web' ? this.icons.link : this.getFileIcon(file.name);
+        const statusClass = file.ingestion_status || 'pending';
+        const statusTitle = statusClass.charAt(0).toUpperCase() + statusClass.slice(1);
         
         html += `
           <div class="tree-file ${isSelected ? 'selected' : ''} ${!file.enabled ? 'disabled' : ''}"
@@ -443,6 +445,7 @@ class FileTree {
             </label>
             ${fileIcon}
             <span class="tree-file-name" title="${this.escapeAttr(file.name)}">${this.escapeHtml(file.name)}</span>
+            <span class="tree-status-dot ${statusClass}" title="${statusTitle}"></span>
           </div>
         `;
       }

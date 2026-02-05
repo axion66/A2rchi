@@ -167,10 +167,11 @@ class PostgresCatalogService:
                         relative_path,
                         file_modified_at,
                         ingested_at,
+                        ingestion_status,
                         extra_json,
                         extra_text,
                         is_deleted
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, FALSE)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s, FALSE)
                     ON CONFLICT (resource_hash) DO UPDATE SET
                         file_path = EXCLUDED.file_path,
                         display_name = EXCLUDED.display_name,
@@ -638,6 +639,8 @@ class PostgresCatalogService:
                 "size_bytes": row["size_bytes"],
                 "suffix": row["suffix"],
                 "ingested_at": row["ingested_at"].isoformat() if row["ingested_at"] else None,
+                "ingestion_status": row.get("ingestion_status", "pending"),
+                "ingestion_error": row.get("ingestion_error"),
                 "enabled": is_enabled,
             })
 
@@ -649,6 +652,331 @@ class PostgresCatalogService:
             "enabled_count": enabled_count,
             "limit": limit,
             "offset": offset,
+        }
+
+    def update_ingestion_status(
+        self,
+        resource_hash: str,
+        status: str,
+        error: Optional[str] = None,
+    ) -> None:
+        """
+        Update the ingestion status of a document.
+        
+        Args:
+            resource_hash: The document's resource_hash
+            status: One of 'pending', 'embedding', 'embedded', 'failed'
+            error: Error message (only for 'failed' status)
+        """
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                if status == "embedded":
+                    cur.execute(
+                        """UPDATE documents 
+                           SET ingestion_status = %s, ingestion_error = NULL, indexed_at = NOW()
+                           WHERE resource_hash = %s AND NOT is_deleted""",
+                        (status, resource_hash),
+                    )
+                elif status == "failed":
+                    cur.execute(
+                        """UPDATE documents 
+                           SET ingestion_status = %s, ingestion_error = %s
+                           WHERE resource_hash = %s AND NOT is_deleted""",
+                        (status, error, resource_hash),
+                    )
+                else:
+                    cur.execute(
+                        """UPDATE documents 
+                           SET ingestion_status = %s, ingestion_error = NULL
+                           WHERE resource_hash = %s AND NOT is_deleted""",
+                        (status, resource_hash),
+                    )
+            conn.commit()
+
+    def reset_failed_document(self, resource_hash: str) -> bool:
+        """
+        Reset a failed document back to 'pending' for retry.
+        
+        Args:
+            resource_hash: The document's resource_hash
+            
+        Returns:
+            True if a document was reset, False if not found or not in 'failed' state
+        """
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE documents 
+                       SET ingestion_status = 'pending', ingestion_error = NULL
+                       WHERE resource_hash = %s AND NOT is_deleted AND ingestion_status = 'failed'""",
+                    (resource_hash,),
+                )
+                updated = cur.rowcount > 0
+            conn.commit()
+        return updated
+
+    def reset_all_failed_documents(self) -> int:
+        """
+        Reset all failed documents back to 'pending' for retry.
+        
+        Returns:
+            Number of documents reset
+        """
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE documents 
+                       SET ingestion_status = 'pending', ingestion_error = NULL
+                       WHERE NOT is_deleted AND ingestion_status = 'failed'"""
+                )
+                count = cur.rowcount
+            conn.commit()
+        return count
+
+    def list_documents_grouped(
+        self,
+        show_all: bool = False,
+        expand: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        List documents grouped by source origin for the unified status section.
+        
+        Args:
+            show_all: If False (default), only return groups with actionable (non-embedded) docs.
+                      If True, return all groups.
+            expand: Source group name to include full document list for.
+            
+        Returns:
+            Dict with groups list and aggregate status counts
+        """
+        with self._connect() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Get aggregate status counts
+                cur.execute(
+                    """SELECT ingestion_status, COUNT(*) as count 
+                       FROM documents WHERE NOT is_deleted
+                       GROUP BY ingestion_status"""
+                )
+                status_counts = {row["ingestion_status"]: row["count"] for row in cur.fetchall()}
+
+                # Get groups with counts per status
+                # Group by: domain for web, repo URL for git, 'Local files' for local_files, source_type otherwise
+                cur.execute(
+                    """SELECT 
+                         CASE 
+                           WHEN source_type = 'web' AND url IS NOT NULL THEN
+                             regexp_replace(url, '^(https?://[^/]+).*', '\\1')
+                           WHEN source_type = 'git' AND url IS NOT NULL THEN
+                             regexp_replace(url, '^(https?://[^/]+/[^/]+/[^/]+).*', '\\1')
+                           WHEN source_type = 'local_files' THEN 'Local files'
+                           WHEN source_type = 'jira' THEN 'Jira'
+                           ELSE COALESCE(source_type, 'Unknown')
+                         END as source_name,
+                         ingestion_status,
+                         COUNT(*) as count
+                       FROM documents WHERE NOT is_deleted
+                       GROUP BY source_name, ingestion_status
+                       ORDER BY source_name"""
+                )
+                group_rows = cur.fetchall()
+
+                # Build group structures
+                groups_map: Dict[str, Dict[str, Any]] = {}
+                for row in group_rows:
+                    name = row["source_name"]
+                    if name not in groups_map:
+                        groups_map[name] = {
+                            "source_name": name,
+                            "total": 0,
+                            "pending": 0,
+                            "embedding": 0,
+                            "embedded": 0,
+                            "failed": 0,
+                            "documents": [],
+                        }
+                    groups_map[name][row["ingestion_status"]] = row["count"]
+                    groups_map[name]["total"] += row["count"]
+
+                # Filter to only actionable groups (with pending or failed) unless show_all
+                groups = []
+                for g in groups_map.values():
+                    g["has_actionable"] = (g["pending"] + g["embedding"] + g["failed"]) > 0
+                    if show_all or g["has_actionable"]:
+                        groups.append(g)
+
+                # Sort: groups with actionable items first, then alphabetical
+                groups.sort(key=lambda g: (not g["has_actionable"], g["source_name"]))
+
+                # If expand is specified, load documents for that group
+                if expand:
+                    for g in groups:
+                        if g["source_name"] == expand:
+                            # Build WHERE for this source group
+                            source_where, source_params = self._source_group_where(expand)
+                            # Only show actionable (non-embedded) docs in group expand
+                            # Users can use "Show all documents" for full flat list
+                            cur.execute(
+                                f"""SELECT resource_hash, display_name, source_type, suffix, size_bytes,
+                                           ingestion_status, ingestion_error, ingested_at, indexed_at, created_at
+                                    FROM documents WHERE NOT is_deleted AND {source_where}
+                                      AND ingestion_status != 'embedded'
+                                    ORDER BY 
+                                      CASE ingestion_status 
+                                        WHEN 'failed' THEN 0 
+                                        WHEN 'pending' THEN 1 
+                                        WHEN 'embedding' THEN 2 
+                                        ELSE 3 
+                                      END,
+                                      created_at DESC
+                                    LIMIT 100""",
+                                source_params,
+                            )
+                            g["documents"] = [self._row_to_doc(r) for r in cur.fetchall()]
+                            break
+
+        return {
+            "groups": groups,
+            "status_counts": {
+                "pending": status_counts.get("pending", 0),
+                "embedding": status_counts.get("embedding", 0),
+                "embedded": status_counts.get("embedded", 0),
+                "failed": status_counts.get("failed", 0),
+            },
+        }
+
+    def _source_group_where(self, source_name: str) -> tuple:
+        """Build WHERE clause fragment for a source group name."""
+        if source_name == "Local files":
+            return "source_type = %s", ["local_files"]
+        elif source_name == "Jira":
+            return "source_type = %s", ["jira"]
+        elif source_name.startswith("http"):
+            # Domain-based match for web, repo-based for git
+            return (
+                """(
+                  (source_type = 'web' AND url LIKE %s) OR
+                  (source_type = 'git' AND url LIKE %s)
+                )""",
+                [source_name + "%", source_name + "%"],
+            )
+        else:
+            return "source_type = %s", [source_name]
+
+    def _row_to_doc(self, row) -> Dict[str, Any]:
+        """Convert a RealDictRow to a document dict."""
+        return {
+            "hash": row["resource_hash"],
+            "display_name": row["display_name"],
+            "source_type": row["source_type"],
+            "suffix": row["suffix"],
+            "size_bytes": row["size_bytes"],
+            "ingestion_status": row["ingestion_status"],
+            "ingestion_error": row["ingestion_error"],
+            "ingested_at": row["ingested_at"].isoformat() if row["ingested_at"] else None,
+            "indexed_at": row["indexed_at"].isoformat() if row["indexed_at"] else None,
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+        }
+
+    def list_documents_with_status(
+        self,
+        status_filter: Optional[str] = None,
+        source_type: Optional[str] = None,
+        search: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """
+        List documents with ingestion status info for the upload page.
+        
+        Args:
+            status_filter: Filter by ingestion status ('pending', 'embedding', 'embedded', 'failed', or None for all)
+            source_type: Filter by source type
+            search: Search query for display_name
+            limit: Maximum number of results
+            offset: Pagination offset
+            
+        Returns:
+            Dict with documents list, total count, and status counts
+        """
+        where_clauses = ["NOT is_deleted"]
+        params: List[Any] = []
+
+        if status_filter:
+            where_clauses.append("ingestion_status = %s")
+            params.append(status_filter)
+
+        if source_type and source_type != "all":
+            where_clauses.append("source_type = %s")
+            params.append(source_type)
+
+        if search:
+            like = f"%{search}%"
+            where_clauses.append("display_name ILIKE %s")
+            params.append(like)
+
+        where_sql = " AND ".join(where_clauses)
+
+        with self._connect() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Get total matching
+                cur.execute(f"SELECT COUNT(*) as count FROM documents WHERE {where_sql}", params)
+                total = cur.fetchone()["count"]
+
+                # Get status counts (always unfiltered by status)
+                status_where = ["NOT is_deleted"]
+                status_params: List[Any] = []
+                if source_type and source_type != "all":
+                    status_where.append("source_type = %s")
+                    status_params.append(source_type)
+                if search:
+                    status_where.append("display_name ILIKE %s")
+                    status_params.append(f"%{search}%")
+                
+                cur.execute(
+                    f"""SELECT ingestion_status, COUNT(*) as count 
+                        FROM documents WHERE {" AND ".join(status_where)}
+                        GROUP BY ingestion_status""",
+                    status_params,
+                )
+                status_counts = {row["ingestion_status"]: row["count"] for row in cur.fetchall()}
+
+                # Get paginated results
+                cur.execute(
+                    f"""SELECT resource_hash, display_name, source_type, suffix, size_bytes,
+                               ingestion_status, ingestion_error, ingested_at, indexed_at, created_at
+                        FROM documents WHERE {where_sql}
+                        ORDER BY created_at DESC
+                        LIMIT %s OFFSET %s""",
+                    params + [limit, offset],
+                )
+                rows = cur.fetchall()
+
+        documents = []
+        for row in rows:
+            documents.append({
+                "hash": row["resource_hash"],
+                "display_name": row["display_name"],
+                "source_type": row["source_type"],
+                "suffix": row["suffix"],
+                "size_bytes": row["size_bytes"],
+                "ingestion_status": row["ingestion_status"],
+                "ingestion_error": row["ingestion_error"],
+                "ingested_at": row["ingested_at"].isoformat() if row["ingested_at"] else None,
+                "indexed_at": row["indexed_at"].isoformat() if row["indexed_at"] else None,
+                "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+            })
+
+        return {
+            "documents": documents,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "status_counts": {
+                "pending": status_counts.get("pending", 0),
+                "embedding": status_counts.get("embedding", 0),
+                "embedded": status_counts.get("embedded", 0),
+                "failed": status_counts.get("failed", 0),
+            },
         }
 
     def get_document_chunks(self, document_hash: str) -> List[Dict[str, Any]]:

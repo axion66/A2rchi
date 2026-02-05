@@ -292,6 +292,14 @@ class DataViewer {
       if (el) el.textContent = value;
     }
     
+    // Ingestion status badge
+    const statusEl = document.getElementById('preview-ingestion-status');
+    if (statusEl) {
+      const status = doc.ingestion_status || 'pending';
+      const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+      statusEl.innerHTML = `<span class="status-badge ${status}"><span class="status-dot ${status}"></span>${statusLabel}</span>`;
+    }
+    
     // URL field
     const urlEl = document.getElementById('preview-url');
     if (urlEl) {
