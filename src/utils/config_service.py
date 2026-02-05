@@ -239,6 +239,14 @@ class ConfigService:
             if not isinstance(value, dict):
                 normalized[key] = {}
         return normalized
+
+    @staticmethod
+    def _derive_chat_defaults(config: Dict[str, Any]) -> tuple[Optional[str], Optional[str], Optional[str]]:
+        chat_cfg = config.get("services", {}).get("chat_app", {}) if isinstance(config, dict) else {}
+        agent_class = chat_cfg.get("agent_class") or chat_cfg.get("pipeline")
+        provider = chat_cfg.get("provider")
+        model = chat_cfg.get("model")
+        return agent_class, provider, model
     
     # =========================================================================
     # Static Configuration
@@ -791,20 +799,11 @@ class ConfigService:
                 "dimensions", embedding_dimensions
             )
         
-        # Get available providers/models from providers section
-        archi_cfg = config.get("archi", {}) or {}
-        providers_cfg = archi_cfg.get("providers", {}) or {}
-        available_models = []
-        available_providers = list(providers_cfg.keys())
-        for p_cfg in providers_cfg.values():
-            models = p_cfg.get("models") or []
-            for m in models:
-                if m not in available_models:
-                    available_models.append(m)
-
-        # Get available pipelines
-        pipelines_config = archi_cfg.get("pipeline_map", {})
-        available_pipelines = list(pipelines_config.keys())
+        # Get available providers/models from chat defaults
+        agent_class, provider, model = ConfigService._derive_chat_defaults(config)
+        available_pipelines = [agent_class] if agent_class else []
+        available_providers = [provider] if provider else []
+        available_models = [f"{provider}/{model}"] if provider and model else []
         
         # Initialize static config
         service.initialize_static_config(
@@ -826,8 +825,10 @@ class ConfigService:
         retrievers = data_manager.get("retrievers", {})
         hybrid = retrievers.get("hybrid_retriever", {})
         
+        active_model = f"{provider}/{model}" if provider and model else None
         service.update_dynamic_config(
-            active_pipeline=config.get("services", {}).get("chat_app", {}).get("pipeline", "QAPipeline"),
+            active_pipeline=config.get("services", {}).get("chat_app", {}).get("agent_class", "CMSCompOpsAgent"),
+            active_model=active_model,
             num_documents_to_retrieve=hybrid.get("num_documents_to_retrieve", 10),
             bm25_weight=hybrid.get("bm25_weight", 0.3),
             semantic_weight=hybrid.get("semantic_weight", 0.7),
@@ -868,19 +869,11 @@ class ConfigService:
                 "dimensions", embedding_dimensions
             )
         
-        # Get available providers/models from providers section
-        archi_cfg = config.get("archi", {}) or {}
-        providers_cfg = archi_cfg.get("providers", {}) or {}
-        available_models = []
-        available_providers = list(providers_cfg.keys())
-        for p_cfg in providers_cfg.values():
-            models = p_cfg.get("models") or []
-            for m in models:
-                if m not in available_models:
-                    available_models.append(m)
-
-        # Get available pipelines
-        available_pipelines = archi_cfg.get("pipeline_map", [])
+        # Get available providers/models from chat defaults
+        agent_class, provider, model = ConfigService._derive_chat_defaults(config)
+        available_pipelines = [agent_class] if agent_class else []
+        available_providers = [provider] if provider else []
+        available_models = [f"{provider}/{model}"] if provider and model else []
         
         existing_static = self.get_static_config()
         sources_config = data_manager.get("sources", {})
@@ -911,8 +904,10 @@ class ConfigService:
         existing_dynamic = self.get_dynamic_config()
         if existing_dynamic.updated_by is None:
             # First initialization - set from YAML
+            active_model = f"{provider}/{model}" if provider and model else None
             self.update_dynamic_config(
-                active_pipeline=config.get("services", {}).get("chat_app", {}).get("pipeline", "QAPipeline"),
+                active_pipeline=config.get("services", {}).get("chat_app", {}).get("agent_class", "CMSCompOpsAgent"),
+                active_model=active_model,
                 num_documents_to_retrieve=hybrid.get("num_documents_to_retrieve", 10),
                 bm25_weight=hybrid.get("bm25_weight", 0.3),
                 semantic_weight=hybrid.get("semantic_weight", 0.7),
