@@ -6,6 +6,13 @@ global:
   ACCOUNTS_PATH: /tmp/archi-accounts/
   verbosity: 2
 
+# Top-level sources config (DataManager reads this via sources_config column)
+sources:
+  jira:
+    enabled: false
+  redmine:
+    enabled: false
+
 services:
   postgres:
     host: localhost
@@ -24,6 +31,15 @@ services:
     num_responses_until_feedback: 5
     auth:
       enabled: false
+  data_manager:
+    host: "0.0.0.0"
+    hostname: localhost
+    port: 5001
+    flask_debug_mode: true
+    template_folder: "/Users/jason/projects/A2rchi/src/interfaces/chat_app/templates"
+    static_folder: "/Users/jason/projects/A2rchi/src/interfaces/chat_app/static"
+    auth:
+      enabled: false
 
 data_manager:
   collection_name: local_dev
@@ -38,7 +54,11 @@ data_manager:
       kwargs:
         model_name: all-MiniLM-L6-v2
       similarity_score_reference: 0.45
-  sources: {}
+  sources:
+    jira:
+      enabled: false
+    redmine:
+      enabled: false
 
 archi:
   agent_description: "Local development test agent"
