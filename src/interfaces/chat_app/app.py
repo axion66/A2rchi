@@ -1521,6 +1521,29 @@ class ChatWrapper:
                     if include_tool_steps:
                         yield trace_event
                         
+                elif event_type == "thinking_start":
+                    trace_event = {
+                        "type": "thinking_start",
+                        "step_id": output.metadata.get("step_id", ""),
+                        "timestamp": timestamp,
+                        "conversation_id": context.conversation_id,
+                    }
+                    trace_events.append(trace_event)
+                    if include_tool_steps:
+                        yield trace_event
+                        
+                elif event_type == "thinking_end":
+                    trace_event = {
+                        "type": "thinking_end",
+                        "step_id": output.metadata.get("step_id", ""),
+                        "duration_ms": output.metadata.get("duration_ms"),
+                        "timestamp": timestamp,
+                        "conversation_id": context.conversation_id,
+                    }
+                    trace_events.append(trace_event)
+                    if include_tool_steps:
+                        yield trace_event
+                        
                 elif event_type == "text":
                     # Stream text content
                     content = getattr(output, "answer", "") or ""
@@ -1609,6 +1632,13 @@ class ChatWrapper:
             # Calculate total duration
             total_duration_ms = int((time.time() - stream_start_time) * 1000)
             
+            # Extract usage and model from final output metadata
+            usage = None
+            model = None
+            if last_output and last_output.metadata:
+                usage = last_output.metadata.get("usage")
+                model = last_output.metadata.get("model")
+            
             # Update trace with final state
             if trace_id:
                 user_message_id = message_ids[0] if message_ids and len(message_ids) > 1 else None
@@ -1631,6 +1661,8 @@ class ChatWrapper:
                 "trace_id": trace_id,
                 "server_response_msg_ts": timestamps["server_response_msg_ts"].timestamp(),
                 "final_response_msg_ts": datetime.now().timestamp(),
+                "usage": usage,
+                "model": model,
             }
 
         except GeneratorExit:

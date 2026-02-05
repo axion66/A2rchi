@@ -1,5 +1,6 @@
 from typing import Any, Callable, Dict, List, Optional, Sequence, Iterator, AsyncIterator, Set, Tuple
 import time
+import uuid
 
 from langchain.agents import create_agent
 from langchain_core.messages import BaseMessage, SystemMessage
@@ -97,6 +98,50 @@ class BaseReActAgent:
             final=final,
         )
 
+    def _extract_usage_from_messages(self, messages: List[BaseMessage]) -> Optional[Dict[str, int]]:
+        """
+        Extract token usage from the last AI message with response_metadata.
+        Returns normalized usage dict with prompt_tokens, completion_tokens, total_tokens.
+        """
+        for msg in reversed(messages):
+            msg_type = str(getattr(msg, "type", "")).lower()
+            if msg_type not in {"ai", "assistant"} and "ai" not in type(msg).__name__.lower():
+                continue
+            response_metadata = getattr(msg, "response_metadata", None)
+            if not response_metadata:
+                continue
+            # Different providers use different keys
+            usage = response_metadata.get("usage") or response_metadata.get("token_usage")
+            if usage:
+                return {
+                    "prompt_tokens": usage.get("prompt_tokens") or usage.get("input_tokens", 0),
+                    "completion_tokens": usage.get("completion_tokens") or usage.get("output_tokens", 0),
+                    "total_tokens": usage.get("total_tokens", 0),
+                }
+            # Ollama format
+            if "prompt_eval_count" in response_metadata or "eval_count" in response_metadata:
+                prompt_tokens = response_metadata.get("prompt_eval_count", 0)
+                completion_tokens = response_metadata.get("eval_count", 0)
+                return {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
+                }
+        return None
+
+    def _extract_model_from_messages(self, messages: List[BaseMessage]) -> Optional[str]:
+        """Extract model name from the last AI message with response_metadata."""
+        for msg in reversed(messages):
+            msg_type = str(getattr(msg, "type", "")).lower()
+            if msg_type not in {"ai", "assistant"} and "ai" not in type(msg).__name__.lower():
+                continue
+            response_metadata = getattr(msg, "response_metadata", None)
+            if response_metadata:
+                model = response_metadata.get("model") or response_metadata.get("model_name")
+                if model:
+                    return model
+        return None
+
     def invoke(self, **kwargs) -> PipelineOutput:
         """Synchronously invoke the agent graph and return the final output."""
         logger.debug("Invoking %s", self.__class__.__name__)
@@ -123,6 +168,10 @@ class BaseReActAgent:
         accumulated_content = ""  # Accumulated content from streaming
         emitted_tool_starts: Set[str] = set()
         
+        # Thinking state tracking
+        thinking_step_id: Optional[str] = None
+        thinking_start_time: Optional[float] = None
+        
         for event in self.agent.stream(agent_inputs, stream_mode="messages"):
             
             messages = self._extract_messages(event)
@@ -147,6 +196,23 @@ class BaseReActAgent:
                         emitted_tool_starts.add(tc_id)
                         new_tool_call = True
                 if new_tool_call:
+                    # End thinking phase if active before tool execution
+                    if thinking_step_id is not None:
+                        duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
+                        yield self.finalize_output(
+                            answer="",
+                            memory=self.active_memory,
+                            messages=[],
+                            metadata={
+                                "event_type": "thinking_end",
+                                "step_id": thinking_step_id,
+                                "duration_ms": duration_ms,
+                            },
+                            final=False,
+                        )
+                        thinking_step_id = None
+                        thinking_start_time = None
+                    
                     yield self.finalize_output(
                         answer="",
                         memory=self.active_memory,
@@ -174,6 +240,21 @@ class BaseReActAgent:
                 if not getattr(message, "tool_calls", None):
                     content = self._message_content(message)
                     if content:
+                        # Start thinking phase if not already active
+                        if thinking_step_id is None:
+                            thinking_step_id = str(uuid.uuid4())
+                            thinking_start_time = time.time()
+                            yield self.finalize_output(
+                                answer="",
+                                memory=self.active_memory,
+                                messages=[],
+                                metadata={
+                                    "event_type": "thinking_start",
+                                    "step_id": thinking_step_id,
+                                },
+                                final=False,
+                            )
+                        
                         # For chunks, content is delta; for full messages, content is cumulative
                         if "chunk" in msg_class:
                             accumulated_content += content
@@ -193,6 +274,21 @@ class BaseReActAgent:
         logger.debug("Stream finished. accumulated_content='%s', all_messages count=%d", 
                      accumulated_content[:100] if accumulated_content else "", len(all_messages))
         
+        # End thinking phase if still active
+        if thinking_step_id is not None:
+            duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
+            yield self.finalize_output(
+                answer="",
+                memory=self.active_memory,
+                messages=[],
+                metadata={
+                    "event_type": "thinking_end",
+                    "step_id": thinking_step_id,
+                    "duration_ms": duration_ms,
+                },
+                final=False,
+            )
+        
         final_answer = ""
         if all_messages:
             # Find the last AI message with content
@@ -207,19 +303,28 @@ class BaseReActAgent:
         if not final_answer:
             final_answer = accumulated_content
         
+        # Extract usage and model info for final event
+        usage = self._extract_usage_from_messages(all_messages)
+        model = self._extract_model_from_messages(all_messages)
+        final_metadata = {
+            "event_type": "final",
+            "usage": usage,
+            "model": model,
+        }
+        
         if final_answer:
             yield self.finalize_output(
                 answer=final_answer,
                 memory=self.active_memory,
                 messages=all_messages,
-                metadata={"event_type": "final"},
+                metadata=final_metadata,
                 final=True,
             )
         else:
             logger.warning("No final answer found from stream. Messages: %s", 
                           [self._format_message(m) for m in all_messages[:5]])
             output = self._build_output_from_messages(all_messages)
-            output.metadata["event_type"] = "final"
+            output.metadata.update(final_metadata)
             yield output
 
     async def astream(self, **kwargs) -> AsyncIterator[PipelineOutput]:
@@ -232,6 +337,10 @@ class BaseReActAgent:
         all_messages: List[BaseMessage] = []
         accumulated_content = ""
         emitted_tool_starts: Set[str] = set()
+        
+        # Thinking state tracking
+        thinking_step_id: Optional[str] = None
+        thinking_start_time: Optional[float] = None
         
         async for event in self.agent.astream(agent_inputs, stream_mode="messages"):
             messages = self._extract_messages(event)
@@ -255,6 +364,23 @@ class BaseReActAgent:
                         emitted_tool_starts.add(tc_id)
                         new_tool_call = True
                 if new_tool_call:
+                    # End thinking phase if active before tool execution
+                    if thinking_step_id is not None:
+                        duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
+                        yield self.finalize_output(
+                            answer="",
+                            memory=self.active_memory,
+                            messages=[],
+                            metadata={
+                                "event_type": "thinking_end",
+                                "step_id": thinking_step_id,
+                                "duration_ms": duration_ms,
+                            },
+                            final=False,
+                        )
+                        thinking_step_id = None
+                        thinking_start_time = None
+                    
                     yield self.finalize_output(
                         answer="",
                         messages=[message],
@@ -279,6 +405,21 @@ class BaseReActAgent:
                 if not getattr(message, "tool_calls", None):
                     content = self._message_content(message)
                     if content:
+                        # Start thinking phase if not already active
+                        if thinking_step_id is None:
+                            thinking_step_id = str(uuid.uuid4())
+                            thinking_start_time = time.time()
+                            yield self.finalize_output(
+                                answer="",
+                                memory=self.active_memory,
+                                messages=[],
+                                metadata={
+                                    "event_type": "thinking_start",
+                                    "step_id": thinking_step_id,
+                                },
+                                final=False,
+                            )
+                        
                         if "chunk" in msg_class:
                             accumulated_content += content
                         else:
@@ -295,6 +436,21 @@ class BaseReActAgent:
         logger.debug("Async stream finished. accumulated_content='%s', all_messages count=%d", 
                      accumulated_content[:100] if accumulated_content else "", len(all_messages))
         
+        # End thinking phase if still active
+        if thinking_step_id is not None:
+            duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
+            yield self.finalize_output(
+                answer="",
+                memory=self.active_memory,
+                messages=[],
+                metadata={
+                    "event_type": "thinking_end",
+                    "step_id": thinking_step_id,
+                    "duration_ms": duration_ms,
+                },
+                final=False,
+            )
+        
         final_answer = ""
         if all_messages:
             for msg in reversed(all_messages):
@@ -308,19 +464,28 @@ class BaseReActAgent:
         if not final_answer:
             final_answer = accumulated_content
         
+        # Extract usage and model info for final event
+        usage = self._extract_usage_from_messages(all_messages)
+        model = self._extract_model_from_messages(all_messages)
+        final_metadata = {
+            "event_type": "final",
+            "usage": usage,
+            "model": model,
+        }
+        
         if final_answer:
             yield self.finalize_output(
                 answer=final_answer,
                 memory=self.active_memory,
                 messages=all_messages,
-                metadata={"event_type": "final"},
+                metadata=final_metadata,
                 final=True,
             )
         else:
             logger.warning("No final answer found from async stream. Messages: %s", 
                           [self._format_message(m) for m in all_messages[:5]])
             output = self._build_output_from_messages(all_messages)
-            output.metadata["event_type"] = "final"
+            output.metadata.update(final_metadata)
             yield output
 
     def _init_llms(self) -> None:

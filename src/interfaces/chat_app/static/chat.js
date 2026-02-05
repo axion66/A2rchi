@@ -1483,20 +1483,52 @@ const UI = {
     const existingTrace = inner.querySelector('.trace-container');
     if (existingTrace) return;
 
-    const traceIconSvg = `<svg class="trace-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>`;
+    const traceIconSvg = `<svg class="trace-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>`;
     const traceHtml = `
       <div class="trace-container" data-message-id="${messageId}">
         <div class="trace-header">
           ${traceIconSvg}
           <span class="trace-label">Agent Activity</span>
+          <span class="trace-timer" data-start="${Date.now()}">0.0s</span>
           <button class="trace-toggle" aria-label="Toggle agent activity details" title="Toggle agent activity" onclick="UI.toggleTraceExpanded('${messageId}')">
-            <span class="toggle-icon" aria-hidden="true">▼</span>
+            <span class="toggle-icon" aria-hidden="true">&#9660;</span>
           </button>
         </div>
-        <div class="trace-content"></div>
+        <div class="trace-content">
+          <div class="context-meter" style="display: none;">
+            <div class="meter-bar"><div class="meter-fill"></div></div>
+            <span class="meter-label">Calculating...</span>
+          </div>
+          <div class="step-timeline"></div>
+        </div>
       </div>`;
 
     inner.insertAdjacentHTML('afterbegin', traceHtml);
+    
+    // Start elapsed timer
+    this.startTraceTimer(messageId);
+  },
+
+  startTraceTimer(messageId) {
+    const timerEl = document.querySelector(`.trace-container[data-message-id="${messageId}"] .trace-timer`);
+    if (!timerEl) return;
+    
+    const startTime = parseInt(timerEl.dataset.start, 10);
+    const updateTimer = () => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      timerEl.textContent = elapsed.toFixed(1) + 's';
+    };
+    
+    const intervalId = setInterval(updateTimer, 100);
+    timerEl.dataset.intervalId = intervalId;
+  },
+
+  stopTraceTimer(messageId) {
+    const timerEl = document.querySelector(`.trace-container[data-message-id="${messageId}"] .trace-timer`);
+    if (!timerEl || !timerEl.dataset.intervalId) return;
+    
+    clearInterval(parseInt(timerEl.dataset.intervalId, 10));
+    delete timerEl.dataset.intervalId;
   },
 
   toggleTraceExpanded(messageId) {
@@ -1506,51 +1538,126 @@ const UI = {
     container.classList.toggle('collapsed');
     const toggleIcon = container.querySelector('.toggle-icon');
     if (toggleIcon) {
-      toggleIcon.textContent = container.classList.contains('collapsed') ? '▶' : '▼';
+      toggleIcon.innerHTML = container.classList.contains('collapsed') ? '&#9654;' : '&#9660;';
     }
   },
 
-  renderToolStart(messageId, event) {
-    const traceContent = document.querySelector(`.trace-container[data-message-id="${messageId}"] .trace-content`);
-    if (!traceContent) return;
+  // =========================================================================
+  // Thinking Step Rendering
+  // =========================================================================
 
-    const toolHtml = `
-      <div class="tool-block tool-running" data-tool-call-id="${event.tool_call_id}">
-        <div class="tool-header" onclick="UI.toggleToolExpanded('${event.tool_call_id}')">
-          <span class="tool-icon">🔧</span>
-          <span class="tool-name">${Utils.escapeHtml(event.tool_name)}</span>
-          <span class="tool-status">
-            <span class="spinner"></span> Running...
-          </span>
+  renderThinkingStart(messageId, event) {
+    const timeline = document.querySelector(`.trace-container[data-message-id="${messageId}"] .step-timeline`);
+    if (!timeline) return;
+
+    const stepHtml = `
+      <div class="step thinking-step" data-step-id="${event.step_id}">
+        <div class="step-connector">
+          <span class="step-marker thinking-marker"></span>
+          <div class="step-line"></div>
         </div>
-        <div class="tool-details">
-          <div class="tool-args">
-            <div class="tool-section-label">Arguments</div>
-            <pre><code>${this.formatToolArgs(event.tool_args)}</code></pre>
-          </div>
-          <div class="tool-output-section" style="display: none;">
-            <div class="tool-section-label">Output</div>
-            <pre><code class="tool-output-content"></code></pre>
+        <div class="step-content">
+          <div class="step-header">
+            <span class="step-icon">...</span>
+            <span class="step-label">Thinking</span>
+            <span class="step-timer">
+              <span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
+            </span>
           </div>
         </div>
       </div>`;
 
-    traceContent.insertAdjacentHTML('beforeend', toolHtml);
+    timeline.insertAdjacentHTML('beforeend', stepHtml);
+    this.scrollToBottom();
+  },
+
+  renderThinkingEnd(messageId, event) {
+    const step = document.querySelector(`.thinking-step[data-step-id="${event.step_id}"]`);
+    if (!step) return;
+
+    step.classList.add('completed');
+    const timerEl = step.querySelector('.step-timer');
+    if (timerEl && event.duration_ms != null) {
+      timerEl.textContent = event.duration_ms + 'ms';
+    }
+    
+    const marker = step.querySelector('.step-marker');
+    if (marker) {
+      marker.classList.remove('thinking-marker');
+      marker.classList.add('completed-marker');
+    }
+  },
+
+  // =========================================================================
+  // Tool Step Rendering (Timeline Style)
+  // =========================================================================
+
+  renderToolStart(messageId, event) {
+    const timeline = document.querySelector(`.trace-container[data-message-id="${messageId}"] .step-timeline`);
+    if (!timeline) return;
+
+    const toolHtml = `
+      <div class="step tool-step tool-running" data-step-id="${event.tool_call_id}" data-tool-call-id="${event.tool_call_id}">
+        <div class="step-connector">
+          <span class="step-marker tool-marker"></span>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-content">
+          <div class="step-header" onclick="UI.toggleStepExpanded('${event.tool_call_id}')">
+            <span class="step-icon tool-icon-glyph">T</span>
+            <span class="step-label">${Utils.escapeHtml(event.tool_name)}</span>
+            <span class="step-status">
+              <span class="spinner"></span>
+            </span>
+            <button class="step-toggle" aria-label="Expand tool details">&#9654;</button>
+          </div>
+          <div class="step-details" style="display: none;">
+            <div class="tool-args">
+              <div class="section-label">Arguments</div>
+              <pre><code>${this.formatToolArgs(event.tool_args)}</code></pre>
+            </div>
+            <div class="tool-output-section" style="display: none;">
+              <div class="section-label">Output</div>
+              <pre><code class="tool-output-content"></code></pre>
+            </div>
+          </div>
+        </div>
+      </div>`;
+
+    timeline.insertAdjacentHTML('beforeend', toolHtml);
     this.scrollToBottom();
 
     // Auto-expand if verbose mode
     if (Chat.state.traceVerboseMode === 'verbose') {
-      const toolBlock = traceContent.querySelector(`[data-tool-call-id="${event.tool_call_id}"]`);
-      toolBlock?.classList.add('expanded');
+      const step = timeline.querySelector(`[data-step-id="${event.tool_call_id}"]`);
+      step?.classList.add('expanded');
+      const details = step?.querySelector('.step-details');
+      if (details) details.style.display = 'block';
+    }
+  },
+
+  toggleStepExpanded(stepId) {
+    const step = document.querySelector(`.step[data-step-id="${stepId}"]`);
+    if (!step) return;
+    
+    step.classList.toggle('expanded');
+    const details = step.querySelector('.step-details');
+    const toggle = step.querySelector('.step-toggle');
+    
+    if (details) {
+      details.style.display = step.classList.contains('expanded') ? 'block' : 'none';
+    }
+    if (toggle) {
+      toggle.innerHTML = step.classList.contains('expanded') ? '&#9660;' : '&#9654;';
     }
   },
 
   renderToolOutput(messageId, event) {
-    const toolBlock = document.querySelector(`.tool-block[data-tool-call-id="${event.tool_call_id}"]`);
-    if (!toolBlock) return;
+    const step = document.querySelector(`.tool-step[data-tool-call-id="${event.tool_call_id}"]`);
+    if (!step) return;
 
-    const outputSection = toolBlock.querySelector('.tool-output-section');
-    const outputContent = toolBlock.querySelector('.tool-output-content');
+    const outputSection = step.querySelector('.tool-output-section');
+    const outputContent = step.querySelector('.tool-output-content');
     
     if (outputSection) {
       outputSection.style.display = 'block';
@@ -1575,37 +1682,80 @@ const UI = {
   },
 
   renderToolEnd(messageId, event) {
-    const toolBlock = document.querySelector(`.tool-block[data-tool-call-id="${event.tool_call_id}"]`);
-    if (!toolBlock) return;
+    const step = document.querySelector(`.tool-step[data-tool-call-id="${event.tool_call_id}"]`);
+    if (!step) return;
 
-    toolBlock.classList.remove('tool-running');
-    toolBlock.classList.add(event.status === 'success' ? 'tool-success' : 'tool-error');
+    step.classList.remove('tool-running');
+    step.classList.add(event.status === 'success' ? 'tool-success' : 'tool-error');
 
-    const statusEl = toolBlock.querySelector('.tool-status');
+    const marker = step.querySelector('.step-marker');
+    if (marker) {
+      marker.classList.remove('tool-marker');
+      marker.classList.add(event.status === 'success' ? 'success-marker' : 'error-marker');
+    }
+
+    const statusEl = step.querySelector('.step-status');
     if (statusEl) {
       if (event.status === 'success') {
-        const durationText = event.duration_ms ? ` ${event.duration_ms}ms` : '';
-        statusEl.innerHTML = `<span class="checkmark">✓</span>${durationText}`;
+        const durationText = event.duration_ms ? `${event.duration_ms}ms` : '';
+        statusEl.innerHTML = `<span class="checkmark">&#10003;</span> ${durationText}`;
       } else {
-        statusEl.innerHTML = `<span class="error-icon">✗</span> Error`;
+        statusEl.innerHTML = `<span class="error-icon">&#10007;</span>`;
       }
     }
 
     // Auto-collapse if many tools
-    const toolCount = document.querySelectorAll('.tool-block').length;
+    const toolCount = document.querySelectorAll('.tool-step').length;
     if (Chat.state.traceVerboseMode === 'normal' && toolCount > CONFIG.TRACE.AUTO_COLLAPSE_TOOL_COUNT) {
-      toolBlock.classList.remove('expanded');
+      step.classList.remove('expanded');
+      const details = step.querySelector('.step-details');
+      if (details) details.style.display = 'none';
     }
   },
 
-  toggleToolExpanded(toolCallId) {
-    const toolBlock = document.querySelector(`.tool-block[data-tool-call-id="${toolCallId}"]`);
-    if (toolBlock) {
-      toolBlock.classList.toggle('expanded');
+  // =========================================================================
+  // Context Meter
+  // =========================================================================
+
+  updateContextMeter(messageId, usage) {
+    const meter = document.querySelector(`.trace-container[data-message-id="${messageId}"] .context-meter`);
+    if (!meter || !usage) return;
+
+    meter.style.display = 'flex';
+    
+    const fill = meter.querySelector('.meter-fill');
+    const label = meter.querySelector('.meter-label');
+    
+    const promptTokens = usage.prompt_tokens || 0;
+    const completionTokens = usage.completion_tokens || 0;
+    const totalTokens = usage.total_tokens || (promptTokens + completionTokens);
+    
+    // Estimate context usage (assume 128k context as default)
+    const contextWindow = 128000;
+    const usagePercent = Math.min((promptTokens / contextWindow) * 100, 100);
+    
+    if (fill) {
+      fill.style.width = usagePercent.toFixed(1) + '%';
+      // Color based on usage
+      if (usagePercent > 80) {
+        fill.style.backgroundColor = 'var(--error-text, #dc3545)';
+      } else if (usagePercent > 50) {
+        fill.style.backgroundColor = 'var(--warning-text, #ffc107)';
+      }
+    }
+    
+    if (label) {
+      label.textContent = `${promptTokens.toLocaleString()} prompt + ${completionTokens.toLocaleString()} completion = ${totalTokens.toLocaleString()} tokens`;
     }
   },
 
-  finalizeTrace(messageId, trace) {
+  // =========================================================================
+  // Finalize Trace
+  // =========================================================================
+
+  finalizeTrace(messageId, trace, finalEvent) {
+    this.stopTraceTimer(messageId);
+    
     const container = document.querySelector(`.trace-container[data-message-id="${messageId}"]`);
     if (!container) return;
 
@@ -1614,12 +1764,17 @@ const UI = {
     if (label && toolCount > 0) {
       label.textContent = `Agent Activity (${toolCount} tool${toolCount === 1 ? '' : 's'})`;
     }
+    
+    // Update context meter if usage available
+    if (finalEvent && finalEvent.usage) {
+      this.updateContextMeter(messageId, finalEvent.usage);
+    }
 
     // Auto-collapse in normal mode
     if (Chat.state.traceVerboseMode === 'normal') {
       container.classList.add('collapsed');
       const toggleIcon = container.querySelector('.toggle-icon');
-      if (toggleIcon) toggleIcon.textContent = '▶';
+      if (toggleIcon) toggleIcon.innerHTML = '&#9654;';
     }
   },
 
@@ -1644,7 +1799,7 @@ const UI = {
 
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'cancel-stream-btn';
-    cancelBtn.innerHTML = '⏹ Stop';
+    cancelBtn.innerHTML = 'Stop';
     cancelBtn.onclick = () => Chat.cancelStream();
 
     msgEl.querySelector('.message-inner')?.appendChild(cancelBtn);
@@ -2477,6 +2632,16 @@ const Chat = {
           if (showTrace) {
             UI.renderToolEnd(messageId, event);
           }
+        } else if (event.type === 'thinking_start') {
+          this.state.activeTrace.events.push(event);
+          if (showTrace) {
+            UI.renderThinkingStart(messageId, event);
+          }
+        } else if (event.type === 'thinking_end') {
+          this.state.activeTrace.events.push(event);
+          if (showTrace) {
+            UI.renderThinkingEnd(messageId, event);
+          }
         } else if (event.type === 'chunk') {
           // Chunks may be accumulated or delta content
           if (event.accumulated) {
@@ -2506,9 +2671,9 @@ const Chat = {
             this.state.activeTrace.traceId = event.trace_id;
           }
           
-          // Finalize trace display
+          // Finalize trace display with usage data
           if (showTrace) {
-            UI.finalizeTrace(messageId, this.state.activeTrace);
+            UI.finalizeTrace(messageId, this.state.activeTrace, event);
           }
           
           UI.updateMessage(messageId, {
