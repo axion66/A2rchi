@@ -42,6 +42,9 @@ const CONFIG = {
     CLEAR_PROVIDER_KEY: '/api/providers/keys/clear',
     PIPELINE_DEFAULT_MODEL: '/api/pipeline/default_model',
     AGENT_INFO: '/api/agent/info',
+    LIKE: '/api/like',
+    DISLIKE: '/api/dislike',
+    TEXT_FEEDBACK: '/api/text_feedback',
   },
   STREAMING: {
     TIMEOUT: 300000, // 5 minutes
@@ -126,6 +129,20 @@ const Utils = {
       clearTimeout(timeout);
       timeout = setTimeout(() => fn(...args), delay);
     };
+  },
+
+  /**
+   * Format duration in ms to human-readable string
+   * @param {number} ms - Duration in milliseconds
+   * @returns {string} - Formatted duration (e.g., "850ms", "2.3s", "1m 5s")
+   */
+  formatDuration(ms) {
+    if (ms == null || isNaN(ms)) return '';
+    if (ms < 1000) return `${Math.round(ms)}ms`;
+    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.round((ms % 60000) / 1000);
+    return `${minutes}m ${seconds}s`;
   },
 };
 
@@ -354,6 +371,40 @@ const API = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ provider: providerType }),
+    });
+  },
+
+  // Feedback methods
+  async likeMessage(messageId) {
+    return this.fetchJson(CONFIG.ENDPOINTS.LIKE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message_id: messageId }),
+    });
+  },
+
+  async dislikeMessage(messageId, options = {}) {
+    return this.fetchJson(CONFIG.ENDPOINTS.DISLIKE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message_id: messageId,
+        feedback_msg: options.feedback_msg || '',
+        incorrect: options.incorrect || false,
+        unhelpful: options.unhelpful || false,
+        inappropriate: options.inappropriate || false,
+      }),
+    });
+  },
+
+  async submitTextFeedback(messageId, text) {
+    return this.fetchJson(CONFIG.ENDPOINTS.TEXT_FEEDBACK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message_id: messageId,
+        feedback_msg: text,
+      }),
     });
   },
 };
@@ -1168,6 +1219,14 @@ const UI = {
       ? `<div class="message-meta">${Utils.escapeHtml(msg.meta)}</div>`
       : '';
 
+    // Determine feedback state class
+    let feedbackClass = '';
+    if (msg.feedback === 'like') {
+      feedbackClass = 'feedback-like-active';
+    } else if (msg.feedback === 'dislike') {
+      feedbackClass = 'feedback-dislike-active';
+    }
+
     return `
       <div class="message ${roleClass}" data-id="${msg.id || ''}">
         <div class="message-inner">
@@ -1178,6 +1237,24 @@ const UI = {
           </div>
           <div class="message-content">${msg.html || ''}</div>
           ${metaHtml}
+          ${!isUser ? `
+          <div class="message-actions ${feedbackClass}">
+            <button class="feedback-btn feedback-like" onclick="UI.handleFeedback(this, 'like')" aria-label="Helpful" title="Helpful">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path>
+              </svg>
+            </button>
+            <button class="feedback-btn feedback-dislike" onclick="UI.handleFeedback(this, 'dislike')" aria-label="Not helpful" title="Not helpful">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"></path>
+              </svg>
+            </button>
+            <button class="feedback-btn feedback-comment" onclick="UI.handleFeedback(this, 'comment')" aria-label="Add comment" title="Add comment">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </button>
+          </div>` : ''}
         </div>
       </div>`;
   },
@@ -1557,12 +1634,17 @@ const UI = {
           <div class="step-line"></div>
         </div>
         <div class="step-content">
-          <div class="step-header">
+          <div class="step-header" onclick="UI.toggleStepExpanded('${event.step_id}')">
             <span class="step-icon">...</span>
             <span class="step-label">Thinking</span>
             <span class="step-timer">
               <span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
             </span>
+            <button class="step-toggle" aria-label="Expand thinking details">&#9654;</button>
+          </div>
+          <div class="step-details" style="display: none;">
+            <div class="section-label">Details</div>
+            <pre><code>Processing...</code></pre>
           </div>
         </div>
       </div>`;
@@ -1575,10 +1657,22 @@ const UI = {
     const step = document.querySelector(`.thinking-step[data-step-id="${event.step_id}"]`);
     if (!step) return;
 
+    // If no thinking content, remove the step entirely - it's just noise
+    if (!event.thinking_content || !event.thinking_content.trim()) {
+      step.remove();
+      return;
+    }
+
+    // Has actual thinking content - show it
     step.classList.add('completed');
     const timerEl = step.querySelector('.step-timer');
     if (timerEl && event.duration_ms != null) {
-      timerEl.textContent = event.duration_ms + 'ms';
+      timerEl.textContent = Utils.formatDuration(event.duration_ms);
+    }
+    
+    const details = step.querySelector('.step-details pre code');
+    if (details) {
+      details.textContent = event.thinking_content.trim();
     }
     
     const marker = step.querySelector('.step-marker');
@@ -1697,7 +1791,7 @@ const UI = {
     const statusEl = step.querySelector('.step-status');
     if (statusEl) {
       if (event.status === 'success') {
-        const durationText = event.duration_ms ? `${event.duration_ms}ms` : '';
+        const durationText = event.duration_ms ? Utils.formatDuration(event.duration_ms) : '';
         statusEl.innerHTML = `<span class="checkmark">&#10003;</span> ${durationText}`;
       } else {
         statusEl.innerHTML = `<span class="error-icon">&#10007;</span>`;
@@ -1808,6 +1902,163 @@ const UI = {
   hideCancelButton(messageId) {
     const msgEl = this.elements.messagesInner?.querySelector(`[data-id="${messageId}"]`);
     msgEl?.querySelector('.cancel-stream-btn')?.remove();
+  },
+
+  // =========================================================================
+  // Feedback Handlers
+  // =========================================================================
+
+  async handleFeedback(button, type) {
+    const msgEl = button.closest('.message');
+    if (!msgEl) return;
+
+    const messageId = msgEl.dataset.id;
+    if (!messageId) {
+      console.warn('Cannot submit feedback without a message id.');
+      return;
+    }
+
+    const actionsEl = msgEl.querySelector('.message-actions');
+    
+    // Disable buttons during request
+    const buttons = actionsEl?.querySelectorAll('.feedback-btn');
+    buttons?.forEach(btn => btn.disabled = true);
+
+    try {
+      if (type === 'like') {
+        const result = await API.likeMessage(Number(messageId));
+        this.updateFeedbackState(actionsEl, result.state);
+      } else if (type === 'dislike') {
+        const result = await API.dislikeMessage(Number(messageId));
+        this.updateFeedbackState(actionsEl, result.state);
+      } else if (type === 'comment') {
+        this.showFeedbackModal(messageId);
+      }
+    } catch (e) {
+      console.error(`Failed to submit ${type}:`, e);
+    } finally {
+      buttons?.forEach(btn => btn.disabled = false);
+    }
+  },
+
+  updateFeedbackState(actionsEl, state) {
+    if (!actionsEl) return;
+    
+    // Remove all active states
+    actionsEl.classList.remove('feedback-like-active', 'feedback-dislike-active');
+    
+    // Apply new state
+    if (state === 'like') {
+      actionsEl.classList.add('feedback-like-active');
+    } else if (state === 'dislike') {
+      actionsEl.classList.add('feedback-dislike-active');
+    }
+  },
+
+  showFeedbackModal(messageId) {
+    // Create modal if it doesn't exist
+    let modal = document.getElementById('feedback-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'feedback-modal';
+      modal.className = 'modal-overlay';
+      modal.innerHTML = `
+        <div class="modal-content feedback-modal-content">
+          <div class="modal-header">
+            <div class="modal-title-group">
+              <svg class="modal-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg>
+              <h3>Send Feedback</h3>
+            </div>
+            <button class="modal-close" aria-label="Close">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <p class="feedback-description">Help us improve by sharing your thoughts on this response.</p>
+            <label class="feedback-label" for="feedback-text">Your feedback</label>
+            <textarea id="feedback-text" placeholder="What could be improved? What was helpful or unhelpful?" rows="5"></textarea>
+            <p class="feedback-hint">Your feedback helps us make the assistant better for everyone.</p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+            <button class="btn btn-primary" id="submit-feedback-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+              Submit Feedback
+            </button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+
+    const textarea = modal.querySelector('#feedback-text');
+    const submitBtn = modal.querySelector('#submit-feedback-btn');
+    const closeBtn = modal.querySelector('.modal-close');
+    const cancelBtn = modal.querySelector('[data-dismiss="modal"]');
+
+    // Reset
+    textarea.value = '';
+    modal.style.display = 'flex';
+    modal.classList.add('modal-visible');
+    setTimeout(() => textarea.focus(), 100);
+
+    const closeModal = () => {
+      modal.classList.remove('modal-visible');
+      setTimeout(() => { modal.style.display = 'none'; }, 150);
+    };
+
+    const handleSubmit = async () => {
+      const text = textarea.value.trim();
+      if (!text) {
+        closeModal();
+        return;
+      }
+      
+      // Show loading state
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `
+        <svg class="spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+        </svg>
+        Sending...
+      `;
+      
+      try {
+        await API.submitTextFeedback(Number(messageId), text);
+      } catch (e) {
+        console.error('Failed to submit feedback:', e);
+      }
+      
+      // Reset button
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="22" y1="2" x2="11" y2="13"></line>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+        </svg>
+        Submit Feedback
+      `;
+      closeModal();
+    };
+
+    // Clean up old listeners
+    const newSubmitBtn = submitBtn.cloneNode(true);
+    submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
+    newSubmitBtn.onclick = handleSubmit;
+
+    closeBtn.onclick = closeModal;
+    cancelBtn.onclick = closeModal;
+    modal.onclick = (e) => {
+      if (e.target === modal) closeModal();
+    };
   },
 };
 
@@ -2185,10 +2436,11 @@ const Chat = {
       this.state.messages = (data.messages || []).map((msg, idx) => {
         const isUser = msg.sender === 'User';
         return {
-          id: `${msg.message_id || idx}-${isUser ? 'u' : 'a'}`,
+          id: msg.message_id || `${idx}-${isUser ? 'u' : 'a'}`,
           sender: msg.sender,
           html: isUser ? Utils.escapeHtml(msg.content) : Markdown.render(msg.content),
           meta: isUser ? null : this.getEntryMetaLabel(),
+          feedback: msg.feedback || null,
         };
       });
 
@@ -2471,7 +2723,7 @@ const Chat = {
           
           // Finalize trace display
           if (showTrace) {
-            UI.finalizeTrace(elementId, { toolCalls });
+            UI.finalizeTrace(elementId, { toolCalls }, event);
           }
           
           UI.updateABResponse(elementId, Markdown.render(finalText), false);

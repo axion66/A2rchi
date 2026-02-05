@@ -1,4 +1,5 @@
 from typing import Any, Callable, Dict, List, Optional, Sequence, Iterator, AsyncIterator, Set, Tuple
+import re
 import time
 import uuid
 
@@ -98,6 +99,78 @@ class BaseReActAgent:
             final=final,
         )
 
+    def _extract_usage_from_metadata(self, response_metadata: Optional[Dict[str, Any]]) -> Optional[Dict[str, int]]:
+        """Normalize token usage from response_metadata when available."""
+        if not response_metadata:
+            return None
+        # Different providers use different keys
+        usage = response_metadata.get("usage") or response_metadata.get("token_usage")
+        if usage:
+            return {
+                "prompt_tokens": usage.get("prompt_tokens") or usage.get("input_tokens", 0),
+                "completion_tokens": usage.get("completion_tokens") or usage.get("output_tokens", 0),
+                "total_tokens": usage.get("total_tokens", 0),
+            }
+        # Ollama format
+        if "prompt_eval_count" in response_metadata or "eval_count" in response_metadata:
+            prompt_tokens = response_metadata.get("prompt_eval_count", 0)
+            completion_tokens = response_metadata.get("eval_count", 0)
+            return {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+            }
+        return None
+
+    def _extract_model_from_metadata(self, response_metadata: Optional[Dict[str, Any]]) -> Optional[str]:
+        """Extract model name from response_metadata when available."""
+        if not response_metadata:
+            return None
+        return response_metadata.get("model") or response_metadata.get("model_name")
+
+    def _parse_thinking_content(self, text: str) -> Tuple[str, str]:
+        """
+        Parse text to separate thinking content from visible content.
+        
+        Handles <think>...</think> tags used by models like Qwen3.
+        Returns (visible_content, thinking_content).
+        """
+        if not text:
+            return "", ""
+        
+        # Extract all thinking blocks
+        thinking_pattern = re.compile(r'<think>(.*?)</think>', re.DOTALL)
+        thinking_matches = thinking_pattern.findall(text)
+        thinking_content = "\n".join(thinking_matches)
+        
+        # Remove thinking blocks from visible content
+        visible_content = thinking_pattern.sub('', text).strip()
+        
+        return visible_content, thinking_content
+
+    def _update_streaming_thinking(
+        self,
+        new_content: str,
+        full_accumulated: str,
+        inside_think_tag: bool,
+    ) -> Tuple[str, str, str, bool]:
+        """
+        Process incremental streaming content to separate thinking from visible text.
+        
+        Returns (visible_delta, accumulated_thinking, accumulated_visible, still_inside_think).
+        """
+        full_accumulated += new_content
+        
+        # Parse full accumulated to get current state
+        visible, thinking = self._parse_thinking_content(full_accumulated)
+        
+        # Check if we're currently inside an unclosed think tag
+        open_count = full_accumulated.count('<think>')
+        close_count = full_accumulated.count('</think>')
+        still_inside = open_count > close_count
+        
+        return visible, thinking, full_accumulated, still_inside
+
     def _extract_usage_from_messages(self, messages: List[BaseMessage]) -> Optional[Dict[str, int]]:
         """
         Extract token usage from the last AI message with response_metadata.
@@ -108,25 +181,9 @@ class BaseReActAgent:
             if msg_type not in {"ai", "assistant"} and "ai" not in type(msg).__name__.lower():
                 continue
             response_metadata = getattr(msg, "response_metadata", None)
-            if not response_metadata:
-                continue
-            # Different providers use different keys
-            usage = response_metadata.get("usage") or response_metadata.get("token_usage")
+            usage = self._extract_usage_from_metadata(response_metadata)
             if usage:
-                return {
-                    "prompt_tokens": usage.get("prompt_tokens") or usage.get("input_tokens", 0),
-                    "completion_tokens": usage.get("completion_tokens") or usage.get("output_tokens", 0),
-                    "total_tokens": usage.get("total_tokens", 0),
-                }
-            # Ollama format
-            if "prompt_eval_count" in response_metadata or "eval_count" in response_metadata:
-                prompt_tokens = response_metadata.get("prompt_eval_count", 0)
-                completion_tokens = response_metadata.get("eval_count", 0)
-                return {
-                    "prompt_tokens": prompt_tokens,
-                    "completion_tokens": completion_tokens,
-                    "total_tokens": prompt_tokens + completion_tokens,
-                }
+                return usage
         return None
 
     def _extract_model_from_messages(self, messages: List[BaseMessage]) -> Optional[str]:
@@ -136,11 +193,22 @@ class BaseReActAgent:
             if msg_type not in {"ai", "assistant"} and "ai" not in type(msg).__name__.lower():
                 continue
             response_metadata = getattr(msg, "response_metadata", None)
-            if response_metadata:
-                model = response_metadata.get("model") or response_metadata.get("model_name")
-                if model:
-                    return model
+            model = self._extract_model_from_metadata(response_metadata)
+            if model:
+                return model
         return None
+
+    def _extract_reasoning_from_messages(self, messages: List[BaseMessage]) -> str:
+        """Extract reasoning content from the last AI message, if present."""
+        for msg in reversed(messages):
+            msg_type = str(getattr(msg, "type", "")).lower()
+            if msg_type not in {"ai", "assistant"} and "ai" not in type(msg).__name__.lower():
+                continue
+            additional_kwargs = getattr(msg, "additional_kwargs", None) or {}
+            reasoning_content = additional_kwargs.get("reasoning_content", "")
+            if reasoning_content:
+                return str(reasoning_content)
+        return ""
 
     def invoke(self, **kwargs) -> PipelineOutput:
         """Synchronously invoke the agent graph and return the final output."""
@@ -165,12 +233,15 @@ class BaseReActAgent:
             self.refresh_agent(force=True)
 
         all_messages: List[BaseMessage] = []  # Accumulated full messages
-        accumulated_content = ""  # Accumulated content from streaming
+        accumulated_content = ""  # Accumulated raw content from streaming
         emitted_tool_starts: Set[str] = set()
         
         # Thinking state tracking
         thinking_step_id: Optional[str] = None
         thinking_start_time: Optional[float] = None
+        accumulated_thinking = ""  # Captured thinking content from <think> tags
+        last_visible_content = ""  # Last visible content emitted (without thinking)
+        last_response_metadata: Optional[Dict[str, Any]] = None
         
         for event in self.agent.stream(agent_inputs, stream_mode="messages"):
             
@@ -181,6 +252,10 @@ class BaseReActAgent:
             message = messages[-1]
             msg_type = str(getattr(message, "type", "")).lower()
             msg_class = type(message).__name__.lower()
+
+            response_metadata = getattr(message, "response_metadata", None)
+            if response_metadata:
+                last_response_metadata = response_metadata
             
             # Track all non-chunk messages
             if "chunk" not in msg_class:
@@ -207,11 +282,13 @@ class BaseReActAgent:
                                 "event_type": "thinking_end",
                                 "step_id": thinking_step_id,
                                 "duration_ms": duration_ms,
+                                "thinking_content": accumulated_thinking,
                             },
                             final=False,
                         )
                         thinking_step_id = None
                         thinking_start_time = None
+                        accumulated_thinking = ""
                     
                     yield self.finalize_output(
                         answer="",
@@ -239,7 +316,9 @@ class BaseReActAgent:
             if msg_type in {"ai", "assistant"} or "ai" in msg_class:
                 if not getattr(message, "tool_calls", None):
                     content = self._message_content(message)
-                    if content:
+                    additional_kwargs = getattr(message, "additional_kwargs", None) or {}
+                    reasoning_content = additional_kwargs.get("reasoning_content", "")
+                    if content or reasoning_content:
                         # Start thinking phase if not already active
                         if thinking_step_id is None:
                             thinking_step_id = str(uuid.uuid4())
@@ -255,27 +334,43 @@ class BaseReActAgent:
                                 final=False,
                             )
                         
-                        # For chunks, content is delta; for full messages, content is cumulative
-                        if "chunk" in msg_class:
-                            accumulated_content += content
+                        if content:
+                            # For chunks, content is delta; for full messages, content is cumulative
+                            if "chunk" in msg_class:
+                                accumulated_content += content
+                            else:
+                                # Full message - use its content directly
+                                accumulated_content = content
+
+                        if reasoning_content:
+                            # Ollama sends thinking as deltas, so accumulate
+                            accumulated_thinking += reasoning_content
+                            visible_content = accumulated_content
                         else:
-                            # Full message - use its content directly
-                            accumulated_content = content
+                            # Parse thinking vs visible content
+                            visible_content, thinking_content = self._parse_thinking_content(accumulated_content)
+                            if not accumulated_thinking:
+                                accumulated_thinking = thinking_content
                         
-                        yield self.finalize_output(
-                            answer=accumulated_content,
-                            memory=self.active_memory,
-                            messages=[message],
-                            metadata={"event_type": "text"},
-                            final=False,
-                        )
+                        # Only emit if visible content changed
+                        if visible_content != last_visible_content:
+                            last_visible_content = visible_content
+                            yield self.finalize_output(
+                                answer=visible_content,
+                                memory=self.active_memory,
+                                messages=[message],
+                                metadata={"event_type": "text"},
+                                final=False,
+                            )
         
         # Final output
         logger.debug("Stream finished. accumulated_content='%s', all_messages count=%d", 
-                     accumulated_content[:100] if accumulated_content else "", len(all_messages))
+                 accumulated_content[:100] if accumulated_content else "", len(all_messages))
         
         # End thinking phase if still active
         if thinking_step_id is not None:
+            if not accumulated_thinking and all_messages:
+                accumulated_thinking = self._extract_reasoning_from_messages(all_messages)
             duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
             yield self.finalize_output(
                 answer="",
@@ -285,6 +380,7 @@ class BaseReActAgent:
                     "event_type": "thinking_end",
                     "step_id": thinking_step_id,
                     "duration_ms": duration_ms,
+                    "thinking_content": accumulated_thinking,
                 },
                 final=False,
             )
@@ -297,15 +393,21 @@ class BaseReActAgent:
                 if msg_type in {"ai", "assistant"} or "ai" in type(msg).__name__.lower():
                     content = self._message_content(msg)
                     if content:
-                        final_answer = content
-                        logger.debug("Found final answer from AI message: %s", content[:100])
+                        # Strip thinking from final answer
+                        final_answer, _ = self._parse_thinking_content(content)
+                        logger.debug("Found final answer from AI message: %s", final_answer[:100] if final_answer else "")
                         break
         if not final_answer:
-            final_answer = accumulated_content
+            # Strip thinking from accumulated content
+            final_answer, _ = self._parse_thinking_content(accumulated_content)
         
         # Extract usage and model info for final event
         usage = self._extract_usage_from_messages(all_messages)
         model = self._extract_model_from_messages(all_messages)
+        if usage is None:
+            usage = self._extract_usage_from_metadata(last_response_metadata)
+        if model is None:
+            model = self._extract_model_from_metadata(last_response_metadata)
         final_metadata = {
             "event_type": "final",
             "usage": usage,
@@ -341,6 +443,9 @@ class BaseReActAgent:
         # Thinking state tracking
         thinking_step_id: Optional[str] = None
         thinking_start_time: Optional[float] = None
+        accumulated_thinking = ""  # Captured thinking content from <think> tags
+        last_visible_content = ""  # Last visible content emitted (without thinking)
+        last_response_metadata: Optional[Dict[str, Any]] = None
         
         async for event in self.agent.astream(agent_inputs, stream_mode="messages"):
             messages = self._extract_messages(event)
@@ -350,6 +455,10 @@ class BaseReActAgent:
             message = messages[-1]
             msg_type = str(getattr(message, "type", "")).lower()
             msg_class = type(message).__name__.lower()
+            
+            response_metadata = getattr(message, "response_metadata", None)
+            if response_metadata:
+                last_response_metadata = response_metadata
             
             # Track all non-chunk messages
             if "chunk" not in msg_class:
@@ -375,11 +484,13 @@ class BaseReActAgent:
                                 "event_type": "thinking_end",
                                 "step_id": thinking_step_id,
                                 "duration_ms": duration_ms,
+                                "thinking_content": accumulated_thinking,
                             },
                             final=False,
                         )
                         thinking_step_id = None
                         thinking_start_time = None
+                        accumulated_thinking = ""
                     
                     yield self.finalize_output(
                         answer="",
@@ -404,7 +515,9 @@ class BaseReActAgent:
             if msg_type in {"ai", "assistant"} or "ai" in msg_class:
                 if not getattr(message, "tool_calls", None):
                     content = self._message_content(message)
-                    if content:
+                    additional_kwargs = getattr(message, "additional_kwargs", None) or {}
+                    reasoning_content = additional_kwargs.get("reasoning_content", "")
+                    if content or reasoning_content:
                         # Start thinking phase if not already active
                         if thinking_step_id is None:
                             thinking_step_id = str(uuid.uuid4())
@@ -420,24 +533,40 @@ class BaseReActAgent:
                                 final=False,
                             )
                         
-                        if "chunk" in msg_class:
-                            accumulated_content += content
+                        if content:
+                            if "chunk" in msg_class:
+                                accumulated_content += content
+                            else:
+                                accumulated_content = content
+
+                        if reasoning_content:
+                            # Ollama sends thinking as deltas, so accumulate
+                            accumulated_thinking += reasoning_content
+                            visible_content = accumulated_content
                         else:
-                            accumulated_content = content
+                            # Parse thinking vs visible content
+                            visible_content, thinking_content = self._parse_thinking_content(accumulated_content)
+                            if not accumulated_thinking:
+                                accumulated_thinking = thinking_content
                         
-                        yield self.finalize_output(
-                            answer=accumulated_content,
-                            messages=[message],
-                            metadata={"event_type": "text"},
-                            final=False,
-                        )
+                        # Only emit if visible content changed
+                        if visible_content != last_visible_content:
+                            last_visible_content = visible_content
+                            yield self.finalize_output(
+                                answer=visible_content,
+                                messages=[message],
+                                metadata={"event_type": "text"},
+                                final=False,
+                            )
         
         # Final output
         logger.debug("Async stream finished. accumulated_content='%s', all_messages count=%d", 
-                     accumulated_content[:100] if accumulated_content else "", len(all_messages))
+                 accumulated_content[:100] if accumulated_content else "", len(all_messages))
         
         # End thinking phase if still active
         if thinking_step_id is not None:
+            if not accumulated_thinking and all_messages:
+                accumulated_thinking = self._extract_reasoning_from_messages(all_messages)
             duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
             yield self.finalize_output(
                 answer="",
@@ -447,6 +576,7 @@ class BaseReActAgent:
                     "event_type": "thinking_end",
                     "step_id": thinking_step_id,
                     "duration_ms": duration_ms,
+                    "thinking_content": accumulated_thinking,
                 },
                 final=False,
             )
@@ -458,15 +588,21 @@ class BaseReActAgent:
                 if msg_type in {"ai", "assistant"} or "ai" in type(msg).__name__.lower():
                     content = self._message_content(msg)
                     if content:
-                        final_answer = content
-                        logger.debug("Found final answer from AI message: %s", content[:100])
+                        # Strip thinking from final answer
+                        final_answer, _ = self._parse_thinking_content(content)
+                        logger.debug("Found final answer from AI message: %s", final_answer[:100] if final_answer else "")
                         break
         if not final_answer:
-            final_answer = accumulated_content
+            # Strip thinking from accumulated content
+            final_answer, _ = self._parse_thinking_content(accumulated_content)
         
         # Extract usage and model info for final event
         usage = self._extract_usage_from_messages(all_messages)
         model = self._extract_model_from_messages(all_messages)
+        if usage is None:
+            usage = self._extract_usage_from_metadata(last_response_metadata)
+        if model is None:
+            model = self._extract_model_from_metadata(last_response_metadata)
         final_metadata = {
             "event_type": "final",
             "usage": usage,
