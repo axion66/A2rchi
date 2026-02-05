@@ -1,11 +1,11 @@
 import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
-  testDir: './ui',
+  testDir: './tests/ui',
   timeout: 30_000,
   retries: 0,
   use: {
-    baseURL: process.env.BASE_URL || 'http://localhost:2786',
+    baseURL: 'http://localhost:7861',
     headless: true,
     viewport: { width: 1440, height: 900 },
   },

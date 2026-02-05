@@ -1884,6 +1884,164 @@ const UI = {
     }
   },
 
+  // =========================================================================
+  // Historical Trace Rendering (for loaded conversations)
+  // =========================================================================
+
+  renderHistoricalTrace(messageId, trace) {
+    if (!trace || !trace.events) return;
+
+    const msgEl = this.elements.messagesInner?.querySelector(`[data-id="${messageId}"]`);
+    if (!msgEl) return;
+
+    const inner = msgEl.querySelector('.message-inner');
+    if (!inner) return;
+
+    // Don't add if already exists
+    if (inner.querySelector('.trace-container')) return;
+
+    const events = trace.events;
+    if (!events || events.length === 0) return;
+
+    // Count tool calls
+    const toolCalls = events.filter(e => e.type === 'tool_start' || e.type === 'tool_use');
+    const toolCount = toolCalls.length;
+
+    // Calculate total duration
+    const durationMs = trace.total_duration_ms || 0;
+    const durationStr = Utils.formatDuration(durationMs);
+
+    const traceIconSvg = `<svg class="trace-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>`;
+    
+    // Build trace container with collapsed state
+    const labelText = toolCount > 0 
+      ? `Agent Activity (${toolCount} tool${toolCount === 1 ? '' : 's'})` 
+      : 'Agent Activity';
+
+    const traceHtml = `
+      <div class="trace-container collapsed" data-message-id="${messageId}">
+        <div class="trace-header">
+          ${traceIconSvg}
+          <span class="trace-label">${labelText}</span>
+          <span class="trace-timer">${durationStr}</span>
+          <button class="trace-toggle" aria-label="Toggle agent activity details" title="Toggle agent activity" onclick="UI.toggleTraceExpanded('${messageId}')">
+            <span class="toggle-icon" aria-hidden="true">&#9654;</span>
+          </button>
+        </div>
+        <div class="trace-content">
+          <div class="step-timeline"></div>
+        </div>
+      </div>`;
+
+    inner.insertAdjacentHTML('afterbegin', traceHtml);
+
+    // Now populate the timeline with events
+    const timeline = inner.querySelector('.step-timeline');
+    if (!timeline) return;
+
+    // Process events and add steps
+    const toolStartEvents = {};
+    const thinkingEvents = {};
+
+    for (const event of events) {
+      if (event.type === 'thinking_start') {
+        thinkingEvents[event.step_id] = event;
+      } else if (event.type === 'thinking_end') {
+        const startEvent = thinkingEvents[event.step_id];
+        if (startEvent && event.thinking_content && event.thinking_content.trim()) {
+          this.addHistoricalThinkingStep(timeline, event);
+        }
+      } else if (event.type === 'tool_start' || event.type === 'tool_use') {
+        toolStartEvents[event.tool_call_id] = event;
+        // Add the tool step immediately
+        this.addHistoricalToolStep(timeline, event, null);
+      } else if (event.type === 'tool_end' || event.type === 'tool_result') {
+        const startEvent = toolStartEvents[event.tool_call_id];
+        // Update the tool step with output
+        this.updateHistoricalToolStep(timeline, event, startEvent);
+      }
+    }
+  },
+
+  addHistoricalThinkingStep(timeline, event) {
+    const stepHtml = `
+      <div class="step thinking-step completed" data-step-id="${event.step_id}">
+        <div class="step-connector">
+          <span class="step-marker completed-marker"></span>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-content">
+          <div class="step-header" onclick="UI.toggleStepExpanded('${event.step_id}')">
+            <span class="step-icon">💭</span>
+            <span class="step-label">Thinking</span>
+            <span class="step-timer">${event.duration_ms ? Utils.formatDuration(event.duration_ms) : ''}</span>
+            <button class="step-toggle" aria-label="Expand thinking details">&#9654;</button>
+          </div>
+          <div class="step-details" style="display: none;">
+            <div class="section-label">Details</div>
+            <pre><code>${Utils.escapeHtml(event.thinking_content || '')}</code></pre>
+          </div>
+        </div>
+      </div>`;
+    timeline.insertAdjacentHTML('beforeend', stepHtml);
+  },
+
+  addHistoricalToolStep(timeline, event, outputEvent) {
+    const toolName = event.tool_name || 'Unknown Tool';
+    const toolArgs = this.formatToolArgs(event.tool_args || event.arguments);
+    
+    const stepHtml = `
+      <div class="step tool-step completed" data-step-id="${event.tool_call_id}" data-tool-call-id="${event.tool_call_id}">
+        <div class="step-connector">
+          <span class="step-marker completed-marker"></span>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-content">
+          <div class="step-header" onclick="UI.toggleStepExpanded('${event.tool_call_id}')">
+            <span class="step-icon tool-icon-glyph">T</span>
+            <span class="step-label">${Utils.escapeHtml(toolName)}</span>
+            <span class="step-status">✓</span>
+            <button class="step-toggle" aria-label="Expand tool details">&#9654;</button>
+          </div>
+          <div class="step-details" style="display: none;">
+            <div class="tool-args">
+              <div class="section-label">Arguments</div>
+              <pre><code>${toolArgs}</code></pre>
+            </div>
+            <div class="tool-output-section" style="display: none;">
+              <div class="section-label">Output</div>
+              <pre><code class="tool-output-content"></code></pre>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    timeline.insertAdjacentHTML('beforeend', stepHtml);
+  },
+
+  updateHistoricalToolStep(timeline, outputEvent, startEvent) {
+    const step = timeline.querySelector(`[data-tool-call-id="${outputEvent.tool_call_id}"]`);
+    if (!step) return;
+
+    // Update duration if available
+    if (outputEvent.duration_ms) {
+      const statusEl = step.querySelector('.step-status');
+      if (statusEl) {
+        statusEl.textContent = Utils.formatDuration(outputEvent.duration_ms);
+      }
+    }
+
+    // Update output if available
+    const output = outputEvent.tool_output || outputEvent.result || outputEvent.output;
+    if (output) {
+      const outputSection = step.querySelector('.tool-output-section');
+      const outputContent = step.querySelector('.tool-output-content');
+      if (outputSection && outputContent) {
+        outputSection.style.display = 'block';
+        outputContent.textContent = typeof output === 'string' ? output : JSON.stringify(output, null, 2);
+      }
+    }
+  },
+
   showCancelButton(messageId) {
     const msgEl = this.elements.messagesInner?.querySelector(`[data-id="${messageId}"]`);
     if (!msgEl) return;
@@ -2441,6 +2599,7 @@ const Chat = {
           html: isUser ? Utils.escapeHtml(msg.content) : Markdown.render(msg.content),
           meta: isUser ? null : this.getEntryMetaLabel(),
           feedback: msg.feedback || null,
+          trace: msg.trace || null,  // Include trace data
         };
       });
 
@@ -2448,6 +2607,14 @@ const Chat = {
       this.state.history = (data.messages || []).map((msg) => [msg.sender, msg.content]);
 
       UI.renderMessages(this.state.messages);
+      
+      // Render historical trace data for assistant messages
+      for (const msg of this.state.messages) {
+        if (msg.sender !== 'User' && msg.trace) {
+          UI.renderHistoricalTrace(msg.id, msg.trace);
+        }
+      }
+      
       await this.loadConversations(); // Refresh list to show active state
     } catch (e) {
       console.error('Failed to load conversation:', e);

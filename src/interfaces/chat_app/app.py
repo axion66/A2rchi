@@ -2875,21 +2875,38 @@ class FlaskAppWrapper(object):
             history_rows = cursor.fetchall()
             history_rows = collapse_assistant_sequences(history_rows, sender_name=ARCHI_SENDER, sender_index=0)
 
+            # Build messages list with trace data for assistant messages
+            messages = []
+            for row in history_rows:
+                msg = {
+                    'sender': row[0],
+                    'content': row[1],
+                    'message_id': row[2],
+                    'feedback': row[3],
+                    'comment_count': row[4] if len(row) > 4 else 0,
+                }
+                
+                # For assistant messages, fetch trace data
+                if row[0] == ARCHI_SENDER and row[2]:
+                    cursor.execute(SQL_GET_TRACE_BY_MESSAGE, (row[2],))
+                    trace_row = cursor.fetchone()
+                    if trace_row:
+                        msg['trace'] = {
+                            'trace_id': trace_row[0],
+                            'events': trace_row[6],  # events JSON
+                            'status': trace_row[9],
+                            'total_tool_calls': trace_row[10],
+                            'total_duration_ms': trace_row[12],
+                        }
+                
+                messages.append(msg)
+
             conversation = {
                 'conversation_id': meta_row[0],
                 'title': meta_row[1] or "New Conversation",
                 'created_at': meta_row[2].isoformat() if meta_row[2] else None,
                 'last_message_at': meta_row[3].isoformat() if meta_row[3] else None,
-                'messages': [
-                    {
-                        'sender': row[0],
-                        'content': row[1],
-                        'message_id': row[2],
-                        'feedback': row[3],
-                        'comment_count': row[4] if len(row) > 4 else 0,
-                    }
-                    for row in history_rows
-                ]
+                'messages': messages
             }
 
             # clean up database connection state
