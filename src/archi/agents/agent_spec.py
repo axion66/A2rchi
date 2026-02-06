@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
+import re
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,27 @@ def load_agent_spec(path: Path) -> AgentSpec:
     )
 
 
+def load_agent_spec_from_text(text: str) -> AgentSpec:
+    lines = text.splitlines()
+    _reject_front_matter(lines, Path("<memory>"))
+    name = _extract_name(lines, Path("<memory>"))
+    tools = _extract_tools(lines, Path("<memory>"))
+    prompt = _extract_prompt(lines, Path("<memory>"))
+    return AgentSpec(
+        name=name,
+        tools=tools,
+        prompt=prompt,
+        source_path=Path("<memory>"),
+    )
+
+
+def slugify_agent_name(name: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", name.strip().lower()).strip("-")
+    if not slug:
+        slug = "agent"
+    return f"{slug}.md"
+
+
 def select_agent_spec(agents_dir: Path, agent_name: Optional[str] = None) -> AgentSpec:
     agent_files = list_agent_files(agents_dir)
     if not agent_files:
@@ -71,6 +93,8 @@ def _extract_name(lines: List[str], path: Path) -> str:
             continue
         if stripped.startswith("# "):
             name = stripped[2:].strip()
+            if name.lower().startswith("name:"):
+                name = name.split(":", 1)[1].strip()
             if not name:
                 break
             return name

@@ -28,14 +28,15 @@ from pygments.lexers import (BashLexer, CLexer, CppLexer, FortranLexer,
 
 from src.archi.archi import archi
 from src.archi.agents import AgentSpecError, list_agent_files, load_agent_spec, select_agent_spec
+from src.archi.agents.agent_spec import load_agent_spec_from_text, slugify_agent_name
 from src.archi.providers.base import ModelInfo, ProviderConfig, ProviderType
+from src.utils.config_service import ConfigService
 from src.archi.utils.output_dataclass import PipelineOutput
 # from src.data_manager.data_manager import DataManager
 from src.data_manager.data_viewer_service import DataViewerService
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
-from src.utils.config_access import get_full_config, get_services_config, get_global_config
-from src.utils.config_access import get_full_config
+from src.utils.config_access import get_full_config, get_services_config, get_global_config, get_dynamic_config
 from src.utils.sql import (
     SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO,
     SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP,
@@ -182,9 +183,16 @@ class ChatWrapper:
         chat_cfg = self.services_config.get("chat_app", {})
         agents_dir = Path(chat_cfg.get("agents_dir", "/root/archi/agents"))
         try:
-            self.agent_spec = select_agent_spec(agents_dir)
+            dynamic = get_dynamic_config()
+        except Exception:
+            dynamic = None
+        agent_name = getattr(dynamic, "active_agent_name", None) if dynamic else None
+        try:
+            self.agent_spec = select_agent_spec(agents_dir, agent_name)
         except AgentSpecError as exc:
-            raise ValueError(f"Failed to load agent spec: {exc}") from exc
+            logger.warning("Failed to load agent spec '%s': %s", agent_name, exc)
+            self.agent_spec = select_agent_spec(agents_dir)
+        self.current_agent_name = getattr(self.agent_spec, "name", None)
 
         agent_class = chat_cfg.get("agent_class") or chat_cfg.get("pipeline")
         if not agent_class:
@@ -226,11 +234,26 @@ class ChatWrapper:
             raise ValueError("Config name must be provided to update the chat configuration.")
 
         config_payload = self._get_config_payload(target_config_name)
+        chat_cfg = config_payload["services"]["chat_app"]
 
-        if self.current_config_name == target_config_name:
+        try:
+            dynamic = get_dynamic_config()
+        except Exception:
+            dynamic = None
+        desired_agent_name = getattr(dynamic, "active_agent_name", None) if dynamic else None
+        agent_changed = False
+        if desired_agent_name and desired_agent_name != self.current_agent_name:
+            try:
+                self.agent_spec = select_agent_spec(Path(chat_cfg.get("agents_dir", "/root/archi/agents")), desired_agent_name)
+                self.archi.pipeline_kwargs["agent_spec"] = self.agent_spec
+                self.current_agent_name = desired_agent_name
+                agent_changed = True
+            except AgentSpecError as exc:
+                logger.warning("Active agent '%s' not found: %s", desired_agent_name, exc)
+
+        if self.current_config_name == target_config_name and not agent_changed:
             return
 
-        chat_cfg = config_payload["services"]["chat_app"]
         agent_class = chat_cfg.get("agent_class") or chat_cfg.get("pipeline")
         if not agent_class:
             raise ValueError("services.chat_app.agent_class must be configured.")
@@ -1480,6 +1503,19 @@ class ChatWrapper:
             )
 
             for output in self.archi.stream(history=context.history, conversation_id=context.conversation_id):
+                if client_timeout and time.time() - stream_start_time > client_timeout:
+                    if trace_id:
+                        total_duration_ms = int((time.time() - stream_start_time) * 1000)
+                        self.update_agent_trace(
+                            trace_id=trace_id,
+                            events=trace_events,
+                            status='error',
+                            cancelled_by='system',
+                            cancellation_reason='Client timeout',
+                            total_duration_ms=total_duration_ms,
+                        )
+                    yield {"type": "error", "status": 408, "message": "client timeout"}
+                    return
                 last_output = output
                 
                 # Extract event_type from metadata (new structured events from BaseReActAgent)
@@ -1797,7 +1833,10 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/agent/info', 'get_agent_info', self.require_auth(self.get_agent_info), methods=["GET"])
         self.add_endpoint('/api/agents/list', 'list_agents', self.require_auth(self.list_agents), methods=["GET"])
         self.add_endpoint('/api/agents/template', 'get_agent_template', self.require_auth(self.get_agent_template), methods=["GET"])
+        self.add_endpoint('/api/agents/spec', 'get_agent_spec', self.require_auth(self.get_agent_spec), methods=["GET"])
         self.add_endpoint('/api/agents', 'save_agent_spec', self.require_auth(self.save_agent_spec), methods=["POST"])
+        self.add_endpoint('/api/agents', 'delete_agent_spec', self.require_auth(self.delete_agent_spec), methods=["DELETE"])
+        self.add_endpoint('/api/agents/active', 'set_active_agent', self.require_auth(self.set_active_agent), methods=["POST"])
 
         # Data viewer endpoints
         logger.info("Adding data viewer API endpoints")
@@ -2157,13 +2196,45 @@ class FlaskAppWrapper(object):
                     agents.append({"name": spec.name, "filename": path.name})
                 except AgentSpecError as exc:
                     logger.warning("Skipping invalid agent spec %s: %s", path, exc)
-            active_spec = getattr(self.chat, "agent_spec", None)
+            try:
+                dynamic = get_dynamic_config()
+            except Exception:
+                dynamic = None
+            active_name = getattr(dynamic, "active_agent_name", None) if dynamic else None
+            if not active_name:
+                active_spec = getattr(self.chat, "agent_spec", None)
+                active_name = getattr(active_spec, "name", None)
             return jsonify({
                 "agents": agents,
-                "active_name": getattr(active_spec, "name", None),
+                "active_name": active_name,
             }), 200
         except Exception as exc:
             logger.error(f"Error listing agents: {exc}")
+            return jsonify({"error": str(exc)}), 500
+
+    def get_agent_spec(self):
+        """
+        Fetch a single agent spec by name.
+        """
+        try:
+            name = request.args.get("name")
+            if not name:
+                return jsonify({"error": "name parameter required"}), 400
+            agents_dir = self._get_agents_dir()
+            for path in list_agent_files(agents_dir):
+                try:
+                    spec = load_agent_spec(path)
+                except AgentSpecError:
+                    continue
+                if spec.name == name:
+                    return jsonify({
+                        "name": spec.name,
+                        "filename": path.name,
+                        "content": path.read_text(),
+                    }), 200
+            return jsonify({"error": f"Agent '{name}' not found"}), 404
+        except Exception as exc:
+            logger.error(f"Error fetching agent spec: {exc}")
             return jsonify({"error": str(exc)}), 500
 
     def get_agent_template(self):
@@ -2182,44 +2253,171 @@ class FlaskAppWrapper(object):
             logger.error(f"Error building agent template: {exc}")
             return jsonify({'error': str(exc)}), 500
 
-    def save_agent_spec(self):
+    def set_active_agent(self):
         """
-        Save a new agent spec markdown file.
+        Persist the active agent name in dynamic config.
         """
         try:
             data = request.get_json() or {}
-            filename = data.get("filename", "").strip()
+            name = data.get("name")
+            client_id = data.get("client_id") or "system"
+            if not name:
+                return jsonify({"error": "name is required"}), 400
+
+            agents_dir = self._get_agents_dir()
+            exists = False
+            for path in list_agent_files(agents_dir):
+                try:
+                    spec = load_agent_spec(path)
+                except AgentSpecError:
+                    continue
+                if spec.name == name:
+                    exists = True
+                    break
+            if not exists:
+                return jsonify({"error": f"Agent '{name}' not found"}), 404
+
+            cfg = ConfigService(pg_config=self.pg_config)
+            cfg.update_dynamic_config(active_agent_name=name, updated_by=client_id)
+
+            return jsonify({
+                "success": True,
+                "active_name": name,
+            }), 200
+        except Exception as exc:
+            logger.error(f"Error setting active agent: {exc}")
+            return jsonify({"error": str(exc)}), 500
+
+    def save_agent_spec(self):
+        """
+        Create or update an agent spec by name.
+        """
+        try:
+            data = request.get_json() or {}
             content = data.get("content")
-            if not filename:
-                return jsonify({'error': 'Invalid filename'}), 400
-            if not filename.endswith(".md"):
-                filename = f"{filename}.md"
-            if not re.fullmatch(r"[A-Za-z0-9_.-]+", filename):
-                return jsonify({'error': 'Invalid filename'}), 400
+            mode = data.get("mode", "create")
+            existing_name = data.get("existing_name")
             if not content or not isinstance(content, str):
                 return jsonify({'error': 'Content is required'}), 400
 
             agents_dir = self._get_agents_dir()
             agents_dir.mkdir(parents=True, exist_ok=True)
+
+            if mode == "edit" or existing_name:
+                if not existing_name:
+                    return jsonify({'error': 'existing_name required for edit'}), 400
+                target_path = None
+                for path in list_agent_files(agents_dir):
+                    try:
+                        spec = load_agent_spec(path)
+                    except AgentSpecError:
+                        continue
+                    if spec.name == existing_name:
+                        target_path = path
+                        break
+                if not target_path:
+                    return jsonify({'error': f"Agent '{existing_name}' not found"}), 404
+                new_spec = load_agent_spec_from_text(content)
+                for path in list_agent_files(agents_dir):
+                    if path == target_path:
+                        continue
+                    try:
+                        spec = load_agent_spec(path)
+                    except AgentSpecError:
+                        continue
+                    if spec.name == new_spec.name:
+                        return jsonify({'error': f"Agent name '{new_spec.name}' already exists"}), 409
+                target_path.write_text(content)
+                try:
+                    dynamic = get_dynamic_config()
+                except Exception:
+                    dynamic = None
+                if dynamic and dynamic.active_agent_name == existing_name and new_spec.name != existing_name:
+                    cfg = ConfigService(pg_config=self.pg_config)
+                    cfg.update_dynamic_config(active_agent_name=new_spec.name, updated_by=data.get("client_id") or "system")
+                return jsonify({
+                    'success': True,
+                    'name': new_spec.name,
+                    'filename': target_path.name,
+                    'path': str(target_path),
+                }), 200
+
+            # create mode
+            # derive name from content to build filename and enforce uniqueness
+            spec = load_agent_spec_from_text(content)
+            existing_names = []
+            for path in list_agent_files(agents_dir):
+                try:
+                    existing = load_agent_spec(path)
+                    existing_names.append(existing.name)
+                except AgentSpecError:
+                    continue
+            if spec.name in existing_names:
+                return jsonify({'error': f"Agent name '{spec.name}' already exists"}), 409
+            filename = slugify_agent_name(spec.name)
             target_path = agents_dir / filename
             if target_path.exists():
-                return jsonify({'error': f'File already exists: {filename}'}), 409
-
+                stem = Path(filename).stem
+                suffix = Path(filename).suffix
+                counter = 2
+                while True:
+                    candidate = agents_dir / f"{stem}-{counter}{suffix}"
+                    if not candidate.exists():
+                        target_path = candidate
+                        break
+                    counter += 1
             target_path.write_text(content)
-            try:
-                load_agent_spec(target_path)
-            except AgentSpecError as exc:
-                target_path.unlink(missing_ok=True)
-                return jsonify({'error': f'Invalid agent spec: {exc}'}), 400
-
             return jsonify({
                 'success': True,
-                'filename': filename,
+                'name': spec.name,
+                'filename': target_path.name,
                 'path': str(target_path),
             }), 200
+        except AgentSpecError as exc:
+            logger.error(f"Invalid agent spec: {exc}")
+            return jsonify({'error': f'Invalid agent spec: {exc}'}), 400
         except Exception as exc:
             logger.error(f"Error saving agent spec: {exc}")
             return jsonify({'error': str(exc)}), 500
+
+    def delete_agent_spec(self):
+        """
+        Delete an agent spec by name.
+        """
+        try:
+            data = request.get_json() or {}
+            name = data.get("name")
+            if not name:
+                return jsonify({"error": "name is required"}), 400
+            name = name.strip()
+            if name.lower().startswith("name:"):
+                name = name.split(":", 1)[1].strip()
+
+            agents_dir = self._get_agents_dir()
+            target_path = None
+            for path in list_agent_files(agents_dir):
+                try:
+                    spec = load_agent_spec(path)
+                except AgentSpecError:
+                    continue
+                if spec.name == name:
+                    target_path = path
+                    break
+            if not target_path:
+                return jsonify({"error": f"Agent '{name}' not found"}), 404
+
+            target_path.unlink()
+            try:
+                dynamic = get_dynamic_config()
+            except Exception:
+                dynamic = None
+            if dynamic and dynamic.active_agent_name == name:
+                cfg = ConfigService(pg_config=self.pg_config)
+                cfg.update_dynamic_config(active_agent_name=None, updated_by=data.get("client_id") or "system")
+            return jsonify({"success": True, "deleted": name}), 200
+        except Exception as exc:
+            logger.error(f"Error deleting agent spec: {exc}")
+            return jsonify({"error": str(exc)}), 500
 
     def get_agent_info(self):
         """

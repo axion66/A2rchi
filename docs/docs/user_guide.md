@@ -69,7 +69,8 @@ Agent specs live in a directory you pass via `--agents`. Each `*.md` file must i
 The service selects the first agent spec in lexicographic order.
 The `tools` list enables a subset of tools defined by the agent class.
 
-In the chat UI, use the agent label button in the header to open the editor and save a new Markdown file.
+In the chat UI, use the agent dropdown in the header to switch the active agent, edit or delete existing agents, or add
+a new one with the plus button. The selection is persisted and takes effect on the next request.
 5. **`--hostmode`**: Use host networking for all services.
 6. **`--verbosity` / `-v`**: Control CLI logging level (0 = quiet, 4 = debug).
 7. **`--force`** / **`--dry-run`**: Force recreation of an existing deployment and/or show what would happen without actually deploying.
