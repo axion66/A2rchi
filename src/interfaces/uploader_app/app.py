@@ -322,7 +322,7 @@ class FlaskAppWrapper:
             try:
                 self.scraper_manager.collect_links(self.persistence, link_urls=[url])
                 self.persistence.flush_index()
-                self._update_source_status("links", state="idle", last_run=self._now_iso())
+                self._update_source_status("web", state="idle", last_run=self._now_iso())
                 added_to_urls = True
             except Exception as exc:
                 logger.exception("Failed to upload URL: %s", exc)
