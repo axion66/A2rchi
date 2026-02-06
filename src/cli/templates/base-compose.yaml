@@ -76,6 +76,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    shm_size: 1gb
   
   config-seed:
     image: {{ chatbot_image | default(benchmarking_image) }}:{{ chatbot_tag | default(benchmarking_tag) }}
