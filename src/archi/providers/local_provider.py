@@ -98,9 +98,6 @@ class LocalProvider(BaseProvider):
             **kwargs,
         }
 
-        if model_kwargs.get("reasoning") is None:
-            model_kwargs["reasoning"] = True
-        
         # Remove local_mode from kwargs as ChatOllama doesn't accept it
         model_kwargs.pop("local_mode", None)
         
