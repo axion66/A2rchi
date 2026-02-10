@@ -1160,6 +1160,33 @@
 .toast-warning .toast-icon { color: var(--warning-color, #d29922); }
 .toast-info .toast-icon { color: var(--accent-color, #58a6ff); }
 
+.toast-message {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-primary, #e6edf3);
+}
+
+.toast-dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-secondary, #8b949e);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.toast-dismiss:hover {
+  color: var(--text-primary, #e6edf3);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
 /* =====================================================
    ERROR STATE
    ===================================================== */
