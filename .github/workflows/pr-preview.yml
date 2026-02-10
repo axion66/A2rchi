@@ -104,6 +104,7 @@ jobs:
       pull-requests: write
     env:
       ARCHI_DIR: ${{ github.workspace }}/archi-local
+      CI_VENV: ${{ runner.temp }}/ci-venv-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -126,10 +127,11 @@ jobs:
 
       - name: Install archi CLI
         run: |
-          python3 -m venv /tmp/ci-venv
-          . /tmp/ci-venv/bin/activate
+          python3 -m venv "$CI_VENV"
+          . "$CI_VENV/bin/activate"
           python -m pip install --upgrade pip
           pip install ".[all]" || pip install .
+          python -c "import importlib.util, mkdocs; assert importlib.util.find_spec('mkdocs.__main__'), 'mkdocs.__main__ missing'; print('mkdocs:', mkdocs.__version__)"
 
       - name: Install docker-compose (for act/local testing)
         if: ${{ !contains(runner.name, 'submit') }}
@@ -141,12 +143,12 @@ jobs:
       - name: Prepare base image references
         if: needs.build-base-images.outputs.changed == 'true'
         run: |
-          . /tmp/ci-venv/bin/activate
+          . "$CI_VENV/bin/activate"
           python scripts/dev/update_service_base_images.py --tag "${{ needs.build-base-images.outputs.tag }}" --switch-source localhost --orig-tag all
 
       - name: Verify MkDocs build
         run: |
-          . /tmp/ci-venv/bin/activate
+          . "$CI_VENV/bin/activate"
           mkdocs build --config-file docs/mkdocs.yml --strict
 
       - name: Clean up MkDocs build artifacts
