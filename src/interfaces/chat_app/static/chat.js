@@ -84,6 +84,14 @@ const Utils = {
   },
 
   /**
+   * Escape a string for use inside an HTML attribute (e.g. onclick)
+   */
+  escapeAttr(text) {
+    if (text == null) return '';
+    return String(text).replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  },
+
+  /**
    * Format a date for display
    */
   formatDate(isoString) {
@@ -1634,7 +1642,7 @@ const UI = {
           <div class="step-line"></div>
         </div>
         <div class="step-content">
-          <div class="step-header" onclick="UI.toggleStepExpanded('${event.step_id}')">
+          <div class="step-header" onclick="UI.toggleStepExpanded('${Utils.escapeAttr(event.step_id)}')">
             <span class="step-icon">...</span>
             <span class="step-label">Thinking</span>
             <span class="step-timer">
@@ -1697,7 +1705,7 @@ const UI = {
           <div class="step-line"></div>
         </div>
         <div class="step-content">
-          <div class="step-header" onclick="UI.toggleStepExpanded('${event.tool_call_id}')">
+          <div class="step-header" onclick="UI.toggleStepExpanded('${Utils.escapeAttr(event.tool_call_id)}')">
             <span class="step-icon tool-icon-glyph">T</span>
             <span class="step-label">${Utils.escapeHtml(event.tool_name)}</span>
             <span class="step-status">
@@ -1824,8 +1832,10 @@ const UI = {
     const completionTokens = usage.completion_tokens || 0;
     const totalTokens = usage.total_tokens || (promptTokens + completionTokens);
     
-    // Estimate context usage (assume 128k context as default)
-    const contextWindow = 128000;
+    // Prefer backend-provided context window, fall back to 128k
+    const contextWindow = (usage.context_window && usage.context_window > 0)
+      ? usage.context_window
+      : 128000;
     const usagePercent = Math.min((promptTokens / contextWindow) * 100, 100);
     
     if (fill) {
@@ -1971,7 +1981,7 @@ const UI = {
           <div class="step-line"></div>
         </div>
         <div class="step-content">
-          <div class="step-header" onclick="UI.toggleStepExpanded('${event.step_id}')">
+          <div class="step-header" onclick="UI.toggleStepExpanded('${Utils.escapeAttr(event.step_id)}')">
             <span class="step-icon">💭</span>
             <span class="step-label">Thinking</span>
             <span class="step-timer">${event.duration_ms ? Utils.formatDuration(event.duration_ms) : ''}</span>
@@ -1997,7 +2007,7 @@ const UI = {
           <div class="step-line"></div>
         </div>
         <div class="step-content">
-          <div class="step-header" onclick="UI.toggleStepExpanded('${event.tool_call_id}')">
+          <div class="step-header" onclick="UI.toggleStepExpanded('${Utils.escapeAttr(event.tool_call_id)}')">
             <span class="step-icon tool-icon-glyph">T</span>
             <span class="step-label">${Utils.escapeHtml(toolName)}</span>
             <span class="step-status">✓</span>
@@ -2071,8 +2081,8 @@ const UI = {
     if (!msgEl) return;
 
     const messageId = msgEl.dataset.id;
-    if (!messageId) {
-      console.warn('Cannot submit feedback without a message id.');
+    if (!messageId || isNaN(Number(messageId))) {
+      console.warn('Cannot submit feedback: invalid message id', messageId);
       return;
     }
 
@@ -2193,6 +2203,21 @@ const UI = {
         await API.submitTextFeedback(Number(messageId), text);
       } catch (e) {
         console.error('Failed to submit feedback:', e);
+        // Show error in the modal instead of silently closing
+        const hint = modal.querySelector('.feedback-hint');
+        if (hint) {
+          hint.textContent = 'Failed to submit feedback. Please try again.';
+          hint.style.color = 'var(--error-text, #f85149)';
+        }
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+          Submit Feedback
+        `;
+        return; // Don't close modal on error
       }
       
       // Reset button
@@ -2207,16 +2232,27 @@ const UI = {
       closeModal();
     };
 
-    // Clean up old listeners
+    // Clean up old listeners by cloning nodes
     const newSubmitBtn = submitBtn.cloneNode(true);
     submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
     newSubmitBtn.onclick = handleSubmit;
 
-    closeBtn.onclick = closeModal;
-    cancelBtn.onclick = closeModal;
-    modal.onclick = (e) => {
+    const newCloseBtn = closeBtn.cloneNode(true);
+    closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+    newCloseBtn.onclick = closeModal;
+
+    const newCancelBtn = cancelBtn.cloneNode(true);
+    cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+    newCancelBtn.onclick = closeModal;
+
+    // Use a named handler for the backdrop click so we can remove it
+    if (modal._backdropHandler) {
+      modal.removeEventListener('click', modal._backdropHandler);
+    }
+    modal._backdropHandler = (e) => {
       if (e.target === modal) closeModal();
     };
+    modal.addEventListener('click', modal._backdropHandler);
   },
 };
 
@@ -3100,6 +3136,14 @@ const Chat = {
             streaming: false,
           });
           
+          // Update message ID from backend so feedback works
+          if (event.message_id != null) {
+            const msg = this.state.messages.find(m => m.id === messageId);
+            if (msg) msg.id = event.message_id;
+            const msgEl = document.querySelector(`[data-id="${messageId}"]`);
+            if (msgEl) msgEl.dataset.id = event.message_id;
+          }
+
           if (event.conversation_id != null) {
             this.state.conversationId = event.conversation_id;
             Storage.setActiveConversationId(event.conversation_id);

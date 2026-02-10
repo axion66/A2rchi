@@ -2660,6 +2660,10 @@ class FlaskAppWrapper(object):
             data = request.json
             message_id = data.get('message_id')
 
+            if not message_id:
+                logger.warning("Like request missing message_id")
+                return jsonify({'error': 'message_id is required'}), 400
+
             # Check current state for toggle behavior
             current_reaction = self.chat.get_reaction_feedback(message_id)
             
@@ -2705,6 +2709,11 @@ class FlaskAppWrapper(object):
         try:
             data = request.json
             message_id = data.get('message_id')
+
+            if not message_id:
+                logger.warning("Dislike request missing message_id")
+                return jsonify({'error': 'message_id is required'}), 400
+
             feedback_msg = data.get('feedback_msg')
             incorrect = data.get('incorrect')
             unhelpful = data.get('unhelpful')
@@ -2877,6 +2886,23 @@ class FlaskAppWrapper(object):
 
             # Build messages list with trace data for assistant messages
             messages = []
+            
+            # Batch-fetch trace data for all assistant messages to avoid N+1 queries
+            assistant_mids = [row[2] for row in history_rows if row[0] == ARCHI_SENDER and row[2]]
+            trace_map = {}
+            if assistant_mids:
+                placeholders = ','.join(['%s'] * len(assistant_mids))
+                cursor.execute(f"""
+                    SELECT trace_id, conversation_id, message_id, user_message_id,
+                           config_id, pipeline_name, events, started_at, completed_at,
+                           status, total_tool_calls, total_tokens_used, total_duration_ms,
+                           cancelled_by, cancellation_reason, created_at
+                    FROM agent_traces
+                    WHERE message_id IN ({placeholders})
+                """, tuple(assistant_mids))
+                for trace_row in cursor.fetchall():
+                    trace_map[trace_row[2]] = trace_row
+            
             for row in history_rows:
                 msg = {
                     'sender': row[0],
@@ -2886,18 +2912,16 @@ class FlaskAppWrapper(object):
                     'comment_count': row[4] if len(row) > 4 else 0,
                 }
                 
-                # For assistant messages, fetch trace data
-                if row[0] == ARCHI_SENDER and row[2]:
-                    cursor.execute(SQL_GET_TRACE_BY_MESSAGE, (row[2],))
-                    trace_row = cursor.fetchone()
-                    if trace_row:
-                        msg['trace'] = {
-                            'trace_id': trace_row[0],
-                            'events': trace_row[6],  # events JSON
-                            'status': trace_row[9],
-                            'total_tool_calls': trace_row[10],
-                            'total_duration_ms': trace_row[12],
-                        }
+                # Attach trace data if present
+                if row[0] == ARCHI_SENDER and row[2] and row[2] in trace_map:
+                    trace_row = trace_map[row[2]]
+                    msg['trace'] = {
+                        'trace_id': trace_row[0],
+                        'events': trace_row[6],  # events JSON
+                        'status': trace_row[9],
+                        'total_tool_calls': trace_row[10],
+                        'total_duration_ms': trace_row[12],
+                    }
                 
                 messages.append(msg)
 

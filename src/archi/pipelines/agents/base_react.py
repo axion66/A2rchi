@@ -148,29 +148,6 @@ class BaseReActAgent:
         
         return visible_content, thinking_content
 
-    def _update_streaming_thinking(
-        self,
-        new_content: str,
-        full_accumulated: str,
-        inside_think_tag: bool,
-    ) -> Tuple[str, str, str, bool]:
-        """
-        Process incremental streaming content to separate thinking from visible text.
-        
-        Returns (visible_delta, accumulated_thinking, accumulated_visible, still_inside_think).
-        """
-        full_accumulated += new_content
-        
-        # Parse full accumulated to get current state
-        visible, thinking = self._parse_thinking_content(full_accumulated)
-        
-        # Check if we're currently inside an unclosed think tag
-        open_count = full_accumulated.count('<think>')
-        close_count = full_accumulated.count('</think>')
-        still_inside = open_count > close_count
-        
-        return visible, thinking, full_accumulated, still_inside
-
     def _extract_usage_from_messages(self, messages: List[BaseMessage]) -> Optional[Dict[str, int]]:
         """
         Extract token usage from the last AI message with response_metadata.

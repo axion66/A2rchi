@@ -91,7 +91,12 @@ class HybridRetriever(BaseRetriever):
                 logger.debug("Hybrid search returned %d documents", len(results))
                 return results
             except RuntimeError as exc:
-                logger.warning("Hybrid search failed, falling back to semantic-only: %s", exc)
+                message = str(exc).lower()
+                if "not supported" in message or "unsupported" in message or "not implemented" in message:
+                    logger.warning("Hybrid search not supported by backend, falling back to semantic-only: %s", exc)
+                else:
+                    logger.error("Hybrid search failed with unexpected RuntimeError; re-raising", exc_info=True)
+                    raise
         
         # Fallback: semantic-only search
         logger.debug("Falling back to semantic-only search (k=%d)", self.k)
