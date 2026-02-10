@@ -226,9 +226,6 @@ class TestConfigService:
         
         service = ConfigService(connection_pool=mock_pool)
         
-        # Reset call count after initialization
-        initial_calls = mock_pool.get_connection_direct.call_count
-        
         # First call
         config1 = service.get_static_config()
         calls_after_first = mock_pool.get_connection_direct.call_count

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Test semantic similarity search directly using pgvector."""
 import os
-import sys
 
 # Set environment before imports
 os.environ["ARCHI_CONFIGS_PATH"] = os.path.join(os.path.dirname(__file__), "local_dev_config/")

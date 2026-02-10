@@ -537,7 +537,6 @@ class ConfigService:
                 # Parse source_schedules JSONB
                 source_schedules = row.get("source_schedules") or {}
                 if isinstance(source_schedules, str):
-                    import json
                     source_schedules = json.loads(source_schedules)
                 
                 return DynamicConfig(
@@ -723,8 +722,6 @@ class ConfigService:
         Returns:
             Updated source_schedules dict
         """
-        import json
-        
         # Map UI-friendly values to cron expressions
         schedule_map = {
             'disabled': '',

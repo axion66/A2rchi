@@ -40,7 +40,7 @@ test.describe('File Upload Workflows', () => {
     const dropzone = page.locator('.dropzone, [class*="drop"]').first();
     
     // Create a mock file drop
-    const dataTransfer = await page.evaluateHandle(() => {
+    await page.evaluateHandle(() => {
       const dt = new DataTransfer();
       const file = new File(['test content'], 'test.md', { type: 'text/markdown' });
       dt.items.add(file);
@@ -73,7 +73,6 @@ test.describe('File Upload Workflows', () => {
     let uploadedFile = '';
     
     await page.route('**/api/upload/file', async (route) => {
-      const request = route.request();
       uploadedFile = 'test.md';
       await route.fulfill({
         status: 200,

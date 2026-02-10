@@ -23,11 +23,8 @@ The actual issue:
 """
 
 import os
-import json
 import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-from typing import Dict, Any
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -149,7 +146,7 @@ class TestIngestionPipelineIsolation:
             # Test with longer text (more realistic)
             long_text = "This is a longer test document. " * 100
             start = time.time()
-            embeddings = model.embed_documents([long_text])
+            _embeddings = model.embed_documents([long_text])
             elapsed = time.time() - start
             print(f"Embedding 1 long text took {elapsed:.2f} seconds")
             
@@ -253,7 +250,7 @@ class TestIngestionPipelineIsolation:
             # Time the embedding
             chunk_texts = [c.page_content for c in chunks]
             start = time.time()
-            embeddings = model.embed_documents(chunk_texts)
+            _embeddings = model.embed_documents(chunk_texts)
             embed_time = time.time() - start
             
             print(f"\n=== PERFORMANCE RESULTS ===")

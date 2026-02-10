@@ -1733,6 +1733,10 @@ class FlaskAppWrapper(object):
         dm_host = dm_config.get("hostname") or dm_config.get("host", "localhost")
         dm_port = dm_config.get("port", 5001)
         self.data_manager_url = f"http://{dm_host}:{dm_port}"
+        # API token for service-to-service auth with data-manager
+        dm_auth = dm_config.get("auth", {}) or {}
+        dm_token = (dm_auth.get("api_token") or "").strip() or None
+        self._dm_headers = {"Authorization": f"Bearer {dm_token}"} if dm_token else {}
         logger.info(f"Data manager service URL: {self.data_manager_url}")
 
         # Initialize authentication methods
@@ -3435,6 +3439,7 @@ class FlaskAppWrapper(object):
             resp = requests.post(
                 f"{self.data_manager_url}/document_index/upload",
                 files={"file": (upload.filename, upload.stream, upload.content_type)},
+                headers=self._dm_headers,
                 timeout=120
             )
             data = resp.json()
@@ -3471,6 +3476,7 @@ class FlaskAppWrapper(object):
             resp = requests.post(
                 f"{self.data_manager_url}/document_index/upload_url",
                 data={"url": url},
+                headers=self._dm_headers,
                 timeout=120
             )
             dm_data = resp.json()
@@ -3514,6 +3520,7 @@ class FlaskAppWrapper(object):
             resp = requests.post(
                 f"{self.data_manager_url}/document_index/add_git_repo",
                 data={"repo_url": repo_url},
+                headers=self._dm_headers,
                 timeout=300  # Git clones can take a while
             )
             dm_data = resp.json()
@@ -3669,6 +3676,7 @@ class FlaskAppWrapper(object):
             resp = requests.post(
                 f"{self.data_manager_url}/document_index/add_git_repo",
                 data={"repo_url": repo_url},
+                headers=self._dm_headers,
                 timeout=300
             )
             
@@ -3718,6 +3726,7 @@ class FlaskAppWrapper(object):
             resp = requests.post(
                 f"{self.data_manager_url}/document_index/add_jira_project",
                 data={"project_key": project_key},
+                headers=self._dm_headers,
                 timeout=120
             )
             dm_data = resp.json()
@@ -4133,6 +4142,7 @@ class FlaskAppWrapper(object):
             try:
                 response = requests.post(
                     f"{self.data_manager_url}/api/reload-schedules",
+                    headers=self._dm_headers,
                     timeout=10
                 )
                 if response.ok:
@@ -4237,7 +4247,6 @@ class FlaskAppWrapper(object):
             # Block dangerous patterns - check for keywords as separate tokens
             dangerous_keywords = ['DROP', 'DELETE', 'INSERT', 'UPDATE', 'ALTER', 'CREATE', 'TRUNCATE', 'GRANT', 'REVOKE']
             # Split on non-word characters and check for exact keyword matches
-            import re
             tokens = set(re.findall(r'\b\w+\b', query_upper))
             for keyword in dangerous_keywords:
                 if keyword in tokens:

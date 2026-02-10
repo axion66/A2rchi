@@ -665,16 +665,16 @@ def run_all_tests():
     # Run tests
     tests = [
         ("Schema Creation", lambda: test_schema_creation()),
-        ("Connection Pool", lambda: test_connection_pool()),
-        ("UserService", lambda: test_user_service()),
+        ("Connection Pool", test_connection_pool),
+        ("UserService", test_user_service),
         ("ConversationService", lambda: test_conversation_service(test_user_id)),
         ("A/B Comparison V2", lambda: test_ab_comparison_v2(test_conv_id)),
-        ("Document Selection", lambda: test_document_selection_direct()),
+        ("Document Selection", test_document_selection_direct),
         ("BYOK Resolver", lambda: test_byok_resolver(test_user_id)),
-        ("CatalogService", lambda: test_catalog_service()),
-        ("DataViewerService", lambda: test_data_viewer_service()),
-        ("Vector Similarity", lambda: test_vector_similarity()),
-        ("Grafana Queries", lambda: test_grafana_queries()),
+        ("CatalogService", test_catalog_service),
+        ("DataViewerService", test_data_viewer_service),
+        ("Vector Similarity", test_vector_similarity),
+        ("Grafana Queries", test_grafana_queries),
     ]
     
     for name, test_func in tests:

@@ -197,7 +197,6 @@ test.describe('Data Viewer Page', () => {
     await page.waitForTimeout(500);
     
     // Categories should show enabled/total counts like "1/1"
-    const countPattern = /\d+\/\d+/;
     const counts = page.locator('text=/\\d+\\/\\d+/');
     await expect(counts.first()).toBeVisible();
   });
@@ -352,7 +351,6 @@ test.describe('Data Viewer Page', () => {
       await page.waitForTimeout(500);
       
       // Preview should no longer show "Select a document"
-      const placeholder = page.getByText('Select a document to preview');
       // Either it's hidden or replaced with actual content
     }
   });
@@ -418,7 +416,6 @@ test.describe('Data Viewer Page', () => {
     await page.waitForTimeout(300);
     
     // Disabled documents should have .disabled class
-    const disabledDoc = page.locator('.tree-file.disabled');
     // May or may not be visible depending on mock data
   });
 

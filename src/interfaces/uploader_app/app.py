@@ -57,6 +57,7 @@ class FlaskAppWrapper:
 
         self.auth_config = (self.services_config or {}).get("data_manager", {}).get("auth", {}) or {}
         self.auth_enabled = bool(self.auth_config.get("enabled", True))
+        self.api_token = (self.auth_config.get("api_token") or "").strip() or None
         self.admin_users = {
             user.strip().lower()
             for user in (self.auth_config.get("admins") or [])
@@ -123,6 +124,11 @@ class FlaskAppWrapper:
                 return handler(*args, **kwargs)
             if request.path.startswith("/api/"):
                 return handler(*args, **kwargs)
+            # Allow service-to-service calls authenticated via API token
+            if self.api_token:
+                auth_header = request.headers.get("Authorization", "")
+                if auth_header == f"Bearer {self.api_token}":
+                    return handler(*args, **kwargs)
             return redirect(url_for("login"))
 
         return wrapped

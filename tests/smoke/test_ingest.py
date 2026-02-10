@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Test script to run full document ingestion with chunking and embeddings."""
 import os
-import sys
 
 # Set environment before imports
 os.environ["ARCHI_CONFIGS_PATH"] = os.path.join(os.path.dirname(__file__), "local_dev_config/")

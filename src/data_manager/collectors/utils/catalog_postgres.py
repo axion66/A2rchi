@@ -1017,7 +1017,7 @@ class PostgresCatalogService:
         original file is not available on disk (e.g. pending documents).
         """
         metadata = self.get_metadata_for_hash(document_hash)
-        if not metadata:
+        if metadata is None:
             return None
 
         display_name = metadata.get("display_name", document_hash)
@@ -1124,7 +1124,9 @@ class PostgresCatalogService:
         column_to_key = {v: k for k, v in _METADATA_COLUMN_MAP.items()}
         for col in ["display_name", "source_type", "url", "ticket_id", "suffix", 
                     "size_bytes", "original_path", "base_path", "relative_path",
-                    "file_path", "file_modified_at", "ingested_at"]:
+                    "file_path", "file_modified_at", "ingested_at",
+                    "ingestion_status", "ingestion_error", "resource_hash",
+                    "git_repo"]:
             value = row.get(col)
             if value is None:
                 continue

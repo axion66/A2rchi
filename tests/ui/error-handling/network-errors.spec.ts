@@ -17,7 +17,7 @@ test.describe('Network Failure Handling', () => {
       await page.goto('/data');
 
       // Should show loading state
-      const hasLoadingIndicator = await page.evaluate(() => {
+      await page.evaluate(() => {
         return document.body.textContent?.includes('Loading') ||
                document.querySelector('.loading, .spinner') !== null;
       });
@@ -131,7 +131,7 @@ test.describe('Network Failure Handling', () => {
           await page.waitForTimeout(2000);
 
           // Should show error
-          const hasError = await page.evaluate(() => {
+          await page.evaluate(() => {
             return document.body.textContent?.toLowerCase().includes('error') ||
                    document.body.textContent?.toLowerCase().includes('failed');
           });
@@ -205,11 +205,6 @@ test.describe('Error Message Display', () => {
     });
 
     // Error should be shown, not hidden silently
-    const hasErrorInfo = 
-      errorContent.toast?.includes('error') ||
-      errorContent.toast?.includes('failed') ||
-      errorContent.error?.includes('error') ||
-      errorContent.body?.includes('error');
   });
 
   test('validation errors are displayed clearly', async ({ page }) => {
@@ -227,7 +222,7 @@ test.describe('Error Message Display', () => {
       await page.waitForTimeout(500);
 
       // Should show validation error
-      const hasValidationError = await page.evaluate(() => {
+      await page.evaluate(() => {
         const inputs = document.querySelectorAll('input');
         for (const input of inputs) {
           if (input.classList.contains('error') || 

@@ -289,7 +289,7 @@ async function fetchWithTimeout(resource, options = {}) {
 }
 
 async function populateDropdown() {
-    const API_URL = "/api/get_configs"
+    const API_URL = "/api/get_configs";
 
     try {
         const response = await fetch(API_URL);
@@ -784,7 +784,7 @@ const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
             client_id: clientId
         }),
         timeout: DEFAULT_TIMEOUT_SECS * 1000
-    }
+    };
 
     // send POST request to Flask API, get response and set the response as paragraph element text, console logging nice for debugging
     let responseData = null;
@@ -1220,7 +1220,7 @@ const showFeedbackRequest = () => {
 const handleOutgoingChat = () => {
     userText = chatInput.value.trim(); // Get chatInput value and remove extra spaces
     if(!userText) return; // If chatInput is empty return from here
-    conversation.push(["User", userText])
+    conversation.push(["User", userText]);
 
     // Clear the input field and reset its height
     chatInput.value = "";
