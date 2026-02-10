@@ -75,6 +75,12 @@ class DataManager():
             progress_callback("Flushing indices")
         self.persistence.flush_index()
 
+
+        # Verify catalog was updated
+        catalog = self.persistence.catalog
+        catalog.refresh()  # Ensure we have the latest data
+        logger.info(f"Catalog contains {len(catalog.file_index)} resources after flush")
+
         if progress_callback:
             progress_callback("Resetting vectorstore (if configured)")
         self.vector_manager.delete_existing_collection_if_reset()

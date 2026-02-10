@@ -361,14 +361,18 @@ class VectorStoreManager:
         Build a mapping of resource hash -> absolute path from the persisted index.
         """
         files_in_data: Dict[str, str] = {}
+        missing_files = []
+        skipped_dirs = []
         for resource_hash, stored_path in sources.items():
             path = Path(stored_path)
             if not path.exists():
+                missing_files.append((resource_hash, stored_path))
                 logger.warning(
                     f"Indexed resource '{resource_hash}' points to missing file: {stored_path}"
                 )
                 continue
             if path.is_dir():
+                skipped_dirs.append((resource_hash, stored_path))
                 logger.debug(
                     f"Indexed resource '{resource_hash}' points to a directory; skipping."
                 )
@@ -382,6 +386,12 @@ class VectorStoreManager:
                 continue
 
             files_in_data[resource_hash] = str(path)
+
+        if missing_files:
+            logger.warning(f"Found {len(missing_files)} missing files in catalog (first 5): {missing_files[:5]}")
+        if skipped_dirs:
+            logger.debug(f"Skipped {len(skipped_dirs)} directories in catalog")
+        logger.info(f"Collected {len(files_in_data)} valid indexed documents (after filtering missing/dirs)")
 
         return files_in_data
 
