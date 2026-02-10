@@ -22,11 +22,7 @@ class DataViewer {
     this.fileTree = new FileTree({
       onSelect: (hash) => this.selectDocument(hash),
       onToggle: (pathOrHash, enabled) => {
-        if (typeof enabled === 'boolean') {
-          this.toggleDocument(pathOrHash, enabled);
-        } else {
-          this.renderDocuments();
-        }
+        this.renderDocuments();
       }
     });
     
@@ -67,17 +63,6 @@ class DataViewer {
         this.filterType = e.target.value;
         this.renderDocuments();
       });
-    }
-    
-    // Bulk actions
-    const enableAllBtn = document.getElementById('enable-all-btn');
-    if (enableAllBtn) {
-      enableAllBtn.addEventListener('click', () => this.bulkEnable());
-    }
-    
-    const disableAllBtn = document.getElementById('disable-all-btn');
-    if (disableAllBtn) {
-      disableAllBtn.addEventListener('click', () => this.bulkDisable());
     }
     
     // Refresh
@@ -265,15 +250,6 @@ class DataViewer {
     const nameEl = document.getElementById('preview-name');
     if (nameEl) nameEl.textContent = doc.display_name;
     
-    const toggleEl = document.getElementById('preview-enabled');
-    if (toggleEl) {
-      toggleEl.checked = doc.enabled;
-      toggleEl.onchange = () => this.toggleDocument(doc.hash, toggleEl.checked);
-    }
-    
-    const toggleLabelEl = document.getElementById('toggle-label');
-    if (toggleLabelEl) toggleLabelEl.textContent = doc.enabled ? 'Enabled' : 'Disabled';
-    
     // Metadata
     const sourceNames = {
       'local_files': 'Local File',
@@ -417,113 +393,6 @@ class DataViewer {
     const toggleBtn = document.getElementById('chunk-view-toggle');
     if (toggleBtn) {
       toggleBtn.classList.toggle('active', show);
-    }
-  }
-
-  /**
-   * Toggle document enabled state
-   */
-  async toggleDocument(hash, enabled) {
-    if (!this.conversationId) {
-      toast.warning('Cannot modify documents without a chat session');
-      return;
-    }
-    
-    const endpoint = enabled ? 'enable' : 'disable';
-    
-    try {
-      const response = await fetch(`/api/data/documents/${hash}/${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversation_id: this.conversationId })
-      });
-      
-      if (!response.ok) throw new Error(`Failed to ${endpoint} document`);
-      
-      // Update local state
-      const doc = this.documents.find(d => d.hash === hash);
-      if (doc) {
-        doc.enabled = enabled;
-        this.renderDocuments();
-        
-        if (this.selectedDocument?.hash === hash) {
-          const toggleLabelEl = document.getElementById('toggle-label');
-          if (toggleLabelEl) toggleLabelEl.textContent = enabled ? 'Enabled' : 'Disabled';
-        }
-      }
-      
-      toast.success(`Document ${enabled ? 'enabled' : 'disabled'}`);
-      this.loadStats();
-    } catch (error) {
-      console.error(`Error ${endpoint}ing document:`, error);
-      toast.error(`Failed to ${endpoint} document`);
-      this.renderDocuments();
-    }
-  }
-
-  /**
-   * Bulk enable all documents
-   */
-  async bulkEnable() {
-    if (!this.conversationId) {
-      toast.warning('Cannot modify documents without a chat session');
-      return;
-    }
-    
-    const hashes = this.documents.map(d => d.hash);
-    
-    try {
-      const response = await fetch('/api/data/bulk-enable', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          conversation_id: this.conversationId,
-          hashes: hashes
-        })
-      });
-      
-      if (!response.ok) throw new Error('Failed to enable all');
-      
-      this.documents.forEach(d => d.enabled = true);
-      this.renderDocuments();
-      toast.success('All documents enabled');
-      this.loadStats();
-    } catch (error) {
-      console.error('Error enabling all:', error);
-      toast.error('Failed to enable all documents');
-    }
-  }
-
-  /**
-   * Bulk disable all documents
-   */
-  async bulkDisable() {
-    if (!this.conversationId) {
-      toast.warning('Cannot modify documents without a chat session');
-      return;
-    }
-    
-    const hashes = this.documents.map(d => d.hash);
-    
-    try {
-      const response = await fetch('/api/data/bulk-disable', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          conversation_id: this.conversationId,
-          hashes: hashes
-        })
-      });
-      
-      if (!response.ok) throw new Error('Failed to disable all');
-      
-      this.documents.forEach(d => d.enabled = false);
-      this.renderDocuments();
-      toast.success('All documents disabled');
-      this.loadStats();
-    } catch (error) {
-      console.error('Error disabling all:', error);
-      toast.error('Failed to disable all documents');
     }
   }
 

@@ -381,6 +381,9 @@
     Dropzone.autoDiscover = false;
   </script>
   
+  <!-- Theme init (must load before page renders) -->
+  <script src="{{ url_for('static', filename='modules/theme-init.js') }}"></script>
+  
   <!-- Shared modules -->
   <script src="{{ url_for('static', filename='modules/utils.js') }}"></script>
   <script src="{{ url_for('static', filename='modules/toast.js') }}"></script>

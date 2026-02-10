@@ -217,19 +217,6 @@ class FileTree {
   }
 
   /**
-   * Count enabled files in a tree node
-   */
-  countEnabled(node) {
-    let count = node.files ? node.files.filter(f => f.enabled).length : 0;
-    if (node.children) {
-      for (const child of Object.values(node.children)) {
-        count += this.countEnabled(child);
-      }
-    }
-    return count;
-  }
-
-  /**
    * Get all file hashes in a tree node
    */
   getAllHashes(node) {
@@ -346,9 +333,6 @@ class FileTree {
     const config = configs[type];
     const isTicket = type === 'ticket';
     const count = isTicket ? tree.length : this.countFiles(tree);
-    const enabledCount = isTicket 
-      ? tree.filter(t => t.enabled).length 
-      : this.countEnabled(tree);
     
     if (count === 0) {
       return ''; // Don't render empty categories
@@ -371,7 +355,7 @@ class FileTree {
           <span class="tree-toggle">${isExpanded ? this.icons.chevronDown : this.icons.chevronRight}</span>
           ${config.icon}
           <span class="tree-category-name">${config.label}</span>
-          <span class="tree-category-count">${enabledCount}/${count}</span>
+          <span class="tree-category-count">${count}</span>
         </div>
         <div class="tree-category-content ${isExpanded ? '' : 'collapsed'}">
           ${contentHtml}
@@ -403,7 +387,6 @@ class FileTree {
         const childPath = node.path + '/' + name;
         const isExpanded = this.isExpanded(childPath, depth);
         const fileCount = this.countFiles(child);
-        const enabledCount = this.countEnabled(child);
         
         html += `
           <div class="tree-folder" data-path="${this.escapeAttr(childPath)}">
@@ -412,7 +395,7 @@ class FileTree {
               <span class="tree-toggle">${isExpanded ? this.icons.chevronDown : this.icons.chevronRight}</span>
               ${this.icons.folderIcon}
               <span class="tree-folder-name">${this.escapeHtml(name)}</span>
-              <span class="tree-folder-count">${enabledCount}/${fileCount}</span>
+              <span class="tree-folder-count">${fileCount}</span>
             </div>
             <div class="tree-folder-content ${isExpanded ? '' : 'collapsed'}">
               ${this.renderTreeNode(child, type, depth + 1, selectedHash)}
@@ -435,14 +418,10 @@ class FileTree {
         const statusTitle = statusClass.charAt(0).toUpperCase() + statusClass.slice(1);
         
         html += `
-          <div class="tree-file ${isSelected ? 'selected' : ''} ${!file.enabled ? 'disabled' : ''}"
+          <div class="tree-file ${isSelected ? 'selected' : ''}"
                data-hash="${file.hash}"
                style="padding-left: ${depth * 16}px"
                onclick="fileTree.selectFile('${file.hash}')">
-            <label class="tree-checkbox" onclick="event.stopPropagation()">
-              <input type="checkbox" ${file.enabled ? 'checked' : ''} 
-                     onchange="fileTree.toggleFile('${file.hash}', this.checked)">
-            </label>
             ${fileIcon}
             <span class="tree-file-name" title="${this.escapeAttr(file.name)}">${this.escapeHtml(file.name)}</span>
             <span class="tree-status-dot ${statusClass}" title="${statusTitle}"></span>
@@ -465,13 +444,9 @@ class FileTree {
     return tickets.map(ticket => {
       const isSelected = ticket.hash === selectedHash;
       return `
-        <div class="tree-file ticket ${isSelected ? 'selected' : ''} ${!ticket.enabled ? 'disabled' : ''}"
+        <div class="tree-file ticket ${isSelected ? 'selected' : ''}"
              data-hash="${ticket.hash}"
              onclick="fileTree.selectFile('${ticket.hash}')">
-          <label class="tree-checkbox" onclick="event.stopPropagation()">
-            <input type="checkbox" ${ticket.enabled ? 'checked' : ''} 
-                   onchange="fileTree.toggleFile('${ticket.hash}', this.checked)">
-          </label>
           ${this.icons.ticket}
           <span class="tree-file-name" title="${this.escapeAttr(ticket.display_name)}">
             ${this.escapeHtml(ticket.display_name)}
@@ -526,13 +501,6 @@ class FileTree {
    */
   selectFile(hash) {
     this.onSelect(hash);
-  }
-
-  /**
-   * Handle file toggle (enable/disable)
-   */
-  toggleFile(hash, enabled) {
-    this.onToggle(hash, enabled);
   }
 
   /**

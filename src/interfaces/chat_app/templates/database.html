@@ -165,6 +165,9 @@ LIMIT 100;</textarea>
     </div>
   </div>
 
+  <!-- Theme init (must load before page renders) -->
+  <script src="{{ url_for('static', filename='modules/theme-init.js') }}"></script>
+  
   <!-- Database viewer module -->
   <script src="{{ url_for('static', filename='modules/database-viewer.js') }}"></script>
   <script>

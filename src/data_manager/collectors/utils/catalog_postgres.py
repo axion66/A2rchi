@@ -1011,41 +1011,90 @@ class PostgresCatalogService:
         
         return chunks
     def get_document_content(self, document_hash: str, max_size: int = 100000) -> Optional[Dict[str, Any]]:
-        """Get document content for preview."""
-        path = self.get_filepath_for_hash(document_hash)
-        if not path:
-            return None
-
+        """Get document content for preview.
+        
+        Falls back to chunk-based or metadata-based preview when the
+        original file is not available on disk (e.g. pending documents).
+        """
         metadata = self.get_metadata_for_hash(document_hash)
         if not metadata:
             return None
 
-        suffix = metadata.get("suffix", path.suffix).lower()
-        content_type_map = {
-            ".md": "text/markdown", ".txt": "text/plain", ".py": "text/x-python",
-            ".js": "text/javascript", ".html": "text/html", ".json": "application/json",
-            ".yaml": "text/yaml", ".yml": "text/yaml", ".csv": "text/csv",
-        }
-        content_type = content_type_map.get(suffix, "text/plain")
+        display_name = metadata.get("display_name", document_hash)
 
-        try:
-            size_bytes = path.stat().st_size
-            truncated = size_bytes > max_size
-            read_size = min(size_bytes, max_size)
+        # Try reading from the file on disk first
+        path = self.get_filepath_for_hash(document_hash)
+        if path:
+            suffix = metadata.get("suffix", path.suffix).lower()
+            content_type_map = {
+                ".md": "text/markdown", ".txt": "text/plain", ".py": "text/x-python",
+                ".js": "text/javascript", ".html": "text/html", ".json": "application/json",
+                ".yaml": "text/yaml", ".yml": "text/yaml", ".csv": "text/csv",
+            }
+            content_type = content_type_map.get(suffix, "text/plain")
 
-            with open(path, "r", encoding="utf-8", errors="replace") as f:
-                content = f.read(read_size)
-        except Exception as e:
-            logger.warning(f"Failed to read content for {document_hash}: {e}")
-            return None
+            try:
+                size_bytes = path.stat().st_size
+                truncated = size_bytes > max_size
+                read_size = min(size_bytes, max_size)
 
+                with open(path, "r", encoding="utf-8", errors="replace") as f:
+                    content = f.read(read_size)
+
+                return {
+                    "hash": document_hash,
+                    "display_name": display_name,
+                    "content": content,
+                    "content_type": content_type,
+                    "size_bytes": size_bytes,
+                    "truncated": truncated,
+                }
+            except Exception as e:
+                logger.warning(f"Failed to read content for {document_hash}: {e}")
+                # Fall through to chunk/metadata fallback
+
+        # Fallback: reconstruct content from stored chunks
+        chunks = self.get_document_chunks(document_hash)
+        if chunks:
+            content = "\n\n".join(c["text"] for c in chunks)
+            if len(content) > max_size:
+                content = content[:max_size]
+                truncated = True
+            else:
+                truncated = False
+            return {
+                "hash": document_hash,
+                "display_name": display_name,
+                "content": content,
+                "content_type": "text/plain",
+                "size_bytes": len(content),
+                "truncated": truncated,
+                "source": "chunks",
+            }
+
+        # Fallback: metadata-only preview for pending documents
+        status = metadata.get("ingestion_status", "pending")
+        url = metadata.get("url", "")
+        source_type = metadata.get("source_type", "unknown")
+        lines = [f"# {display_name}", ""]
+        if url:
+            lines.append(f"**URL:** {url}")
+        lines.append(f"**Source:** {source_type}")
+        lines.append(f"**Status:** {status}")
+        if status == "pending":
+            lines.extend(["", "_Content will be available after documents are processed (embedded)._"])
+        elif status == "failed":
+            error = metadata.get("ingestion_error", "Unknown error")
+            lines.extend(["", f"**Error:** {error}"])
+        content = "\n".join(lines)
         return {
             "hash": document_hash,
-            "display_name": metadata.get("display_name", document_hash),
+            "display_name": display_name,
             "content": content,
-            "content_type": content_type,
-            "size_bytes": size_bytes,
-            "truncated": truncated,
+            "content_type": "text/markdown",
+            "size_bytes": 0,
+            "truncated": False,
+            "source": "metadata",
         }
 
     def _resolve_path(self, stored_path: str) -> Path:
