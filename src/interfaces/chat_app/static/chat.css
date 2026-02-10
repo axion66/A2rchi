@@ -1243,7 +1243,6 @@ body {
 }
 
 .message-meta {
-  margin-left: 28px;
   margin-top: 6px;
   font-size: var(--text-xs);
   color: var(--text-tertiary);
@@ -1254,7 +1253,6 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-left: 28px;
   margin-top: 8px;
   opacity: 0;
   transition: opacity 0.15s ease;

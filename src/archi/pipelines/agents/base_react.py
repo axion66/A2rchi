@@ -150,18 +150,36 @@ class BaseReActAgent:
 
     def _extract_usage_from_messages(self, messages: List[BaseMessage]) -> Optional[Dict[str, int]]:
         """
-        Extract token usage from the last AI message with response_metadata.
-        Returns normalized usage dict with prompt_tokens, completion_tokens, total_tokens.
+        Sum token usage across ALL AI messages in the turn.
+        
+        In a multi-step agent loop, the LLM is called multiple times
+        (thinking, tool decisions, final answer). Each call reports its
+        own prompt_tokens and completion_tokens. We sum them to show
+        total token throughput for the entire turn.
         """
-        for msg in reversed(messages):
+        total_prompt = 0
+        total_completion = 0
+        found_any = False
+        
+        for msg in messages:
             msg_type = str(getattr(msg, "type", "")).lower()
             if msg_type not in {"ai", "assistant"} and "ai" not in type(msg).__name__.lower():
                 continue
             response_metadata = getattr(msg, "response_metadata", None)
             usage = self._extract_usage_from_metadata(response_metadata)
             if usage:
-                return usage
-        return None
+                total_prompt += usage.get("prompt_tokens", 0)
+                total_completion += usage.get("completion_tokens", 0)
+                found_any = True
+        
+        if not found_any:
+            return None
+        
+        return {
+            "prompt_tokens": total_prompt,
+            "completion_tokens": total_completion,
+            "total_tokens": total_prompt + total_completion,
+        }
 
     def _extract_model_from_messages(self, messages: List[BaseMessage]) -> Optional[str]:
         """Extract model name from the last AI message with response_metadata."""

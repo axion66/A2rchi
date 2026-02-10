@@ -1662,6 +1662,17 @@ class ChatWrapper:
                 usage = last_output.metadata.get("usage")
                 model = last_output.metadata.get("model")
             
+            # Append usage summary to trace events so it's available in historical views
+            if usage:
+                trace_events.append({
+                    "type": "usage",
+                    "prompt_tokens": usage.get("prompt_tokens", 0),
+                    "completion_tokens": usage.get("completion_tokens", 0),
+                    "total_tokens": usage.get("total_tokens", 0),
+                    "context_window": usage.get("context_window", 0),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+
             # Update trace with final state
             if trace_id:
                 user_message_id = message_ids[0] if message_ids and len(message_ids) > 1 else None

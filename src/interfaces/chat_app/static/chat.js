@@ -1939,6 +1939,10 @@ const UI = {
           </button>
         </div>
         <div class="trace-content">
+          <div class="context-meter" style="display: none;">
+            <div class="meter-bar"><div class="meter-fill"></div></div>
+            <span class="meter-label">Calculating...</span>
+          </div>
           <div class="step-timeline"></div>
         </div>
       </div>`;
@@ -1952,6 +1956,7 @@ const UI = {
     // Process events and add steps
     const toolStartEvents = {};
     const thinkingEvents = {};
+    let usageData = null;
 
     for (const event of events) {
       if (event.type === 'thinking_start') {
@@ -1965,11 +1970,18 @@ const UI = {
         toolStartEvents[event.tool_call_id] = event;
         // Add the tool step immediately
         this.addHistoricalToolStep(timeline, event, null);
-      } else if (event.type === 'tool_end' || event.type === 'tool_result') {
+      } else if (event.type === 'tool_end' || event.type === 'tool_result' || event.type === 'tool_output') {
         const startEvent = toolStartEvents[event.tool_call_id];
         // Update the tool step with output
         this.updateHistoricalToolStep(timeline, event, startEvent);
+      } else if (event.type === 'usage') {
+        usageData = event;
       }
+    }
+
+    // Populate context meter if usage data is available
+    if (usageData) {
+      this.updateContextMeter(messageId, usageData);
     }
   },
 
