@@ -106,10 +106,6 @@ CREATE TABLE dynamic_config (
     bm25_weight NUMERIC(3,2) NOT NULL DEFAULT 0.3,
     semantic_weight NUMERIC(3,2) NOT NULL DEFAULT 0.7,
     
-    -- BM25 parameters
-    bm25_k1 NUMERIC(4,2) NOT NULL DEFAULT 1.2,
-    bm25_b NUMERIC(3,2) NOT NULL DEFAULT 0.75,
-    
     -- Schedules
     ingestion_schedule VARCHAR(100) NOT NULL DEFAULT '',  -- Cron expression
     
@@ -129,8 +125,7 @@ CREATE TABLE dynamic_config (
 | **Model** | `active_pipeline`, `active_model`, `temperature`, `max_tokens` | Which model/pipeline to use |
 | **Generation** | `top_p`, `top_k`, `repetition_penalty` | Fine-tuning generation behavior |
 | **Prompts** | `active_*_prompt` | Which prompt files to use |
-| **Retrieval** | `num_documents_to_retrieve`, `use_hybrid_search`, `*_weight` | RAG retrieval tuning |
-| **BM25** | `bm25_k1`, `bm25_b` | BM25 algorithm parameters |
+| **Retrieval** | `num_documents_to_retrieve`, `use_hybrid_search`, `bm25_weight`, `semantic_weight` | RAG retrieval tuning |
 
 ---
 

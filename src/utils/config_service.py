@@ -523,7 +523,7 @@ class ConfigService:
                            system_prompt, top_p, top_k, repetition_penalty,
                            active_condense_prompt, active_chat_prompt, active_system_prompt,
                            num_documents_to_retrieve, use_hybrid_search, bm25_weight, semantic_weight,
-                           bm25_k1, bm25_b, ingestion_schedule, source_schedules, verbosity, updated_at, updated_by
+                           ingestion_schedule, source_schedules, verbosity, updated_at, updated_by
                     FROM dynamic_config
                     WHERE id = 1
                     """
