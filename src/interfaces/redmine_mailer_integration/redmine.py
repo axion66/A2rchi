@@ -7,25 +7,25 @@ import psycopg2
 import psycopg2.extras
 from redminelib import Redmine as RedmineClient
 
-from src.a2rchi.a2rchi import A2rchi
-from src.data_manager.collectors.utils.index_utils import CatalogService
+from src.archi.archi import archi
+from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
 from src.data_manager.data_manager import DataManager
 from src.interfaces.redmine_mailer_integration.utils import sender
-from src.utils.config_loader import load_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.utils.sql import SQL_INSERT_CONVO, SQL_UPSERT_CONVERSATION_METADATA
+from src.utils.config_access import get_full_config, get_global_config, get_services_config
 
 logger = get_logger(__name__)
 
 # DEFINITIONS
-A2RCHI_PATTERN = '-- A2rchi --'
+ARCHI_PATTERN = '-- archi --'
 
 
 class RedmineAIWrapper:
     """
     Wrapper which holds functionality for the redminebot. Way of interaction
-    between redmine and A2rchi core.
+    between redmine and archi core.
     """
 
     def __init__(self):
@@ -34,14 +34,14 @@ class RedmineAIWrapper:
         self.data_manager = DataManager(run_ingestion=False)
 
         # configs
-        self.config = load_config()
-        self.global_config = self.config["global"]
-        self.services_config = self.config["services"]
+        self.config = get_full_config()
+        self.global_config = get_global_config()
+        self.services_config = get_services_config()
         self.redmine_config = self.services_config.get("redmine_mailbox", {})
         self.data_path = self.global_config["DATA_PATH"]
 
         # agent
-        self.a2rchi = A2rchi(pipeline=self.redmine_config.get("pipeline", "CMSCompOpsAgent"))
+        self.archi = archi(pipeline=self.redmine_config.get("pipeline", "CMSCompOpsAgent"))
 
         # postgres connection info
         self.pg_config = {
@@ -56,7 +56,7 @@ class RedmineAIWrapper:
     def prepare_context_for_storage(self, source_documents):
         
         # load the present list of sources
-        sources = CatalogService.load_sources_catalog(self.data_path, self.pg_config)
+        sources = PostgresCatalogService.load_sources_catalog(self.data_path, self.pg_config)
 
         num_retrieved_docs = len(source_documents)
         context = ""
@@ -70,7 +70,7 @@ class RedmineAIWrapper:
 
         return link, context
 
-    def insert_conversation(self, issue_id, user_message, a2rchi_message, link, a2rchi_context, ts):
+    def insert_conversation(self, issue_id, user_message, archi_message, link, archi_context, ts):
         logger.info("Storing interaction to postgres")
 
         service = "Redmine"
@@ -82,7 +82,7 @@ class RedmineAIWrapper:
             [
                 # (service, issue_id, sender, content, context, ts) -- same ts for both just to have, not as interested in timing info for redmine service...
                 (service, issue_id, "User", user_message, '', '', ts, self.config_id),
-                (service, issue_id, "A2rchi", a2rchi_message, link, a2rchi_context, ts, self.config_id),
+                (service, issue_id, "archi", archi_message, link, archi_context, ts, self.config_id),
             ]
         )
 
@@ -115,14 +115,14 @@ class RedmineAIWrapper:
             if "ISSUE_ID:" in entry[1]:
                 role = "Expert"
             else:
-                role = "A2rchi"
+                role = "archi"
             message = RedmineAIWrapper.get_substring_between(entry[1],"\n\nRe:","\r\nOn ")
             reformatted_history.append((role,message))
         reformatted_history[0] = ("Expert", reformatted_history[0][1])
         reformatted_history[-1] = ("User", reformatted_history[-1][1])
 
         # execute chain and get answer
-        result = self.a2rchi(history=reformatted_history)
+        result = self.archi(history=reformatted_history)
         answer = result.answer
 
         # prepare other information for storage
@@ -168,8 +168,7 @@ class Redmine:
             self.ai_wrapper = RedmineAIWrapper()
 
         # read configuration for Redmine mailbox service
-        config = load_config()
-        services_config = config.get("services", {}) if isinstance(config, dict) else {}
+        services_config = get_services_config()
         redmine_mailbox_config = services_config.get("redmine_mailbox", {})
 
         self.redmine_url = redmine_mailbox_config.get("url")
@@ -239,7 +238,7 @@ class Redmine:
         for record in issue.journals:
             user = self.redmine.user.get(record.user.id)
             note = record.notes
-            if note != '' and A2RCHI_PATTERN not in note:
+            if note != '' and ARCHI_PATTERN not in note:
                 history.append((user.login,note))
         return history
     
@@ -300,7 +299,7 @@ class Redmine:
                     traceback.print_exc()
                     answer = "I am sorry, I am not able to process this request at the moment. Please continue with this ticket manually."
                 self.add_note_to_issue(issue.id,answer)
-                logger.info(f"A2rchi's response:\n {answer}")
+                logger.info(f"archi's response:\n {answer}")
                 self.feedback_issue(issue.id)
         logger.info("redmine.process_new_issues: %d"%(len(issue_ids)))
         return issue_ids
@@ -319,7 +318,7 @@ class Redmine:
                 cc = issue.custom_fields[1]['value']
                 note = ''
                 for record in issue.journals:
-                    if record.notes and record.notes != "" and A2RCHI_PATTERN not in record.notes:
+                    if record.notes and record.notes != "" and ARCHI_PATTERN not in record.notes:
                         note = record.notes
                 logger.info(f"\n TO:{to}\n CC:{cc}\n SUBJECT:{subject}\nISSUE_ID:{issue.id} (leave for reference)\n\n{note}\n\n> {issue.description}")
                 note = f"\nISSUE_ID:{issue.id} (leave for reference)\n\n{note}"
@@ -338,7 +337,7 @@ class Redmine:
         Moving the issue in the 'closed' status
         """
         self.redmine.issue.update(issue_id,status_id=self.status_dict['Closed'],
-                                  notes=f'{A2RCHI_PATTERN} Resolving email was sent:\n{answer}')
+                                  notes=f'{ARCHI_PATTERN} Resolving email was sent:\n{answer}')
         return
     
     def feedback_issue(self,issue_id):
@@ -346,7 +345,7 @@ class Redmine:
         Moving the issue in the 'feedback' status
         """
         self.redmine.issue.update(issue_id,status_id=self.status_dict['Feedback'],
-                                  notes=f'{A2RCHI_PATTERN} Moved into feedback.')
+                                  notes=f'{ARCHI_PATTERN} Moved into feedback.')
         return
 
     def show_issue(self,issue_id):

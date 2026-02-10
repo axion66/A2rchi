@@ -28,7 +28,7 @@ class ServiceDefinition:
     port_config_path: Optional[str] = None
     
     # Volume naming strategy
-    volume_name_pattern: Optional[str] = None  # e.g., "a2rchi-{name}", "a2rchi-pg-{name}"
+    volume_name_pattern: Optional[str] = None  # e.g., "archi-{name}", "archi-pg-{name}"
     
     def get_volume_name(self, deployment_name: str) -> Optional[str]:
         """Generate volume name for this service"""
@@ -39,7 +39,7 @@ class ServiceDefinition:
             return self.volume_name_pattern.format(name=deployment_name)
         else:
             # Default pattern
-            return f"a2rchi-{deployment_name}"
+            return f"archi-{deployment_name}"
     
     def get_image_name(self, deployment_name: str) -> Optional[str]:
         """Generate image name for this service"""
@@ -72,19 +72,7 @@ class ServiceRegistry:
             default_host_port=7871,
             default_container_port=7871,
             port_config_path='services.data_manager',
-            volume_name_pattern="a2rchi-data-{name}"
-        ))
-
-        self.register(ServiceDefinition(
-            name='chromadb',
-            description='Vector database for document storage and retrieval',
-            category='infrastructure',
-            requires_volume=True,
-            auto_enable=True,
-            default_host_port=8000,
-            default_container_port=8000,
-            port_config_path='services.chromadb',
-            volume_name_pattern="a2rchi-chroma-{name}",
+            volume_name_pattern="archi-data-{name}"
         ))
         
         self.register(ServiceDefinition(
@@ -93,7 +81,7 @@ class ServiceRegistry:
             category='infrastructure',
             requires_volume=True,
             auto_enable=True,
-            volume_name_pattern="a2rchi-pg-{name}"
+            volume_name_pattern="archi-pg-{name}"
         ))
         
         # Application services
@@ -102,7 +90,7 @@ class ServiceRegistry:
             description='Interactive chat interface for users to communicate with the AI agent',
             category='application',
             requires_volume=True,
-            depends_on=['chromadb', 'postgres'],
+            depends_on=['postgres'],
             required_secrets=[],
             default_host_port=7861,
             default_container_port=7861,
@@ -119,7 +107,7 @@ class ServiceRegistry:
             default_host_port=3000,
             default_container_port=3000,
             port_config_path='services.grafana',
-            volume_name_pattern="a2rchi-grafana-{name}"
+            volume_name_pattern="archi-grafana-{name}"
         ))
         
         self.register(ServiceDefinition(
@@ -140,7 +128,7 @@ class ServiceRegistry:
             description='Integration service for Piazza posts and Slack notifications',
             category='integration',
             requires_volume=True,
-            depends_on=['chromadb', 'postgres'],
+            depends_on=['postgres'],
             required_secrets=['PIAZZA_EMAIL', 'PIAZZA_PASSWORD', 'SLACK_WEBHOOK']
         ))
         
@@ -165,11 +153,11 @@ class ServiceRegistry:
 
         self.register(ServiceDefinition(
             name='benchmarking',
-            depends_on=['chromadb', 'postgres'],
+            depends_on=['postgres'],
             requires_volume=True, 
             description='Benchmarking runtime, its not really a service but under the hood it will be',
             category='benchmarking runtime', # not technically a service
-            volume_name_pattern="a2rchi-benchmark-{name}",
+            volume_name_pattern="archi-benchmark-{name}",
         ))
     
     def register(self, service_def: ServiceDefinition):

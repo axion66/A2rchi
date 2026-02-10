@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from git import Repo
 from mkdocs.utils.yaml import yaml_load
 
-from src.utils.config_loader import load_global_config
+from src.utils.config_access import get_global_config
 from src.data_manager.collectors.scrapers.scraped_resource import ScrapedResource
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from src.data_manager.collectors.scrapers.scraper_manager import \
         ScraperManager
 
-global_config = load_global_config()
+global_config = get_global_config()
 
 class GitScraper:
     """Scraper integration that clones Git repositories and indexes MkDocs sites and code files."""
@@ -89,10 +89,11 @@ class GitScraper:
         self.git_token = read_secret("GIT_TOKEN")
         self._credentials_available = bool(self.git_username and self.git_token)
         if not self._credentials_available:
-            logger.info("No git credentials supplied; git scraping will be skipped.")
+            logger.info("No git credentials supplied; git scraping will not work for private repositories.")
 
     def collect(self, git_urls: List[str]) -> List[ScrapedResource]:
-        if not self._credentials_available or not git_urls:
+        if not git_urls:
+            logger.warning("No git URLs provided for scraping; skipping git scraper.")
             return []
 
         harvested: List[ScrapedResource] = []
@@ -231,7 +232,6 @@ class GitScraper:
                     "repo_path": str(rel_path),
                     "parent": repo_name,
                     "ref": ref,
-                    "file_name": file_path.name,
                 },
                 file_name=file_path.name,
                 relative_path=str(relative_path),

@@ -47,7 +47,7 @@ class ScrapedResource(BaseResource):
         return self.content
 
     def get_metadata(self) -> ResourceMetadata:
-        extra = {str(k): str(v) for k, v in (self.metadata or {}).items()}
+        extra = {str(k): str(v) for k, v in (self.metadata or {}).items() if k != "file_name"}
         extra.setdefault("url", self.url)
         extra.setdefault("suffix", self.suffix)
         extra.setdefault("source_type", self.source_type)

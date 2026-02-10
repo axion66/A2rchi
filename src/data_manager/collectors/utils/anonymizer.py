@@ -7,7 +7,7 @@ from typing import List, Set
 
 import spacy
 
-from src.utils.config_loader import load_data_manager_config
+from src.utils.yaml_config import load_data_manager_config
 
 
 class Anonymizer:

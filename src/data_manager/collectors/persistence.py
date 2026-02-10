@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, TYPE_CHECKING, Union
 
-from src.data_manager.collectors.utils.index_utils import CatalogService
+from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
 from src.utils.logging import get_logger
 
 if TYPE_CHECKING:
@@ -19,7 +19,7 @@ class PersistenceService:
         self.data_path = Path(data_path)
         self.pg_config = pg_config
 
-        self.catalog = CatalogService(self.data_path, pg_config=self.pg_config)
+        self.catalog = PostgresCatalogService(self.data_path, pg_config=self.pg_config)
 
     def persist_resource(self, resource: "BaseResource", target_dir: Path, overwrite:bool = False) -> Path:
         """

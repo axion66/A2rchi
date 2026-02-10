@@ -12,7 +12,7 @@ data_manager:
         - examples/benchmarking/ppc.list 
   embedding_name: HuggingFaceEmbeddings
 
-a2rchi:
+archi:
   pipelines: 
    - QAPipeline
   pipeline_map:
@@ -49,7 +49,4 @@ services:
         embedding_model: "HuggingFace"
         timeout: 200
         batch_size: 5
-  chromadb:
-    # running in hostmode, want to avoid taking the default chromadb port (8000) since it's usually taken by host already
-    chromadb_port: 8003
-    chromadb_external_port: 8003
+  # Vector storage uses PostgreSQL with pgvector (only supported backend)

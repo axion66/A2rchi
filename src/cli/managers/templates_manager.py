@@ -20,10 +20,10 @@ logger = get_logger(__name__)
 # Template file constants
 BASE_CONFIG_TEMPLATE = "base-config.yaml"
 BASE_COMPOSE_TEMPLATE = "base-compose.yaml"
-BASE_INIT_SQL_TEMPLATE = "base-init.sql"
+BASE_INIT_SQL_TEMPLATE = "init.sql"  # PostgreSQL + pgvector schema
 BASE_GRAFANA_DATASOURCES_TEMPLATE = "grafana/datasources.yaml"
 BASE_GRAFANA_DASHBOARDS_TEMPLATE = "grafana/dashboards.yaml"
-BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE = "grafana/a2rchi-default-dashboard.json"
+BASE_GRAFANA_ARCHI_DEFAULT_DASHBOARDS_TEMPLATE = "grafana/archi-default-dashboard.json"
 BASE_GRAFANA_CONFIG_TEMPLATE = "grafana/grafana.ini"
 
 
@@ -148,7 +148,35 @@ class TemplateManager:
 
     # individual stages
     def _stage_prompts(self, context: TemplateContext) -> None:
+        # Copy default prompt templates (condense/, chat/, system/ structure)
+        self._copy_default_prompts(context)
+        # Collect pipeline-specific prompt mappings
         context.prompt_mappings = self._collect_prompt_mappings(context)
+
+    def _copy_default_prompts(self, context: TemplateContext) -> None:
+        """Copy default prompt templates to deployment for PromptService."""
+        # Source from examples/defaults/prompts/ (not source code)
+        repo_root = Path(__file__).parent.parent.parent.parent
+        defaults_prompts_dir = repo_root / "examples" / "defaults" / "prompts"
+        # Deploy to data/prompts/ (admin-editable location)
+        deployment_prompts_dir = context.base_dir / "data" / "prompts"
+        
+        if not defaults_prompts_dir.exists():
+            logger.warning(f"Default prompts directory not found: {defaults_prompts_dir}")
+            return
+        
+        # Copy the entire prompts directory structure (condense/, chat/, system/)
+        for prompt_type in ["condense", "chat", "system"]:
+            src_dir = defaults_prompts_dir / prompt_type
+            dst_dir = deployment_prompts_dir / prompt_type
+            
+            if src_dir.exists():
+                dst_dir.mkdir(parents=True, exist_ok=True)
+                for prompt_file in src_dir.glob("*.prompt"):
+                    dst_file = dst_dir / prompt_file.name
+                    if not dst_file.exists():  # Don't overwrite existing prompts
+                        shutil.copyfile(prompt_file, dst_file)
+                        logger.debug(f"Copied default prompt: {prompt_type}/{prompt_file.name}")
 
     def _stage_configs(self, context: TemplateContext) -> None:
         self._render_config_files(context)
@@ -189,8 +217,9 @@ class TemplateManager:
 
     # prompt preparation
     def _collect_prompt_mappings(self, context: TemplateContext) -> Dict[str, Dict[str, str]]:
-        prompts_path = context.base_dir / "prompts"
-        prompts_path.mkdir(exist_ok=True)
+        # Config-specified prompts go to data/prompts/ (same as default prompts)
+        prompts_path = context.base_dir / "data" / "prompts"
+        prompts_path.mkdir(parents=True, exist_ok=True)
 
         configs = context.config_manager.get_configs()
         prompt_mappings: Dict[str, Dict[str, str]] = {}
@@ -198,9 +227,9 @@ class TemplateManager:
             name = config["name"]
             config_path = config.get("_config_path")
             config_dir = Path(config_path).expanduser().parent if config_path else None
-            pipeline_names = config.get("a2rchi", {}).get("pipelines") or []
+            pipeline_names = config.get("archi", {}).get("pipelines") or []
             for pipeline_name in pipeline_names:
-                pipeline_config = config.get("a2rchi", {}).get("pipeline_map", {}).get(pipeline_name, {})
+                pipeline_config = config.get("archi", {}).get("pipeline_map", {}).get(pipeline_name, {})
                 prompts_config = pipeline_config.get("prompts", {})
                 prompt_mappings[name] = self._copy_pipeline_prompts(
                     context.base_dir,
@@ -236,11 +265,11 @@ class TemplateManager:
                     logger.warning(f"Prompt file not found: {prompt_path}")
                     continue
 
-                target_path = base_dir / "prompts" / source_path.name
+                target_path = base_dir / "data" / "prompts" / source_path.name
                 target_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source_path, target_path)
 
-                prompt_mappings[prompt_key] = f"/root/A2rchi/prompts/{source_path.name}"
+                prompt_mappings[prompt_key] = f"/root/archi/data/prompts/{source_path.name}"
                 logger.debug(f"Copied prompt {prompt_key} to {target_path}")
 
         return prompt_mappings
@@ -250,17 +279,18 @@ class TemplateManager:
         configs_path = context.base_dir / "configs"
         configs_path.mkdir(exist_ok=True)
 
-        a2rchi_configs = context.config_manager.get_configs()
-        for a2rchi_config in a2rchi_configs:
-            name = a2rchi_config["name"]
-            updated_config = copy.deepcopy(a2rchi_config)
+        archi_configs = context.config_manager.get_configs()
+        single_mode = len(archi_configs) == 1
+        for archi_config in archi_configs:
+            name = archi_config["name"]
+            updated_config = copy.deepcopy(archi_config)
 
             prompt_mapping = context.prompt_mappings.get(name, {})
-            pipeline_names = updated_config.get("a2rchi", {}).get("pipelines") or []
+            pipeline_names = updated_config.get("archi", {}).get("pipelines") or []
 
             for pipeline_name in pipeline_names:
                 pipeline_config = (
-                    updated_config.get("a2rchi", {}).get("pipeline_map", {}).get(pipeline_name, {})
+                    updated_config.get("archi", {}).get("pipeline_map", {}).get(pipeline_name, {})
                 )
                 prompts_config = pipeline_config.get("prompts", {})
 
@@ -282,9 +312,10 @@ class TemplateManager:
             config_template = self.env.get_template(BASE_CONFIG_TEMPLATE)
             config_rendered = config_template.render(verbosity=context.plan.verbosity, **updated_config)
 
-            with open(configs_path / f"{name}.yaml", "w") as f:
+            target_name = "config.yaml" if single_mode else f"{name}.yaml"
+            with open(configs_path / target_name, "w") as f:
                 f.write(config_rendered)
-            logger.info(f"Rendered configuration file {configs_path / name}.yaml")
+            logger.info(f"Rendered configuration file {configs_path / target_name}")
 
     # service-specific assets
     def _render_grafana_assets(self, context: TemplateContext) -> None:
@@ -312,11 +343,11 @@ class TemplateManager:
         configs = context.config_manager.get_configs()
         palette = assign_feedback_palette(configs)
 
-        dashboard_template = self.env.get_template(BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE)
+        dashboard_template = self.env.get_template(BASE_GRAFANA_ARCHI_DEFAULT_DASHBOARDS_TEMPLATE)
         dashboard = dashboard_template.render(
             feedback_palette=palette,
         )
-        with open(grafana_dir / "a2rchi-default-dashboard.json", "w") as f:
+        with open(grafana_dir / "archi-default-dashboard.json", "w") as f:
             f.write(dashboard)
 
         config_template = self.env.get_template(BASE_GRAFANA_CONFIG_TEMPLATE)
@@ -325,8 +356,8 @@ class TemplateManager:
             f.write(grafana_config)
 
     def _copy_grader_assets(self, context: TemplateContext) -> None:
-        a2rchi_config = context.config_manager.get_configs()[0]
-        grader_config = a2rchi_config.get("services", {}).get("grader_app", {})
+        archi_config = context.config_manager.get_configs()[0]
+        grader_config = archi_config.get("services", {}).get("grader_app", {})
 
         users_csv_dir = grader_config.get("local_users_csv_dir")
         if users_csv_dir:
@@ -350,17 +381,45 @@ class TemplateManager:
         grafana_pg_password = (
             context.secrets_manager.get_secret("GRAFANA_PG_PASSWORD") if grafana_enabled else ""
         )
-
+        
+        # PostgreSQL + pgvector schema
         init_sql_template = self.env.get_template(BASE_INIT_SQL_TEMPLATE)
+        
+        # Get embedding dimensions from data_manager config
+        data_manager_config = context.config_manager.config.get("data_manager", {})
+        embedding_class_map = data_manager_config.get("embedding_class_map", {})
+        embedding_name = data_manager_config.get("embedding_name", "all-MiniLM-L6-v2")
+        
+        # Default dimensions based on common embedding models
+        default_dimensions = {
+            "all-MiniLM-L6-v2": 384,
+            "text-embedding-ada-002": 1536,
+            "text-embedding-3-small": 1536,
+            "text-embedding-3-large": 3072,
+        }
+        embedding_dimensions = default_dimensions.get(embedding_name, 384)
+        
+        # Allow override from config
+        if embedding_name in embedding_class_map:
+            embedding_dimensions = embedding_class_map[embedding_name].get(
+                "dimensions", embedding_dimensions
+            )
+        
         init_sql = init_sql_template.render(
             use_grafana=grafana_enabled,
             grafana_pg_password=grafana_pg_password,
+            embedding_dimensions=embedding_dimensions,
+            # Vector index settings (optional overrides)
+            vector_index_type=data_manager_config.get("vector_index_type", "hnsw"),
+            vector_index_hnsw_m=data_manager_config.get("vector_index_hnsw_m", 16),
+            vector_index_hnsw_ef=data_manager_config.get("vector_index_hnsw_ef", 64),
         )
-
         dest = context.base_dir / "init.sql"
+
         with open(dest, "w") as f:
             f.write(init_sql)
         logger.debug(f"Wrote PostgreSQL init script to {dest}")
+
 
     def _render_compose_file(self, context: TemplateContext) -> None:
         template_vars = context.plan.to_template_vars()
@@ -500,8 +559,8 @@ class TemplateManager:
         return None
 
     def _get_grader_rubrics(self, config_manager) -> List[str]:
-        a2rchi_config = config_manager.get_configs()[0]
-        grader_config = a2rchi_config.get('services', {}).get('grader_app', {})
+        archi_config = config_manager.get_configs()[0]
+        grader_config = archi_config.get('services', {}).get('grader_app', {})
         num_problems = grader_config.get('num_problems', 1)
         return [f"solution_with_rubric_{i}" for i in range(1, num_problems + 1)]
 
@@ -574,7 +633,7 @@ class TemplateManager:
             repo_root = Path(__file__).resolve()
 
         source_files = [
-            ("src", "a2rchi_code"),
+            ("src", "archi_code"),
             ("pyproject.toml", "pyproject.toml"),
             ("LICENSE", "LICENSE"),
         ]
