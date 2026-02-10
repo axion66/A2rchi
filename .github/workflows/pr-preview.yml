@@ -126,8 +126,10 @@ jobs:
 
       - name: Install archi CLI
         run: |
-          python3 -m venv /tmp/ci-venv
-          . /tmp/ci-venv/bin/activate
+          CI_VENV="/tmp/ci-venv-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "CI_VENV=$CI_VENV" >> "$GITHUB_ENV"
+          python3 -m venv "$CI_VENV"
+          . "$CI_VENV/bin/activate"
           python -m pip install --upgrade pip
           pip install ".[all]" || pip install .
 
@@ -176,3 +178,13 @@ jobs:
           docker rmi "localhost/archi/archi-python-base:latest" || true
           docker rmi "localhost/archi/archi-pytorch-base:latest" || true
           echo "Cleanup complete"
+
+      - name: Cleanup CI virtualenv
+        if: ${{ always() }}
+        run: |
+          if [[ -n "${CI_VENV:-}" && -d "$CI_VENV" ]]; then
+            rm -rf "$CI_VENV"
+            echo "Removed virtualenv: $CI_VENV"
+          else
+            echo "No CI virtualenv to remove"
+          fi
