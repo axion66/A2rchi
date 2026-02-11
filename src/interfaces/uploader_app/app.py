@@ -123,8 +123,6 @@ class FlaskAppWrapper:
                 return handler(*args, **kwargs)
             if session.get("admin_logged_in"):
                 return handler(*args, **kwargs)
-            if request.path.startswith("/api/"):
-                return handler(*args, **kwargs)
             # Allow service-to-service calls authenticated via API token
             if self.api_token:
                 auth_header = request.headers.get("Authorization", "")
@@ -171,7 +169,7 @@ class FlaskAppWrapper:
         return redirect(url_for("login"))
 
     def health(self):
-        return jsonify({"status": "OK"}, 200)
+        return jsonify({"status": "OK"}), 200
 
     def index(self):
         return redirect(url_for("document_index"))
@@ -334,13 +332,14 @@ class FlaskAppWrapper:
             except Exception as exc:
                 logger.exception("Failed to upload URL: %s", exc)
                 added_to_urls = False
+                upload_error = str(exc)
 
             if added_to_urls:
                 logger.info("URL uploaded successfully")
                 self._notify_update()
                 return jsonify({"status": "ok"})
             else:
-                return jsonify({"error": "upload_failed", "detail": str(exc)}), 500
+                return jsonify({"error": "upload_failed", "detail": upload_error}), 500
         else:
             return jsonify({"error": "missing_url"}), 400
 

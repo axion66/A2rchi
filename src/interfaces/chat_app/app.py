@@ -1899,8 +1899,7 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/upload/documents/retry-all-failed', 'retry_all_failed', self.require_auth(self.retry_all_failed), methods=["POST"])
         self.add_endpoint('/api/sources/git', 'list_git_sources', self.require_auth(self.list_git_sources), methods=["GET"])
         self.add_endpoint('/api/sources/jira', 'list_jira_sources', self.require_auth(self.list_jira_sources), methods=["GET", "DELETE"])
-        self.add_endpoint('/api/sources/schedules', 'get_source_schedules', self.require_auth(self.get_source_schedules), methods=["GET"])
-        self.add_endpoint('/api/sources/schedules', 'update_source_schedule', self.require_auth(self.update_source_schedule), methods=["PUT"])
+        self.add_endpoint('/api/sources/schedules', 'source_schedules', self.require_auth(self.source_schedules_dispatch), methods=["GET", "PUT"])
 
         # Database viewer endpoints (admin only)
         logger.info("Adding database viewer API endpoints")
@@ -2067,7 +2066,7 @@ class FlaskAppWrapper(object):
         return decorated_function
 
     def health(self):
-        return jsonify({"status": "OK"}, 200)
+        return jsonify({"status": "OK"}), 200
 
     def configs(self, **configs):
         for config, value in configs:
@@ -4256,6 +4255,12 @@ class FlaskAppWrapper(object):
             logger.error(f"Error deleting Jira project: {str(e)}")
             return jsonify({"error": str(e)}), 500
 
+    def source_schedules_dispatch(self):
+        """Route /api/sources/schedules to GET or PUT handler."""
+        if request.method == "PUT":
+            return self.update_source_schedule()
+        return self.get_source_schedules()
+
     def get_source_schedules(self):
         """
         Get all source sync schedules.
@@ -4427,18 +4432,39 @@ class FlaskAppWrapper(object):
             if not query:
                 return jsonify({"error": "missing_query"}), 400
 
+            # Reject multiple statements (semicolon-separated)
+            # Strip trailing semicolons+whitespace, then check for remaining semicolons
+            query_stripped = query.rstrip('; \t\n')
+            if ';' in query_stripped:
+                return jsonify({"error": "only_single_statement", "message": "Only a single SQL statement is allowed"}), 400
+
             # Basic security: only allow SELECT statements
-            query_upper = query.upper().strip()
+            query_upper = query_stripped.upper().strip()
             if not query_upper.startswith("SELECT"):
                 return jsonify({"error": "only_select_allowed", "message": "Only SELECT queries are allowed"}), 400
 
             # Block dangerous patterns - check for keywords as separate tokens
-            dangerous_keywords = ['DROP', 'DELETE', 'INSERT', 'UPDATE', 'ALTER', 'CREATE', 'TRUNCATE', 'GRANT', 'REVOKE']
+            dangerous_keywords = [
+                'DROP', 'DELETE', 'INSERT', 'UPDATE', 'ALTER', 'CREATE',
+                'TRUNCATE', 'GRANT', 'REVOKE', 'COPY', 'EXECUTE', 'EXEC',
+                'INTO', 'CALL',
+            ]
             # Split on non-word characters and check for exact keyword matches
             tokens = set(re.findall(r'\b\w+\b', query_upper))
             for keyword in dangerous_keywords:
                 if keyword in tokens:
                     return jsonify({"error": "forbidden_operation", "message": f"Operation '{keyword}' is not allowed"}), 400
+
+            # Block function calls that can read/write the filesystem or execute commands
+            dangerous_functions = [
+                'PG_READ_FILE', 'PG_READ_BINARY_FILE', 'PG_WRITE_FILE',
+                'LO_IMPORT', 'LO_EXPORT', 'LO_GET', 'LO_PUT',
+                'PG_LS_DIR', 'PG_STAT_FILE',
+                'DBLINK', 'DBLINK_EXEC',
+            ]
+            for func in dangerous_functions:
+                if func in tokens:
+                    return jsonify({"error": "forbidden_function", "message": f"Function '{func}' is not allowed"}), 400
 
             conn = psycopg2.connect(
                 host=self.pg_config.get("host", "postgres"),
@@ -4447,14 +4473,19 @@ class FlaskAppWrapper(object):
                 user=self.pg_config.get("user", "archi"),
                 password=self.pg_config.get("password"),
             )
+
+            # Enforce read-only at the database level
+            conn.set_session(readonly=True, autocommit=False)
             cursor = conn.cursor()
 
-            # Add a LIMIT if not present to prevent runaway queries
-            # Only wrap simple queries - avoid breaking complex ones
-            if "LIMIT" not in query_upper:
-                query = query.rstrip(';') + " LIMIT 1000"
+            # Set a statement timeout to prevent runaway queries (30 seconds)
+            cursor.execute("SET statement_timeout = '30s'")
 
-            cursor.execute(query)
+            # Add a LIMIT if not present to prevent runaway queries
+            if "LIMIT" not in query_upper:
+                query_stripped += " LIMIT 1000"
+
+            cursor.execute(query_stripped)
 
             columns = [desc[0] for desc in cursor.description] if cursor.description else []
             rows = cursor.fetchall()
