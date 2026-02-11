@@ -6,6 +6,7 @@ from typing import Any, Dict
 
 from src.archi.pipelines.classic_pipelines.utils.prompt_utils import read_prompt
 from src.archi.pipelines.classic_pipelines.utils.prompt_validator import ValidatedPromptTemplate
+from src.archi.providers import get_model
 from src.archi.utils.output_dataclass import PipelineOutput
 from src.utils.logging import get_logger
 
@@ -44,7 +45,6 @@ class BasePipeline:
     def _init_llms(self) -> None:
         """Initialise language models declared for the pipeline."""
 
-        model_class_map = self.archi_config["model_class_map"]
         models_config = self.pipeline_config.get("models", {})
         self.llms: Dict[str, Any] = {}
 
@@ -61,12 +61,20 @@ class BasePipeline:
                 )
                 continue
 
-            model_entry = model_class_map[model_class_name]
-            model_class = model_entry["class"]
-            model_kwargs = model_entry["kwargs"]
-            instance = model_class(**model_kwargs)
+            provider, model_id = self._parse_provider_model(model_class_name)
+            instance = get_model(provider, model_id)
             self.llms[model_name] = instance
             initialised_models[model_class_name] = instance
+
+    @staticmethod
+    def _parse_provider_model(model_ref: str) -> (str, str):
+        """Expect model_ref as 'provider/model'. Raise if malformed."""
+        if not isinstance(model_ref, str) or "/" not in model_ref:
+            raise ValueError(f"Model reference must be 'provider/model', got '{model_ref}'")
+        provider, model_id = model_ref.split("/", 1)
+        if not provider or not model_id:
+            raise ValueError(f"Invalid model reference '{model_ref}'")
+        return provider, model_id
 
     def _init_prompts(self) -> None:
         """Initialise prompts defined in pipeline configuration."""

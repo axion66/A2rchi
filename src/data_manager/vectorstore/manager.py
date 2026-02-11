@@ -64,6 +64,9 @@ class VectorStoreManager:
 
         # Build embedding model
         embedding_class_map = self._data_manager_config["embedding_class_map"]
+        from src.utils.config_service import ConfigService
+        embedding_class_map = ConfigService._resolve_embedding_classes(embedding_class_map)
+
         embedding_entry = embedding_class_map[embedding_name]
         embedding_class = embedding_entry["class"]
         embedding_kwargs = embedding_entry.get("kwargs", {})
@@ -173,7 +176,10 @@ class VectorStoreManager:
             }
             if files_to_add:
                 logger.info(f"Adding {len(files_to_add)} new documents")
-                self._add_to_postgres(files_to_add)
+                try:
+                    self._add_to_postgres(files_to_add)
+                except Exception as e:
+                    logger.error(f"Files could not be added",exc_info=e)
             logger.info("Vectorstore update has been completed")
 
         logger.info(f"N Collection: {store.count()}")
@@ -253,6 +259,9 @@ class VectorStoreManager:
 
             for index, split_doc in enumerate(split_docs):
                 chunk = split_doc.page_content or ""
+                # Remove NUL bytes that PostgreSQL cannot handle
+                chunk = chunk.replace('\x00', '')
+                
                 if apply_stemming:
                     words = tokenize(chunk)
                     chunk = " ".join(stem(word) for word in words)
@@ -324,14 +333,19 @@ class VectorStoreManager:
 
                     insert_data = []
                     for idx, (chunk, embedding, metadata) in enumerate(zip(chunks, embeddings, metadatas)):
+                        # Ensure no NUL bytes in chunk or metadata JSON
+                        clean_chunk = chunk.replace('\x00', '')
+                        clean_metadata_json = json.dumps(metadata).replace('\x00', '')
+                        
                         insert_data.append((
                             document_id,  # Link to documents table
                             idx,   # chunk_index
-                            chunk,
+                            clean_chunk,
                             embedding,
-                            json.dumps(metadata),
+                            clean_metadata_json,
                         ))
 
+                    logger.debug(f"Inserting data in {filename} document_id = {document_id}")
                     psycopg2.extras.execute_values(
                         cursor,
                         """

@@ -6,6 +6,7 @@ import uuid
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from threading import Lock
 from typing import Any, Dict, Iterator, List, Optional
 from urllib.parse import urlparse
 from functools import wraps
@@ -26,18 +27,20 @@ from pygments.lexers import (BashLexer, CLexer, CppLexer, FortranLexer,
                              TypeScriptLexer)
 
 from src.archi.archi import archi
+from src.archi.providers.base import ModelInfo, ProviderConfig, ProviderType
 from src.archi.utils.output_dataclass import PipelineOutput
 # from src.data_manager.data_manager import DataManager
 from src.data_manager.data_viewer_service import DataViewerService
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.utils.config_access import get_full_config, get_services_config, get_global_config
-from src.utils.yaml_config import load_config_with_class_mapping
+from src.utils.config_access import get_full_config
 from src.utils.sql import (
     SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO,
     SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP,
     SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION,
     SQL_INSERT_TOOL_CALLS, SQL_QUERY_CONVO_WITH_FEEDBACK, SQL_DELETE_REACTION_FEEDBACK,
+    SQL_GET_REACTION_FEEDBACK,
     SQL_INSERT_AB_COMPARISON, SQL_UPDATE_AB_PREFERENCE, SQL_GET_AB_COMPARISON,
     SQL_GET_PENDING_AB_COMPARISON, SQL_DELETE_AB_COMPARISON, SQL_GET_AB_COMPARISONS_BY_CONVERSATION,
     SQL_CREATE_AGENT_TRACE, SQL_UPDATE_AGENT_TRACE, SQL_GET_AGENT_TRACE,
@@ -48,6 +51,29 @@ from src.interfaces.chat_app.utils import collapse_assistant_sequences
 
 
 logger = get_logger(__name__)
+
+
+def _build_provider_config_from_payload(config_payload: Dict[str, Any], provider_type: ProviderType) -> Optional[ProviderConfig]:
+    """Helper to build ProviderConfig from loaded YAML for a provider."""
+    archi_cfg = config_payload.get("archi", {}) or {}
+    providers_cfg = archi_cfg.get("providers", {}) or {}
+    cfg = providers_cfg.get(provider_type.value, {})
+    if not cfg:
+        return None
+
+    models = [ModelInfo(id=m, name=m, display_name=m) for m in cfg.get("models", [])]
+    extra = {}
+    if provider_type == ProviderType.LOCAL and cfg.get("mode"):
+        extra["local_mode"] = cfg.get("mode")
+
+    return ProviderConfig(
+        provider_type=provider_type,
+        enabled=cfg.get("enabled", True),
+        base_url=cfg.get("base_url"),
+        models=models,
+        default_model=cfg.get("default_model"),
+        extra_kwargs=extra,
+    )
 
 def _config_names():
     cfg = get_full_config()
@@ -83,7 +109,7 @@ class AnswerRenderer(mt.HTMLRenderer):
         }
 
     def __init__(self):
-        self.config = load_config_with_class_mapping()
+        self.config = get_full_config()
         super().__init__()
 
     def block_code(self, code, info=None):
@@ -127,8 +153,11 @@ class ChatWrapper:
     Wrapper which holds functionality for the chatbot
     """
     def __init__(self):
+        # Threading lock for database operations
+        self.lock = Lock()
+        
         # load configs
-        self.config = load_config_with_class_mapping()
+        self.config = get_full_config()
         self.global_config = self.config["global"]
         self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -213,7 +242,7 @@ class ChatWrapper:
 
     def _get_config_payload(self, config_name):
         if config_name not in self._config_cache:
-            self._config_cache[config_name] = load_config_with_class_mapping()
+            self._config_cache[config_name] = get_full_config()
         return self._config_cache[config_name]
 
     @staticmethod
@@ -451,6 +480,22 @@ class ChatWrapper:
         self.cursor.close()
         self.conn.close()
         self.cursor, self.conn = None, None
+
+    def get_reaction_feedback(self, message_id: int):
+        """
+        Get the current reaction (like/dislike) for a message.
+        Returns 'like', 'dislike', or None.
+        """
+        if message_id is None:
+            return None
+        self.conn = psycopg2.connect(**self.pg_config)
+        self.cursor = self.conn.cursor()
+        self.cursor.execute(SQL_GET_REACTION_FEEDBACK, (message_id,))
+        row = self.cursor.fetchone()
+        self.cursor.close()
+        self.conn.close()
+        self.cursor, self.conn = None, None
+        return row[0] if row else None
 
     # =========================================================================
     # A/B Comparison Methods
@@ -1089,12 +1134,14 @@ class ChatWrapper:
             A LangChain BaseChatModel instance, or None if creation fails
         """
         try:
+            from src.archi.providers import get_provider
+
+            # Build provider config from YAML so base_url/mode/default_model are respected
+            cfg = _build_provider_config_from_payload(self.config, ProviderType(provider))
+            provider_instance = get_provider(provider, config=cfg, use_cache=False) if cfg else get_provider(provider)
             if api_key:
-                from src.archi.providers import get_chat_model_with_api_key
-                return get_chat_model_with_api_key(provider, model, api_key)
-            else:
-                from src.archi.providers import get_model
-                return get_model(provider, model)
+                provider_instance.set_api_key(api_key)
+            return provider_instance.get_chat_model(model)
         except ImportError as e:
             logger.warning(f"Providers module not available: {e}")
             return None
@@ -1495,6 +1542,31 @@ class ChatWrapper:
                     if include_tool_steps:
                         yield trace_event
                         
+                elif event_type == "thinking_start":
+                    trace_event = {
+                        "type": "thinking_start",
+                        "step_id": output.metadata.get("step_id", ""),
+                        "timestamp": timestamp,
+                        "conversation_id": context.conversation_id,
+                    }
+                    trace_events.append(trace_event)
+                    if include_tool_steps:
+                        yield trace_event
+                        
+                elif event_type == "thinking_end":
+                    thinking_content = output.metadata.get("thinking_content", "")
+                    trace_event = {
+                        "type": "thinking_end",
+                        "step_id": output.metadata.get("step_id", ""),
+                        "duration_ms": output.metadata.get("duration_ms"),
+                        "thinking_content": thinking_content,
+                        "timestamp": timestamp,
+                        "conversation_id": context.conversation_id,
+                    }
+                    trace_events.append(trace_event)
+                    if include_tool_steps:
+                        yield trace_event
+                        
                 elif event_type == "text":
                     # Stream text content
                     content = getattr(output, "answer", "") or ""
@@ -1583,6 +1655,24 @@ class ChatWrapper:
             # Calculate total duration
             total_duration_ms = int((time.time() - stream_start_time) * 1000)
             
+            # Extract usage and model from final output metadata
+            usage = None
+            model = None
+            if last_output and last_output.metadata:
+                usage = last_output.metadata.get("usage")
+                model = last_output.metadata.get("model")
+            
+            # Append usage summary to trace events so it's available in historical views
+            if usage:
+                trace_events.append({
+                    "type": "usage",
+                    "prompt_tokens": usage.get("prompt_tokens", 0),
+                    "completion_tokens": usage.get("completion_tokens", 0),
+                    "total_tokens": usage.get("total_tokens", 0),
+                    "context_window": usage.get("context_window", 0),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+
             # Update trace with final state
             if trace_id:
                 user_message_id = message_ids[0] if message_ids and len(message_ids) > 1 else None
@@ -1605,6 +1695,8 @@ class ChatWrapper:
                 "trace_id": trace_id,
                 "server_response_msg_ts": timestamps["server_response_msg_ts"].timestamp(),
                 "final_response_msg_ts": datetime.now().timestamp(),
+                "usage": usage,
+                "model": model,
             }
 
         except GeneratorExit:
@@ -1656,7 +1748,7 @@ class FlaskAppWrapper(object):
         logger.info("Entering FlaskAppWrapper")
         self.app = app
         self.configs(**configs)
-        self.config = load_config_with_class_mapping()
+        self.config = get_full_config()
         self.global_config = self.config["global"]
         self.services_config = self.config["services"]
         self.chat_app_config = self.config["services"]["chat_app"]
@@ -1933,6 +2025,10 @@ class FlaskAppWrapper(object):
     def run(self, **kwargs):
         self.app.run(**kwargs)
 
+    def _build_provider_config(self, provider_type: ProviderType) -> Optional[ProviderConfig]:
+        """Legacy shim: build ProviderConfig from the currently loaded YAML."""
+        return _build_provider_config_from_payload(self.config, provider_type)
+
     def update_config(self):
         """
         Updates the config used by archi for responding to messages.
@@ -1954,7 +2050,7 @@ class FlaskAppWrapper(object):
         for name in config_names:
             description = ""
             try:
-                payload = load_config_with_class_mapping()
+                payload = get_full_config()
                 description = payload.get("archi", {}).get("agent_description", "No description provided")
             except Exception as exc:
                 logger.warning(f"Failed to load config {name} for description: {exc}")
@@ -1978,11 +2074,12 @@ class FlaskAppWrapper(object):
                 get_provider,
                 ProviderType,
             )
-            
+
             providers_data = []
             for provider_type in list_provider_types():
                 try:
-                    provider = get_provider(provider_type)
+                    cfg = _build_provider_config_from_payload(self.config, provider_type)
+                    provider = get_provider(provider_type, config=cfg) if cfg else get_provider(provider_type)
                     models = provider.list_models()
                     providers_data.append({
                         'type': provider_type.value,
@@ -2011,7 +2108,7 @@ class FlaskAppWrapper(object):
                         'error': str(e),
                         'models': [],
                     })
-            
+
             return jsonify({'providers': providers_data}), 200
         except ImportError as e:
             logger.error(f"Providers module not available: {e}")
@@ -2025,39 +2122,32 @@ class FlaskAppWrapper(object):
         Get the default model configured for the active chat pipeline.
 
         Returns:
-            JSON with pipeline name, model class name, and model_name (if available).
+            JSON with pipeline name and provider/model reference (if available).
         """
         try:
             pipeline_name = self.config.get("services", {}).get("chat_app", {}).get("pipeline")
             archi_config = self.config.get("archi", {})
             pipeline_map = archi_config.get("pipeline_map", {})
-            model_class_map = archi_config.get("model_class_map", {})
 
             pipeline_cfg = pipeline_map.get(pipeline_name, {})
             models_cfg = pipeline_cfg.get("models", {})
             required_models = models_cfg.get("required", {})
 
             model_key = None
-            model_class_name = None
+            model_ref = None
             if "agent_model" in required_models:
                 model_key = "agent_model"
-                model_class_name = required_models["agent_model"]
+                model_ref = required_models["agent_model"]
             elif "chat_model" in required_models:
                 model_key = "chat_model"
-                model_class_name = required_models["chat_model"]
+                model_ref = required_models["chat_model"]
             elif required_models:
-                model_key, model_class_name = next(iter(required_models.items()))
-
-            model_entry = model_class_map.get(model_class_name, {}) if model_class_name else {}
-            model_kwargs = model_entry.get("kwargs", {}) if isinstance(model_entry, dict) else {}
-            model_name = model_kwargs.get("model_name") or model_kwargs.get("model")
+                model_key, model_ref = next(iter(required_models.items()))
 
             return jsonify({
                 "pipeline": pipeline_name,
                 "model_key": model_key,
-                "model_class": model_class_name,
-                "model_name": model_name,
-                "model_kwargs": model_kwargs,
+                "model": model_ref,
             }), 200
         except Exception as e:
             logger.error(f"Error getting pipeline default model: {e}")
@@ -2578,14 +2668,25 @@ class FlaskAppWrapper(object):
         self.chat.lock.acquire()
         logger.info("Acquired lock file")
         try:
-            # Get the JSON data from the request body
             data = request.json
-
-            # Extract the HTML content and any other data you need
             message_id = data.get('message_id')
 
+            if not message_id:
+                logger.warning("Like request missing message_id")
+                return jsonify({'error': 'message_id is required'}), 400
+
+            # Check current state for toggle behavior
+            current_reaction = self.chat.get_reaction_feedback(message_id)
+            
+            # Always delete existing reaction first
             self.chat.delete_reaction_feedback(message_id)
 
+            # If already liked, just remove (toggle off) - don't re-add
+            if current_reaction == 'like':
+                response = {'message': 'Reaction removed', 'state': None}
+                return jsonify(response), 200
+
+            # Otherwise, add the like
             feedback = {
                 "message_id"   : message_id,
                 "feedback"     : "like",
@@ -2597,15 +2698,13 @@ class FlaskAppWrapper(object):
             }
             self.chat.insert_feedback(feedback)
 
-            response = {'message': 'Liked'}
+            response = {'message': 'Liked', 'state': 'like'}
             return jsonify(response), 200
 
         except Exception as e:
             logger.error(f"Request failed: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
-        # According to the Python documentation: https://docs.python.org/3/tutorial/errors.html#defining-clean-up-actions
-        # this will still execute, before the function returns in the try or except block.
         finally:
             self.chat.lock.release()
             logger.info("Released lock file")
@@ -2619,18 +2718,30 @@ class FlaskAppWrapper(object):
         self.chat.lock.acquire()
         logger.info("Acquired lock file")
         try:
-            # Get the JSON data from the request body
             data = request.json
-
-            # Extract the HTML content and any other data you need
             message_id = data.get('message_id')
+
+            if not message_id:
+                logger.warning("Dislike request missing message_id")
+                return jsonify({'error': 'message_id is required'}), 400
+
             feedback_msg = data.get('feedback_msg')
             incorrect = data.get('incorrect')
             unhelpful = data.get('unhelpful')
             inappropriate = data.get('inappropriate')
 
+            # Check current state for toggle behavior
+            current_reaction = self.chat.get_reaction_feedback(message_id)
+            
+            # Always delete existing reaction first
             self.chat.delete_reaction_feedback(message_id)
 
+            # If already disliked, just remove (toggle off) - don't re-add
+            if current_reaction == 'dislike':
+                response = {'message': 'Reaction removed', 'state': None}
+                return jsonify(response), 200
+
+            # Otherwise, add the dislike
             feedback = {
                 "message_id"   : message_id,
                 "feedback"     : "dislike",
@@ -2642,15 +2753,13 @@ class FlaskAppWrapper(object):
             }
             self.chat.insert_feedback(feedback)
 
-            response = {'message': 'Disliked'}
+            response = {'message': 'Disliked', 'state': 'dislike'}
             return jsonify(response), 200
 
         except Exception as e:
             logger.error(f"Request failed: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
-        # According to the Python documentation: https://docs.python.org/3/tutorial/errors.html#defining-clean-up-actions
-        # this will still execute, before the function returns in the try or except block.
         finally:
             self.chat.lock.release()
             logger.info("Released lock file")
@@ -2786,21 +2895,53 @@ class FlaskAppWrapper(object):
             history_rows = cursor.fetchall()
             history_rows = collapse_assistant_sequences(history_rows, sender_name=ARCHI_SENDER, sender_index=0)
 
+            # Build messages list with trace data for assistant messages
+            messages = []
+            
+            # Batch-fetch trace data for all assistant messages to avoid N+1 queries
+            assistant_mids = [row[2] for row in history_rows if row[0] == ARCHI_SENDER and row[2]]
+            trace_map = {}
+            if assistant_mids:
+                placeholders = ','.join(['%s'] * len(assistant_mids))
+                cursor.execute(f"""
+                    SELECT trace_id, conversation_id, message_id, user_message_id,
+                           config_id, pipeline_name, events, started_at, completed_at,
+                           status, total_tool_calls, total_tokens_used, total_duration_ms,
+                           cancelled_by, cancellation_reason, created_at
+                    FROM agent_traces
+                    WHERE message_id IN ({placeholders})
+                """, tuple(assistant_mids))
+                for trace_row in cursor.fetchall():
+                    trace_map[trace_row[2]] = trace_row
+            
+            for row in history_rows:
+                msg = {
+                    'sender': row[0],
+                    'content': row[1],
+                    'message_id': row[2],
+                    'feedback': row[3],
+                    'comment_count': row[4] if len(row) > 4 else 0,
+                }
+                
+                # Attach trace data if present
+                if row[0] == ARCHI_SENDER and row[2] and row[2] in trace_map:
+                    trace_row = trace_map[row[2]]
+                    msg['trace'] = {
+                        'trace_id': trace_row[0],
+                        'events': trace_row[6],  # events JSON
+                        'status': trace_row[9],
+                        'total_tool_calls': trace_row[10],
+                        'total_duration_ms': trace_row[12],
+                    }
+                
+                messages.append(msg)
+
             conversation = {
                 'conversation_id': meta_row[0],
                 'title': meta_row[1] or "New Conversation",
                 'created_at': meta_row[2].isoformat() if meta_row[2] else None,
                 'last_message_at': meta_row[3].isoformat() if meta_row[3] else None,
-                'messages': [
-                    {
-                        'sender': row[0],
-                        'content': row[1],
-                        'message_id': row[2],
-                        'feedback': row[3],
-                        'comment_count': row[4] if len(row) > 4 else 0,
-                    }
-                    for row in history_rows
-                ]
+                'messages': messages
             }
 
             # clean up database connection state

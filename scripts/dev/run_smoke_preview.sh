@@ -107,8 +107,9 @@ import yaml
 config_dest = os.environ.get("CONFIG_DEST")
 with open(config_dest, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
-ollama = ((cfg.get("archi") or {}).get("model_class_map") or {}).get("OllamaInterface") or {}
-print((ollama.get("kwargs") or {}).get("base_model", ""))
+local_cfg = ((cfg.get("archi") or {}).get("providers") or {}).get("local") or {}
+models = local_cfg.get("models") or []
+print(models[0] if models else "")
 PY
 )"
 fi
@@ -120,8 +121,8 @@ import yaml
 config_dest = os.environ.get("CONFIG_DEST")
 with open(config_dest, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
-ollama = ((cfg.get("archi") or {}).get("model_class_map") or {}).get("OllamaInterface") or {}
-print((ollama.get("kwargs") or {}).get("url", "http://localhost:11434"))
+local_cfg = ((cfg.get("archi") or {}).get("providers") or {}).get("local") or {}
+print(local_cfg.get("base_url", "http://localhost:11434"))
 PY
 )"
 fi
@@ -137,13 +138,18 @@ config_dest = os.environ.get("CONFIG_DEST")
 smoke_model = os.environ.get("SMOKE_OLLAMA_MODEL")
 with open(config_dest, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
-ollama = ((cfg.get("archi") or {}).get("model_class_map") or {}).get("OllamaInterface") or {}
-kwargs = ollama.get("kwargs") or {}
-kwargs["base_model"] = smoke_model
-ollama["kwargs"] = kwargs
-model_map = (cfg.get("archi") or {}).get("model_class_map") or {}
-model_map["OllamaInterface"] = ollama
-cfg.setdefault("archi", {})["model_class_map"] = model_map
+archi = cfg.setdefault("archi", {})
+providers = archi.setdefault("providers", {})
+local_cfg = providers.setdefault("local", {})
+models = local_cfg.get("models") or []
+if smoke_model:
+    if models:
+        models[0] = smoke_model
+    else:
+        models.append(smoke_model)
+local_cfg["models"] = models
+archi["providers"] = providers
+cfg["archi"] = archi
 with open(config_dest, "w", encoding="utf-8") as handle:
     yaml.safe_dump(cfg, handle, sort_keys=False)
 PY
@@ -176,16 +182,8 @@ if [[ "${ENV_FILE}" == "${DEFAULT_ENV_FILE}" ]]; then
   ENV_FILE_CREATED=1
   : > "${ENV_FILE}"
   echo "PG_PASSWORD=$(openssl rand -base64 32)" >> "${ENV_FILE}"
-  if [[ -z "${DM_API_TOKEN:-}" ]]; then
-    DM_API_TOKEN="smoke-$(openssl rand -hex 16)"
-  fi
-  echo "DM_API_TOKEN=${DM_API_TOKEN}" >> "${ENV_FILE}"
-  export DM_API_TOKEN
 else
   info "Using existing env file ${ENV_FILE}; leaving it unchanged."
-  if [[ -n "${DM_API_TOKEN:-}" ]]; then
-    export DM_API_TOKEN
-  fi
 fi
 if [[ -z "${DM_CATALOG_SEED_FILE:-}" ]]; then
   DM_CATALOG_SEED_FILE="$(pwd)/tests/smoke/seed.txt"
@@ -339,8 +337,8 @@ import yaml
 rendered = os.environ.get("RENDERED_CONFIG")
 with open(rendered, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
-ollama = ((cfg.get("archi") or {}).get("model_class_map") or {}).get("OllamaInterface") or {}
-print((ollama.get("kwargs") or {}).get("url", "http://localhost:11434"))
+local_cfg = ((cfg.get("archi") or {}).get("providers") or {}).get("local") or {}
+print(local_cfg.get("base_url", "http://localhost:11434"))
 PY
 )"
 export OLLAMA_MODEL="$(RENDERED_CONFIG="${RENDERED_CONFIG}" python - <<'PY'
@@ -350,8 +348,9 @@ import yaml
 rendered = os.environ.get("RENDERED_CONFIG")
 with open(rendered, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
-ollama = ((cfg.get("archi") or {}).get("model_class_map") or {}).get("OllamaInterface") or {}
-print((ollama.get("kwargs") or {}).get("base_model", ""))
+local_cfg = ((cfg.get("archi") or {}).get("providers") or {}).get("local") or {}
+models = local_cfg.get("models") or []
+print(models[0] if models else "")
 PY
 )"
 export BASE_URL

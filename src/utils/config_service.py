@@ -444,7 +444,55 @@ class ConfigService:
                 return self._static_cache
         finally:
             self._release_connection(conn)
-    
+
+    # =========================================================================
+    # Embedding helpers
+    # =========================================================================
+
+    @staticmethod
+    def _resolve_embedding_classes(embedding_class_map: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Resolve known embedding class names to callables.
+
+        Currently supports: OpenAIEmbeddings, HuggingFaceEmbeddings.
+        """
+        if not embedding_class_map:
+            return {}
+
+        from langchain_huggingface import HuggingFaceEmbeddings
+        from langchain_openai import OpenAIEmbeddings
+
+        EMBEDDING_MAPPING = {
+            "OpenAIEmbeddings": OpenAIEmbeddings,
+            "HuggingFaceEmbeddings": HuggingFaceEmbeddings,
+        }
+
+        resolved: Dict[str, Any] = {}
+        for name, cfg in embedding_class_map.items():
+            entry = dict(cfg or {})
+            cls_name = entry.get("class")
+            if isinstance(cls_name, str) and cls_name in EMBEDDING_MAPPING:
+                entry["class"] = EMBEDDING_MAPPING[cls_name]
+            elif cls_name is None and name in EMBEDDING_MAPPING:
+                entry["class"] = EMBEDDING_MAPPING[name]
+            resolved[name] = entry
+        return resolved
+
+    def get_embedding_class_map(self, *, resolved: bool = False) -> Dict[str, Any]:
+        """
+        Return embedding_class_map from static config.
+
+        Args:
+            resolved: If True, map known class names to callables.
+        """
+        static = self.get_static_config()
+        if not static or not static.data_manager_config:
+            return {}
+        embedding_class_map = static.data_manager_config.get("embedding_class_map", {}) or {}
+        if resolved:
+            return self._resolve_embedding_classes(embedding_class_map)
+        return embedding_class_map
+
     # =========================================================================
     # Dynamic Configuration
     # =========================================================================
@@ -743,16 +791,20 @@ class ConfigService:
                 "dimensions", embedding_dimensions
             )
         
-        # Get available models from pipelines config
-        pipelines_config = config.get("pipelines", {})
+        # Get available providers/models from providers section
+        archi_cfg = config.get("archi", {}) or {}
+        providers_cfg = archi_cfg.get("providers", {}) or {}
         available_models = []
+        available_providers = list(providers_cfg.keys())
+        for p_cfg in providers_cfg.values():
+            models = p_cfg.get("models") or []
+            for m in models:
+                if m not in available_models:
+                    available_models.append(m)
+
+        # Get available pipelines
+        pipelines_config = archi_cfg.get("pipeline_map", {})
         available_pipelines = list(pipelines_config.keys())
-        
-        for pipeline_cfg in pipelines_config.values():
-            if isinstance(pipeline_cfg, dict):
-                model = pipeline_cfg.get("model")
-                if model and model not in available_models:
-                    available_models.append(model)
         
         # Initialize static config
         service.initialize_static_config(
@@ -765,7 +817,7 @@ class ConfigService:
             distance_metric=data_manager.get("distance_metric", "cosine"),
             available_pipelines=available_pipelines,
             available_models=available_models,
-            available_providers=config.get("providers", {}).keys() if config.get("providers") else [],
+            available_providers=available_providers,
             auth_enabled=config.get("services", {}).get("chat_app", {}).get("auth", {}).get("enabled", False),
             sources_config=data_manager.get("sources", {}),
         )
@@ -816,12 +868,19 @@ class ConfigService:
                 "dimensions", embedding_dimensions
             )
         
-        # Get available models from model_class_map
-        model_class_map = config.get("archi", {}).get("model_class_map", {})
-        available_models = list(model_class_map.keys())
-        
+        # Get available providers/models from providers section
+        archi_cfg = config.get("archi", {}) or {}
+        providers_cfg = archi_cfg.get("providers", {}) or {}
+        available_models = []
+        available_providers = list(providers_cfg.keys())
+        for p_cfg in providers_cfg.values():
+            models = p_cfg.get("models") or []
+            for m in models:
+                if m not in available_models:
+                    available_models.append(m)
+
         # Get available pipelines
-        available_pipelines = config.get("archi", {}).get("pipelines", [])
+        available_pipelines = archi_cfg.get("pipeline_map", [])
         
         existing_static = self.get_static_config()
         sources_config = data_manager.get("sources", {})
@@ -839,7 +898,7 @@ class ConfigService:
             distance_metric=data_manager.get("distance_metric", "cosine"),
             available_pipelines=available_pipelines,
             available_models=available_models,
-            available_providers=[],  # Can be extended later
+            available_providers=available_providers,
             auth_enabled=config.get("services", {}).get("chat_app", {}).get("auth", {}).get("enabled", False),
             sources_config=sources_config,
         )

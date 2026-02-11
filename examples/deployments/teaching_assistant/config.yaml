@@ -24,6 +24,14 @@ data_manager:
 archi:
   pipelines:
     - QAPipeline
+  providers:
+    local:
+      enabled: true
+      base_url: http://localhost:8000/v1  # VLLM/OpenAI-compatible endpoint
+      mode: openai_compat
+      default_model: "Qwen/Qwen2.5-7B-Instruct-1M"
+      models:
+        - "Qwen/Qwen2.5-7B-Instruct-1M"
   pipeline_map:
     QAPipeline:
       prompts:
@@ -32,14 +40,5 @@ archi:
           chat_prompt: examples/deployments/teaching_assistant/teaching_assistant.prompt
       models:
         required:
-          chat_model: VLLM
-          condense_model: VLLM
-  model_class_map:
-    VLLM:
-      kwargs:
-        base_model: 'Qwen/Qwen2.5-7B-Instruct-1M'
-        quantization: True
-        max_model_len: 32768
-        tensor_parallel_size: 2
-        repetition_penalty: 1.0
-        gpu_memory_utilization: 0.5
+          chat_model: local/Qwen/Qwen2.5-7B-Instruct-1M
+          condense_model: local/Qwen/Qwen2.5-7B-Instruct-1M

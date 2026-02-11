@@ -76,7 +76,7 @@ def _wait_for_ingestion() -> None:
     deadline = time.time() + timeout
     while True:
         try:
-            resp = requests.get(status_url, headers=_build_dm_headers(), timeout=10)
+            resp = requests.get(status_url, timeout=10)
             if resp.status_code != 200:
                 _fail(f"Ingestion status check failed: HTTP {resp.status_code}")
             payload = resp.json()
@@ -94,13 +94,6 @@ def _wait_for_ingestion() -> None:
         time.sleep(interval)
 
 
-def _build_dm_headers() -> Dict[str, str]:
-    token = os.getenv("DM_API_TOKEN", "").strip()
-    if not token:
-        return {}
-    return {"Authorization": f"Bearer {token}"}
-
-
 def _check_data_manager_catalog() -> None:
     dm_base_url = os.getenv("DM_BASE_URL", "http://localhost:7871").rstrip("/")
     query = os.getenv("DM_CATALOG_QUERY", "file_name:seed.txt")
@@ -116,7 +109,6 @@ def _check_data_manager_catalog() -> None:
             resp = requests.get(
                 search_url,
                 params={"q": query, "limit": 1, "search_content": "false"},
-                headers=_build_dm_headers(),
                 timeout=10,
             )
             if resp.status_code != 200:
@@ -131,7 +123,6 @@ def _check_data_manager_catalog() -> None:
                 resp = requests.get(
                     search_url,
                     params={"q": filename_query, "limit": 1, "search_content": "false"},
-                    headers=_build_dm_headers(),
                     timeout=10,
                 )
                 if resp.status_code == 200 and (resp.json().get("hits") or []):
@@ -148,7 +139,6 @@ def _check_data_manager_catalog() -> None:
                     resp = requests.post(
                         f"{dm_base_url}/document_index/upload",
                         files=files,
-                        headers=_build_dm_headers(),
                         timeout=30,
                     )
                 if resp.status_code != 200:
@@ -194,16 +184,14 @@ def _check_config_ollama(config_path: str, pipeline_name: str, ollama_model: str
     pipeline_cfg = ((config.get("archi") or {}).get("pipeline_map") or {}).get(pipeline_name) or {}
     required_models = (pipeline_cfg.get("models") or {}).get("required") or {}
     agent_model = required_models.get("agent_model")
-    if agent_model != "OllamaInterface":
-        _fail(f"Pipeline {pipeline_name} agent_model is '{agent_model}', expected 'OllamaInterface'")
+    if agent_model != f"local/{ollama_model}":
+        _fail(f"Pipeline {pipeline_name} agent_model is '{agent_model}', expected 'local/{ollama_model}'")
 
-    model_map = (config.get("archi") or {}).get("model_class_map") or {}
-    ollama_cfg = (model_map.get("OllamaInterface") or {}).get("kwargs") or {}
-    base_model = ollama_cfg.get("base_model")
-    if base_model and base_model != ollama_model:
-        _fail(
-            f"Ollama base_model '{base_model}' does not match OLLAMA_MODEL '{ollama_model}'"
-        )
+    providers = (config.get("archi") or {}).get("providers") or {}
+    local_cfg = providers.get("local") or {}
+    models = local_cfg.get("models") or []
+    if models and models[0] != ollama_model:
+        _fail(f"Local provider model '{models[0]}' does not match OLLAMA_MODEL '{ollama_model}'")
     _info("Config Ollama settings OK")
 
 
