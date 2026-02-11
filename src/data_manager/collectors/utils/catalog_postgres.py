@@ -7,6 +7,7 @@ Provides the same interface as the original CatalogService.
 from __future__ import annotations
 
 import json
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -70,10 +71,27 @@ class PostgresCatalogService:
             self.include_extensions = tuple(ext.lower() for ext in self.include_extensions)
         self.refresh()
 
+    def _connect_with_retry(self) -> psycopg2.extensions.connection:
+        """Open a raw connection with retry logic for transient failures."""
+        last_exc: Exception | None = None
+        for attempt in range(1, 4):  # up to 3 attempts
+            try:
+                return psycopg2.connect(**self.pg_config)
+            except psycopg2.OperationalError as exc:
+                last_exc = exc
+                if attempt < 3:
+                    wait = attempt * 2  # 2s, 4s
+                    logger.warning(
+                        "Postgres connection attempt %d/3 failed (%s); retrying in %ds",
+                        attempt, exc, wait,
+                    )
+                    time.sleep(wait)
+        raise last_exc  # type: ignore[misc]
+
     @contextmanager
     def _connect(self) -> Generator[psycopg2.extensions.connection, None, None]:
-        """Context manager for database connections."""
-        conn = psycopg2.connect(**self.pg_config)
+        """Context manager for database connections with retry."""
+        conn = self._connect_with_retry()
         try:
             yield conn
         finally:
