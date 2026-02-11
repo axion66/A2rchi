@@ -23,7 +23,7 @@ SUPPORTED_DISTANCE_METRICS = ["l2", "cosine", "ip"]
 class VectorStoreManager:
     """
     Encapsulates vectorstore configuration and synchronization.
-    
+
     Uses PostgreSQL with pgvector for vector storage and similarity search.
     """
 
@@ -41,7 +41,7 @@ class VectorStoreManager:
 
         self._data_manager_config = config["data_manager"]
         self._services_config = config.get("services", {})
-        
+
         if pg_config is None:
             pg_config = {
                 "password": read_secret("PG_PASSWORD"),
@@ -97,7 +97,7 @@ class VectorStoreManager:
                 )
                 self.parallel_workers = default_workers
         self.parallel_workers = max(1, self.parallel_workers)
-        
+
         logger.info(f"VectorStoreManager initialized: collection={self.collection_name}")
 
     def delete_existing_collection_if_reset(self) -> None:
@@ -110,7 +110,7 @@ class VectorStoreManager:
             with conn.cursor() as cursor:
                 cursor.execute(
                     """
-                    DELETE FROM document_chunks 
+                    DELETE FROM document_chunks
                     WHERE metadata->>'collection' = %s OR metadata->>'collection' IS NULL
                     """,
                     (self.collection_name,)
@@ -134,7 +134,7 @@ class VectorStoreManager:
             "ip": "inner_product",
         }
         pg_distance = distance_metric_map.get(self.distance_metric, "cosine")
-        
+
         store = PostgresVectorStore(
             pg_config=self._pg_config,
             embedding_function=self.embedding_model,
@@ -151,7 +151,7 @@ class VectorStoreManager:
 
         sources = PostgresCatalogService.load_sources_catalog(self.data_path, self._pg_config)
         logger.info(f"Loaded {len(sources)} sources from catalog")
-        
+
         # Get hashes currently in vectorstore
         hashes_in_vstore = self._collect_postgres_hashes()
         files_in_data = self._collect_indexed_documents(sources)
@@ -159,7 +159,7 @@ class VectorStoreManager:
         hashes_in_data = set(files_in_data.keys())
 
         logger.info(f"Files in catalog: {len(hashes_in_data)}, Files in vectorstore: {len(hashes_in_vstore)}")
-        
+
         if hashes_in_data == hashes_in_vstore:
             logger.info("Vectorstore is up to date")
         else:
@@ -210,7 +210,7 @@ class VectorStoreManager:
                 for resource_hash in hashes_to_remove:
                     cursor.execute(
                         """
-                        DELETE FROM document_chunks 
+                        DELETE FROM document_chunks
                         WHERE metadata->>'resource_hash' = %s
                           AND (metadata->>'collection' = %s OR metadata->>'collection' IS NULL)
                         """,
@@ -298,7 +298,7 @@ class VectorStoreManager:
         processed_results: Dict[str, tuple] = {}
         max_workers = max(1, self.parallel_workers)
         logger.info(f"Processing files with up to {max_workers} parallel workers")
-        
+
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
                 executor.submit(process_file, filehash, file_path): filehash
@@ -320,7 +320,7 @@ class VectorStoreManager:
                     processed_results[filehash] = result
 
         logger.info("Finished processing files; adding to vectorstore")
-        
+
         # Batch insert to PostgreSQL
         conn = psycopg2.connect(**self._pg_config)
         try:
