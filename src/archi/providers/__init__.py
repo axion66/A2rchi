@@ -204,7 +204,7 @@ def list_all_models() -> Dict[str, List[ModelInfo]]:
     return result
 
 
-def get_model(provider_type: str | ProviderType, model_name: str, **kwargs):
+def get_model(provider_type: str | ProviderType, model_name: str, provider_config: dict, **kwargs):
     """
     Convenience function to get a chat model directly.
     
@@ -216,7 +216,14 @@ def get_model(provider_type: str | ProviderType, model_name: str, **kwargs):
     Returns:
         A LangChain chat model instance
     """
-    provider = get_provider(provider_type)
+    config = ProviderConfig(
+        provider_type = provider_type,
+        base_url = provider_config.get("base_url",None),
+        enabled=True,
+        models = provider_config.get("models",[]),
+        default_model = provider_config.get("default_model",None)
+    )
+    provider = get_provider(provider_type,config)
     return provider.get_chat_model(model_name, **kwargs)
 
 
