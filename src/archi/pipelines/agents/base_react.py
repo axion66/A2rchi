@@ -623,6 +623,7 @@ class BaseReActAgent:
         """Initialise language models declared for the pipeline."""
 
         models_config = self.pipeline_config.get("models", {})
+        providers_config = self.archi_config.get("providers",{})
         self.llms: Dict[str, Any] = {}
 
         all_models = dict(models_config.get("required", {}), **models_config.get("optional", {}))
@@ -639,7 +640,8 @@ class BaseReActAgent:
                 continue
 
             provider, model_id = self._parse_provider_model(model_class_name)
-            instance = get_model(provider, model_id)
+            provider_config = providers_config.get(provider,{})
+            instance = get_model(provider, model_id, provider_config)
             self.llms[model_name] = instance
             initialised_models[model_class_name] = instance
 
