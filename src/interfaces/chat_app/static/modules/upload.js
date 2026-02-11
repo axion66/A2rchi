@@ -180,6 +180,7 @@ class DataUploader {
       url: '/api/upload/file',
       paramName: 'file',
       maxFilesize: 50, // MB
+      timeout: 600000, // 10 minutes — large files need time to upload + process
       acceptedFiles: '.pdf,.md,.txt,.docx,.html,.htm,.json,.yaml,.yml,.py,.js,.ts,.jsx,.tsx,.java,.go,.rs,.c,.cpp,.h,.sh',
       parallelUploads: 2,
       autoProcessQueue: true,

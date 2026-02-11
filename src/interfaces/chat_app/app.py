@@ -1778,6 +1778,7 @@ class FlaskAppWrapper(object):
         self.app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
         # SESSION_COOKIE_SECURE should be True in production (HTTPS only)
         # Leave it False for local development to work over HTTP
+        self.app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB upload limit
         
         self.app.config['ACCOUNTS_FOLDER'] = self.global_config["ACCOUNTS_PATH"]
         os.makedirs(self.app.config['ACCOUNTS_FOLDER'], exist_ok=True)
@@ -3552,19 +3553,38 @@ class FlaskAppWrapper(object):
             if not upload:
                 return jsonify({"error": "missing_file"}), 400
 
-            # Proxy to data-manager service
+            # Read file into memory to avoid stream position / exhaustion issues
+            file_bytes = upload.stream.read()
+            filename = upload.filename or "upload"
+            content_type = upload.content_type or "application/octet-stream"
+
+            # Proxy to data-manager service (long timeout for large files)
             resp = requests.post(
                 f"{self.data_manager_url}/document_index/upload",
-                files={"file": (upload.filename, upload.stream, upload.content_type)},
+                files={"file": (filename, file_bytes, content_type)},
                 headers=self._dm_headers,
-                timeout=120
+                timeout=600
             )
-            data = resp.json()
-            
+
+            # Safely parse the response — data-manager may return
+            # an empty body or non-JSON on error (e.g. OOM, crash).
+            try:
+                data = resp.json()
+            except ValueError:
+                logger.error(
+                    "Data-manager returned non-JSON response for upload "
+                    "(status=%s, body=%r)",
+                    resp.status_code,
+                    resp.text[:500],
+                )
+                return jsonify({
+                    "error": f"Data manager error (HTTP {resp.status_code})"
+                }), 502
+
             if resp.status_code == 200 and data.get("status") == "ok":
                 return jsonify({
                     "success": True,
-                    "filename": upload.filename,
+                    "filename": filename,
                     "path": data.get("path", "")
                 }), 200
             else:
@@ -3573,6 +3593,9 @@ class FlaskAppWrapper(object):
         except requests.exceptions.ConnectionError:
             logger.error("Data manager service unavailable")
             return jsonify({"error": "data_manager_unavailable"}), 503
+        except requests.exceptions.Timeout:
+            logger.error("Data manager timed out processing upload")
+            return jsonify({"error": "Upload timed out — file may be too large"}), 504
         except Exception as e:
             logger.error(f"Error uploading file: {str(e)}")
             return jsonify({"error": str(e)}), 500
@@ -3594,9 +3617,18 @@ class FlaskAppWrapper(object):
                 f"{self.data_manager_url}/document_index/upload_url",
                 data={"url": url},
                 headers=self._dm_headers,
-                timeout=120
+                timeout=300
             )
-            dm_data = resp.json()
+
+            try:
+                dm_data = resp.json()
+            except ValueError:
+                logger.error(
+                    "Data-manager returned non-JSON for upload_url (status=%s, body=%r)",
+                    resp.status_code,
+                    resp.text[:500],
+                )
+                return jsonify({"error": f"Data manager error (HTTP {resp.status_code})"}), 502
 
             if resp.status_code == 200 and dm_data.get("status") == "ok":
                 return jsonify({
@@ -3640,7 +3672,12 @@ class FlaskAppWrapper(object):
                 headers=self._dm_headers,
                 timeout=300  # Git clones can take a while
             )
-            dm_data = resp.json()
+
+            try:
+                dm_data = resp.json()
+            except ValueError:
+                logger.error("Data-manager returned non-JSON for add_git_repo (status=%s)", resp.status_code)
+                return jsonify({"error": f"Data manager error (HTTP {resp.status_code})"}), 502
 
             if resp.status_code == 200 and dm_data.get("status") == "ok":
                 return jsonify({
@@ -3844,9 +3881,14 @@ class FlaskAppWrapper(object):
                 f"{self.data_manager_url}/document_index/add_jira_project",
                 data={"project_key": project_key},
                 headers=self._dm_headers,
-                timeout=120
+                timeout=300
             )
-            dm_data = resp.json()
+
+            try:
+                dm_data = resp.json()
+            except ValueError:
+                logger.error("Data-manager returned non-JSON for add_jira_project (status=%s)", resp.status_code)
+                return jsonify({"error": f"Data manager error (HTTP {resp.status_code})"}), 502
 
             if resp.status_code == 200 and dm_data.get("status") == "ok":
                 return jsonify({

@@ -54,6 +54,7 @@ class FlaskAppWrapper:
         secret_key = read_secret("FLASK_UPLOADER_APP_SECRET_KEY") or secrets.token_hex(32)
         self.app.secret_key = secret_key
         self.app.config["SESSION_COOKIE_NAME"] = "uploader_session"
+        self.app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100 MB upload limit
 
         self.auth_config = (self.services_config or {}).get("data_manager", {}).get("auth", {}) or {}
         self.auth_enabled = bool(self.auth_config.get("enabled", True))
