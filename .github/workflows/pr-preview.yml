@@ -104,7 +104,6 @@ jobs:
       pull-requests: write
     env:
       ARCHI_DIR: ${{ github.workspace }}/archi-local
-      CI_VENV: ${{ runner.temp }}/ci-venv-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -127,6 +126,8 @@ jobs:
 
       - name: Install archi CLI
         run: |
+          CI_VENV="/tmp/ci-venv-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "CI_VENV=$CI_VENV" >> "$GITHUB_ENV"
           python3 -m venv "$CI_VENV"
           . "$CI_VENV/bin/activate"
           python -m pip install --upgrade pip
