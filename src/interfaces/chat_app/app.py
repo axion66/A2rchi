@@ -3563,8 +3563,14 @@ class FlaskAppWrapper(object):
                 f"{self.data_manager_url}/document_index/upload",
                 files={"file": (filename, file_bytes, content_type)},
                 headers=self._dm_headers,
-                timeout=600
+                timeout=600,
+                allow_redirects=False,
             )
+
+            # Detect auth redirect (data-manager returns 302 → login page)
+            if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+                logger.error("Data-manager rejected upload (auth redirect to %s)", resp.headers.get("Location"))
+                return jsonify({"error": "Data manager authentication failed"}), 502
 
             # Safely parse the response — data-manager may return
             # an empty body or non-JSON on error (e.g. OOM, crash).
@@ -3617,8 +3623,13 @@ class FlaskAppWrapper(object):
                 f"{self.data_manager_url}/document_index/upload_url",
                 data={"url": url},
                 headers=self._dm_headers,
-                timeout=300
+                timeout=300,
+                allow_redirects=False,
             )
+
+            if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+                logger.error("Data-manager rejected upload_url (auth redirect)")
+                return jsonify({"error": "Data manager authentication failed"}), 502
 
             try:
                 dm_data = resp.json()
@@ -3670,8 +3681,13 @@ class FlaskAppWrapper(object):
                 f"{self.data_manager_url}/document_index/add_git_repo",
                 data={"repo_url": repo_url},
                 headers=self._dm_headers,
-                timeout=300  # Git clones can take a while
+                timeout=300,  # Git clones can take a while
+                allow_redirects=False,
             )
+
+            if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+                logger.error("Data-manager rejected add_git_repo (auth redirect)")
+                return jsonify({"error": "Data manager authentication failed"}), 502
 
             try:
                 dm_data = resp.json()
@@ -3831,9 +3847,14 @@ class FlaskAppWrapper(object):
                 f"{self.data_manager_url}/document_index/add_git_repo",
                 data={"repo_url": repo_url},
                 headers=self._dm_headers,
-                timeout=300
+                timeout=300,
+                allow_redirects=False,
             )
-            
+
+            if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+                logger.error("Data-manager rejected git refresh (auth redirect)")
+                return jsonify({"error": "Data manager authentication failed"}), 502
+
             # Try to parse JSON response, handle non-JSON gracefully
             try:
                 dm_data = resp.json()
@@ -3881,8 +3902,13 @@ class FlaskAppWrapper(object):
                 f"{self.data_manager_url}/document_index/add_jira_project",
                 data={"project_key": project_key},
                 headers=self._dm_headers,
-                timeout=300
+                timeout=300,
+                allow_redirects=False,
             )
+
+            if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+                logger.error("Data-manager rejected jira sync (auth redirect)")
+                return jsonify({"error": "Data manager authentication failed"}), 502
 
             try:
                 dm_data = resp.json()
@@ -4302,9 +4328,12 @@ class FlaskAppWrapper(object):
                 response = requests.post(
                     f"{self.data_manager_url}/api/reload-schedules",
                     headers=self._dm_headers,
-                    timeout=10
+                    timeout=10,
+                    allow_redirects=False,
                 )
-                if response.ok:
+                if response.is_redirect or response.status_code in (301, 302, 303, 307, 308):
+                    logger.warning("Data-manager rejected schedule reload (auth redirect)")
+                elif response.ok:
                     reload_result = response.json()
                     logger.info(f"Data-manager reloaded schedules: {reload_result}")
                 else:
