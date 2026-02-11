@@ -74,7 +74,8 @@ class DataManager():
         if progress_callback:
             progress_callback("Flushing indices")
         self.persistence.flush_index()
-        
+
+
         # Verify catalog was updated
         catalog = self.persistence.catalog
         catalog.refresh()  # Ensure we have the latest data

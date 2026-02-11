@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Sequence
+from typing import Any, Callable, Dict, List, Sequence, Optional
 
 from langchain_core.documents import Document
-import asyncio
-import nest_asyncio
 from langchain.agents.middleware import TodoListMiddleware, LLMToolSelectorMiddleware
 
 from src.utils.logging import get_logger
@@ -16,7 +14,6 @@ from src.archi.pipelines.agents.tools import (
     create_metadata_search_tool,
     create_metadata_schema_tool,
     create_retriever_tool,
-    initialize_mcp_client,
     RemoteCatalogClient,
 )
 from src.archi.pipelines.agents.utils.history_utils import infer_speaker
@@ -35,7 +32,6 @@ class CMSCompOpsAgent(BaseReActAgent):
     ) -> None:
         super().__init__(config, *args, **kwargs)
 
-        self.mcp_client = None
         self.catalog_service = RemoteCatalogClient.from_deployment_config(self.config)
         self._vector_retrievers = None
         self._vector_tool = None
@@ -82,32 +78,6 @@ class CMSCompOpsAgent(BaseReActAgent):
 
         all_tools = [file_search_tool, metadata_search_tool, metadata_schema_tool, fetch_tool]
 
-        try:
-            nest_asyncio.apply()
-
-            # 1. Fetch the tools (async)
-            client, mcp_tools = asyncio.run(initialize_mcp_client())
-            self.mcp_client = client  # Keep client alive
-
-            # 2. Patch tools to support synchronous execution
-            # This wrapper allows the sync agent to call the async tools
-            def make_synchronous(async_tool):
-                def sync_wrapper(*args, **kwargs):
-                    # We reuse the existing client session via the closure of the original tool
-                    return asyncio.run(async_tool.coroutine(*args, **kwargs))
-
-                # Assign the wrapper to the tool's 'func' attribute (standard LangChain sync entry point)
-                async_tool.func = sync_wrapper
-                return async_tool
-
-            # Apply the patch to all fetched tools
-            if mcp_tools:
-                synchronous_mcp_tools = [make_synchronous(t) for t in mcp_tools]
-                all_tools.extend(synchronous_mcp_tools)
-                logger.info(f"Loaded and patched {len(synchronous_mcp_tools)} MCP tools for sync execution.")
-
-        except Exception as e:
-            logger.error(f"Failed to load MCP tools: {e}", exc_info=True)
 
         return all_tools
 
