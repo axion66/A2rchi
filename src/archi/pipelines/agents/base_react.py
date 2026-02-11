@@ -12,6 +12,8 @@ from langgraph.graph.state import CompiledStateGraph
 from src.archi.pipelines.agents.utils.prompt_utils import read_prompt
 from src.archi.utils.output_dataclass import PipelineOutput
 from src.archi.pipelines.agents.utils.document_memory import DocumentMemory
+from src.archi.pipelines.agents.utils.mcp_utils import AsyncLoopThread
+from src.archi.pipelines.agents.tools import initialize_mcp_client
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -35,12 +37,16 @@ class BaseReActAgent:
         self.pipeline_config = self.archi_config["pipeline_map"][self.__class__.__name__]
         self._active_memory: Optional[DocumentMemory] = None
         self._static_tools: Optional[List[Callable]] = None
+        self._mcp_tools: Optional[List[Callable]] = None
         self._active_tools: List[Callable] = []
         self._static_middleware: Optional[List[Callable]] = None
         self._active_middleware: List[Callable] = []
         self.agent: Optional[CompiledStateGraph] = None
         self.agent_llm: Optional[Any] = None
         self.agent_prompt: Optional[str] = None
+
+        self.mcp_client = None
+
 
         self._init_llms()
         self._init_prompts()
@@ -78,7 +84,7 @@ class BaseReActAgent:
     ) -> PipelineOutput:
         """
         Compose a PipelineOutput from the provided components.
-        
+
         If not final, drop documents and only keep the latest message.
         """
         documents = memory.unique_documents() if (memory and final) else []
@@ -121,21 +127,21 @@ class BaseReActAgent:
         all_messages: List[BaseMessage] = []  # Accumulated full messages
         accumulated_content = ""  # Accumulated content from streaming
         emitted_tool_starts: Set[str] = set()
-        
+
         for event in self.agent.stream(agent_inputs, stream_mode="messages"):
-            
+
             messages = self._extract_messages(event)
             if not messages:
                 continue
-            
+
             message = messages[-1]
             msg_type = str(getattr(message, "type", "")).lower()
             msg_class = type(message).__name__.lower()
-            
+
             # Track all non-chunk messages
             if "chunk" not in msg_class:
                 all_messages.extend(messages)
-            
+
             # Detect tool call start (AIMessage with tool_calls)
             if hasattr(message, "tool_calls") and message.tool_calls:
                 logger.debug("Received stream event type=%s: %s", type(event).__name__, str(event)[:1000])
@@ -153,7 +159,7 @@ class BaseReActAgent:
                         metadata={"event_type": "tool_start"},
                         final=False,
                     )
-            
+
             # Detect tool result (ToolMessage with tool_call_id)
             tool_call_id = getattr(message, "tool_call_id", None)
             if tool_call_id:
@@ -167,7 +173,7 @@ class BaseReActAgent:
                     },
                     final=False,
                 )
-            
+
             # AI content streaming - accumulate content from chunks
             if msg_type in {"ai", "assistant"} or "ai" in msg_class:
                 if not getattr(message, "tool_calls", None):
@@ -179,7 +185,7 @@ class BaseReActAgent:
                         else:
                             # Full message - use its content directly
                             accumulated_content = content
-                        
+
                         yield self.finalize_output(
                             answer=accumulated_content,
                             memory=self.active_memory,
@@ -187,11 +193,11 @@ class BaseReActAgent:
                             metadata={"event_type": "text"},
                             final=False,
                         )
-        
+
         # Final output
-        logger.debug("Stream finished. accumulated_content='%s', all_messages count=%d", 
+        logger.debug("Stream finished. accumulated_content='%s', all_messages count=%d",
                      accumulated_content[:100] if accumulated_content else "", len(all_messages))
-        
+
         final_answer = ""
         if all_messages:
             # Find the last AI message with content
@@ -205,7 +211,7 @@ class BaseReActAgent:
                         break
         if not final_answer:
             final_answer = accumulated_content
-        
+
         if final_answer:
             yield self.finalize_output(
                 answer=final_answer,
@@ -215,7 +221,7 @@ class BaseReActAgent:
                 final=True,
             )
         else:
-            logger.warning("No final answer found from stream. Messages: %s", 
+            logger.warning("No final answer found from stream. Messages: %s",
                           [self._format_message(m) for m in all_messages[:5]])
             output = self._build_output_from_messages(all_messages)
             output.metadata["event_type"] = "final"
@@ -231,20 +237,20 @@ class BaseReActAgent:
         all_messages: List[BaseMessage] = []
         accumulated_content = ""
         emitted_tool_starts: Set[str] = set()
-        
+
         async for event in self.agent.astream(agent_inputs, stream_mode="messages"):
             messages = self._extract_messages(event)
             if not messages:
                 continue
-            
+
             message = messages[-1]
             msg_type = str(getattr(message, "type", "")).lower()
             msg_class = type(message).__name__.lower()
-            
+
             # Track all non-chunk messages
             if "chunk" not in msg_class:
                 all_messages.extend(messages)
-            
+
             # Detect tool call start
             if hasattr(message, "tool_calls") and message.tool_calls:
                 new_tool_call = False
@@ -260,7 +266,7 @@ class BaseReActAgent:
                         metadata={"event_type": "tool_start"},
                         final=False,
                     )
-            
+
             # Detect tool result
             tool_call_id = getattr(message, "tool_call_id", None)
             if tool_call_id:
@@ -272,7 +278,7 @@ class BaseReActAgent:
                     },
                     final=False,
                 )
-            
+
             # AI content streaming - accumulate content from chunks
             if msg_type in {"ai", "assistant"} or "ai" in msg_class:
                 if not getattr(message, "tool_calls", None):
@@ -282,18 +288,18 @@ class BaseReActAgent:
                             accumulated_content += content
                         else:
                             accumulated_content = content
-                        
+
                         yield self.finalize_output(
                             answer=accumulated_content,
                             messages=[message],
                             metadata={"event_type": "text"},
                             final=False,
                         )
-        
+
         # Final output
-        logger.debug("Async stream finished. accumulated_content='%s', all_messages count=%d", 
+        logger.debug("Async stream finished. accumulated_content='%s', all_messages count=%d",
                      accumulated_content[:100] if accumulated_content else "", len(all_messages))
-        
+
         final_answer = ""
         if all_messages:
             for msg in reversed(all_messages):
@@ -306,7 +312,7 @@ class BaseReActAgent:
                         break
         if not final_answer:
             final_answer = accumulated_content
-        
+
         if final_answer:
             yield self.finalize_output(
                 answer=final_answer,
@@ -316,7 +322,7 @@ class BaseReActAgent:
                 final=True,
             )
         else:
-            logger.warning("No final answer found from async stream. Messages: %s", 
+            logger.warning("No final answer found from async stream. Messages: %s",
                           [self._format_message(m) for m in all_messages[:5]])
             output = self._build_output_from_messages(all_messages)
             output.metadata["event_type"] = "final"
@@ -388,12 +394,12 @@ class BaseReActAgent:
         if self._static_tools is None:
             return self.rebuild_static_tools()
         return list(self._static_tools)
-    
+
     def rebuild_static_middleware(self) -> List[Callable]:
         """Recompute and cache the static middleware list."""
         self._static_middleware = list(self._build_static_middleware())
         return self._static_middleware
-    
+
     @property
     def middleware(self) -> List[Callable]:
         """Return the cached static middleware, rebuilding if necessary."""
@@ -417,9 +423,15 @@ class BaseReActAgent:
         """Ensure the LangGraph agent reflects the latest tool set."""
         base_tools = list(static_tools) if static_tools is not None else self.tools
         toolset: List[Callable] = list(base_tools)
+
+        if self._mcp_tools is None:
+            built = self._build_mcp_tools()
+            self._mcp_tools = list(built or [])
+        toolset.extend(self._mcp_tools)
+
         if extra_tools:
             toolset.extend(extra_tools)
-       
+
         middleware = list(middleware) if middleware is not None else self.middleware
 
         requires_refresh = (
@@ -450,7 +462,52 @@ class BaseReActAgent:
     def _build_static_tools(self) -> List[Callable]:
         """Build and returns static tools defined in the config."""
         return []
-    
+
+    def _build_mcp_tools(self) -> List[Callable]:
+        """Retrieve MCP tools from servers defined in the config and keep those server connections alive"""
+        try:
+            self._async_runner = AsyncLoopThread.get_instance()
+
+            # Initialize MCP client on the background loop
+            # The client and sessions will live on this loop
+            client, mcp_tools = self._async_runner.run(initialize_mcp_client())
+            if client is None:
+                logger.info("No MCP servers configured.")
+                return None
+            self.mcp_client = client
+
+            # Create synchronous wrappers that use the SAME loop
+            def make_synchronous(async_tool):
+                """
+                Wrap an async tool for synchronous execution.
+
+                Key difference from broken version:
+                - Uses self._async_runner.run() instead of asyncio.run()
+                - Runs on the SAME loop where the client was initialized
+                - Session streams remain valid
+                """
+                # Capture the runner in closure
+                runner = self._async_runner
+
+                def sync_wrapper(*args, **kwargs):
+                    if runner.in_loop_thread():
+                        raise RuntimeError("sync_wrapper called from MCP loop thread; would deadlock")
+                    # Run on the background loop - NOT a new loop!
+                    return runner.run(async_tool.coroutine(*args, **kwargs))
+
+                # Assign the wrapper to the tool's 'func' attribute
+                async_tool.func = sync_wrapper
+                return async_tool
+
+            # Apply the patch to all fetched tools
+            if mcp_tools:
+                synchronous_mcp_tools = [make_synchronous(t) for t in mcp_tools]
+                logger.info(f"Loaded and patched {len(synchronous_mcp_tools)} MCP tools for sync execution.")
+                return synchronous_mcp_tools
+
+        except Exception as e:
+            logger.error(f"Failed to load MCP tools: {e}", exc_info=True)
+
     def _build_static_middleware(self) -> List[Callable]:
         """Build and returns static middleware defined in the config."""
         return []
