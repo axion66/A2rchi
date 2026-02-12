@@ -41,11 +41,11 @@ archi:
   providers:
     local:
       enabled: true
-      base_url: http://localhost:7870  # Ollama endpoint with scheme
+      base_url: http://localhost:11434
       mode: ollama
-      default_model: "qwen3:32b"
+      default_model: "qwen3:4b"
       models:
-        - "qwen3:32b"
+        - "qwen3:4b"
   pipeline_map:
     CMSCompOpsAgent:
       prompts:
@@ -53,4 +53,4 @@ archi:
           agent_prompt: tests/pr_preview_config/agent.prompt
       models:
         required:
-          agent_model: local/qwen3:32b
+          agent_model: local/qwen3:4b

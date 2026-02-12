@@ -130,12 +130,13 @@ if [[ -z "${SMOKE_OLLAMA_MODEL}" ]]; then
   echo "Unable to determine Ollama model from ${CONFIG_DEST}. Set SMOKE_OLLAMA_MODEL." >&2
   exit 1
 fi
-CONFIG_DEST="${CONFIG_DEST}" SMOKE_OLLAMA_MODEL="${SMOKE_OLLAMA_MODEL}" python - <<'PY'
+CONFIG_DEST="${CONFIG_DEST}" SMOKE_OLLAMA_MODEL="${SMOKE_OLLAMA_MODEL}" SMOKE_OLLAMA_URL="${SMOKE_OLLAMA_URL}" python - <<'PY'
 import os
 import yaml
 
 config_dest = os.environ.get("CONFIG_DEST")
 smoke_model = os.environ.get("SMOKE_OLLAMA_MODEL")
+smoke_url = os.environ.get("SMOKE_OLLAMA_URL")
 with open(config_dest, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
 archi = cfg.setdefault("archi", {})
@@ -147,7 +148,17 @@ if smoke_model:
         models[0] = smoke_model
     else:
         models.append(smoke_model)
-local_cfg["models"] = models
+    local_cfg["models"] = models
+    local_cfg["default_model"] = smoke_model
+    # Also patch pipeline_map model references
+    pipeline_map = archi.get("pipeline_map", {})
+    for pipe_name, pipe_cfg in pipeline_map.items():
+        req_models = (pipe_cfg.get("models") or {}).get("required", {})
+        for key, val in list(req_models.items()):
+            if isinstance(val, str) and val.startswith("local/"):
+                req_models[key] = f"local/{smoke_model}"
+if smoke_url:
+    local_cfg["base_url"] = smoke_url
 archi["providers"] = providers
 cfg["archi"] = archi
 with open(config_dest, "w", encoding="utf-8") as handle:
