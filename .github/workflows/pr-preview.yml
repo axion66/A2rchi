@@ -46,8 +46,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ".[all]" || pip install .
-          pip install pytest flask langchain-core
+          pip install . || true
+          pip install -r requirements/requirements-base.txt
+          pip install pytest
 
       - name: Run unit tests
         run: python -m pytest tests/unit/ -v --tb=short
@@ -185,7 +186,7 @@ jobs:
           wait-url: http://localhost:2786/api/health
           base-url: http://localhost:2786
           extra-env: |
-            ARCHI_COMPOSE_UP_FLAGS=--build
+            ARCHI_COMPOSE_UP_FLAGS=--build --force-recreate
             SMOKE_OLLAMA_MODEL=qwen3:4b
             SMOKE_OLLAMA_URL=http://localhost:11434
           use-podman: "false"
