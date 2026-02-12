@@ -3938,13 +3938,45 @@ class FlaskAppWrapper(object):
         creating embeddings for any new documents that haven't been processed yet.
 
         Returns:
-            JSON with embedding status
+            JSON with embedding status including any failures
         """
         try:
             logger.info("Triggering vectorstore update...")
             self.chat.vector_manager.update_vectorstore()
             logger.info("Vectorstore update completed")
-            
+
+            # Check for failed documents after processing
+            failed_docs = []
+            try:
+                conn = psycopg2.connect(**self.chat.pg_config)
+                try:
+                    with conn.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            SELECT file_name, ingestion_error
+                            FROM documents
+                            WHERE NOT is_deleted AND ingestion_status = 'failed'
+                            ORDER BY updated_at DESC
+                            LIMIT 20
+                            """
+                        )
+                        failed_docs = [
+                            {"file": row[0], "error": row[1] or "Unknown error"}
+                            for row in cursor.fetchall()
+                        ]
+                finally:
+                    conn.close()
+            except Exception as db_err:
+                logger.warning(f"Could not check for failed documents: {db_err}")
+
+            if failed_docs:
+                return jsonify({
+                    "success": True,
+                    "partial": True,
+                    "message": f"{len(failed_docs)} document(s) failed to process.",
+                    "failed": failed_docs,
+                }), 200
+
             return jsonify({
                 "success": True,
                 "message": "Embedding complete. Documents are now searchable."
@@ -3986,8 +4018,8 @@ class FlaskAppWrapper(object):
             return jsonify({
                 "documents_in_catalog": total,
                 "documents_embedded": embedded,
-                "pending_embedding": pending + failed,
-                "is_synced": pending == 0 and embedding == 0 and failed == 0,
+                "pending_embedding": pending,
+                "is_synced": pending == 0 and embedding == 0,
                 "status_counts": {
                     "pending": pending,
                     "embedding": embedding,

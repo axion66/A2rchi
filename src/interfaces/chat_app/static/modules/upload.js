@@ -73,9 +73,13 @@ class DataUploader {
         statusBar.classList.add('processing');
         statusText.textContent = 'Processing documents...';
         if (embedBtn) embedBtn.disabled = true;
-      } else if (data.is_synced) {
+      } else if (data.is_synced && (!data.status_counts || data.status_counts.failed === 0)) {
         statusBar.classList.add('synced');
         statusText.textContent = `✓ All ${data.documents_embedded} documents are embedded and searchable`;
+        if (embedBtn) embedBtn.disabled = true;
+      } else if (data.is_synced && data.status_counts && data.status_counts.failed > 0) {
+        statusBar.classList.add('synced');
+        statusText.textContent = `✓ ${data.documents_embedded} embedded, ${data.status_counts.failed} failed`;
         if (embedBtn) embedBtn.disabled = true;
       } else {
         statusBar.classList.add('pending');
@@ -117,7 +121,14 @@ class DataUploader {
       const data = await response.json();
       
       if (response.ok && data.success) {
-        toast.success('Documents processed successfully! They are now searchable.');
+        if (data.partial && data.failed && data.failed.length > 0) {
+          const failCount = data.failed.length;
+          const names = data.failed.slice(0, 3).map(f => f.file).join(', ');
+          const suffix = failCount > 3 ? ` and ${failCount - 3} more` : '';
+          toast.warning(`Processing complete, but ${failCount} document(s) failed: ${names}${suffix}`);
+        } else {
+          toast.success('Documents processed successfully! They are now searchable.');
+        }
       } else {
         throw new Error(data.error || 'Embedding failed');
       }
