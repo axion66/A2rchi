@@ -60,6 +60,9 @@ class DataUploader {
     const embedBtn = document.getElementById('embed-btn');
     
     if (!statusBar || !statusText) return;
+
+    // Check if there are successfully uploaded files in the queue awaiting processing
+    const hasQueuedUploads = this._hasQueuedUploads();
     
     try {
       const response = await fetch('/api/upload/status');
@@ -73,24 +76,41 @@ class DataUploader {
         statusBar.classList.add('processing');
         statusText.textContent = 'Processing documents...';
         if (embedBtn) embedBtn.disabled = true;
-      } else if (data.is_synced && (!data.status_counts || data.status_counts.failed === 0)) {
+      } else if (!hasQueuedUploads && data.is_synced && (!data.status_counts || data.status_counts.failed === 0)) {
         statusBar.classList.add('synced');
         statusText.textContent = `✓ All ${data.documents_embedded} documents are embedded and searchable`;
         if (embedBtn) embedBtn.disabled = true;
-      } else if (data.is_synced && data.status_counts && data.status_counts.failed > 0) {
+      } else if (!hasQueuedUploads && data.is_synced && data.status_counts && data.status_counts.failed > 0) {
         statusBar.classList.add('synced');
         statusText.textContent = `✓ ${data.documents_embedded} embedded, ${data.status_counts.failed} failed`;
         if (embedBtn) embedBtn.disabled = true;
       } else {
         statusBar.classList.add('pending');
-        statusText.textContent = `${data.pending_embedding} document${data.pending_embedding !== 1 ? 's' : ''} waiting to be processed (${data.documents_embedded} embedded)`;
+        const pending = data.pending_embedding || 0;
+        if (pending > 0) {
+          statusText.textContent = `${pending} document${pending !== 1 ? 's' : ''} waiting to be processed (${data.documents_embedded} embedded)`;
+        } else if (hasQueuedUploads) {
+          // Status API hasn't caught up yet but we know files were just uploaded
+          const failedText = data.status_counts?.failed ? `, ${data.status_counts.failed} failed` : '';
+          statusText.textContent = `✓ ${data.documents_embedded} embedded${failedText}`;
+        }
         if (embedBtn) embedBtn.disabled = false;
       }
     } catch (err) {
       console.error('Failed to fetch embedding status:', err);
       statusText.textContent = 'Unable to fetch status';
-      if (embedBtn) embedBtn.disabled = true;
+      if (embedBtn) embedBtn.disabled = !hasQueuedUploads;
     }
+  }
+
+  /**
+   * Check if there are successfully uploaded files in the upload queue
+   * that haven't been processed yet.
+   */
+  _hasQueuedUploads() {
+    const queueList = document.getElementById('upload-queue-list');
+    if (!queueList) return false;
+    return queueList.querySelectorAll('.upload-item-status.success').length > 0;
   }
 
   async triggerEmbedding() {
@@ -367,9 +387,16 @@ class DataUploader {
       `;
     }
     
-    // Refresh both status areas — new pending doc appears immediately
-    this.refreshEmbeddingStatus();
-    this.loadIngestionStatus();
+    // A file was just uploaded — force-enable the Process button immediately
+    // (the status API may lag behind because postgres hasn't committed yet)
+    const embedBtn = document.getElementById('embed-btn');
+    if (embedBtn) embedBtn.disabled = false;
+
+    // Refresh status areas after a short delay to let the DB commit
+    setTimeout(() => {
+      this.refreshEmbeddingStatus();
+      this.loadIngestionStatus();
+    }, 500);
   }
 
   onUploadError(file, errorMessage) {
