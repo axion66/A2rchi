@@ -112,6 +112,11 @@ jobs:
           done
           ollama pull qwen3:4b
 
+      - name: Disable Docker containerd image store
+        run: |
+          sudo rm -f /etc/docker/daemon.json.d/containerd-snapshotter.json
+          sudo systemctl restart docker
+
       - name: Point Dockerfiles to versioned base images
         run: python scripts/dev/update_service_base_images.py --tag "${{ needs.build-images.outputs.tag }}" --switch-source dockerhub
 

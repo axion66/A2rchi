@@ -165,6 +165,15 @@ jobs:
           done
           ollama pull qwen3:4b
 
+      - name: Disable Docker containerd image store
+        run: |
+          # Docker on ubuntu-latest uses containerd image store by default.
+          # This causes "already exists" errors when multiple compose services
+          # share the same image name (e.g. config-seed reuses chatbot image).
+          sudo rm -f /etc/docker/daemon.json.d/containerd-snapshotter.json
+          sudo systemctl restart docker
+          docker info | grep -i storage
+
       - name: Prepare base image references
         if: needs.build-base-images.outputs.changed == 'true'
         run: python scripts/dev/update_service_base_images.py --tag "${{ needs.build-base-images.outputs.tag }}" --switch-source localhost --orig-tag all
