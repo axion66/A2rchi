@@ -186,18 +186,8 @@ class DataUploader {
       autoProcessQueue: true,
       addRemoveLinks: false,
       createImageThumbnails: false,
-      clickable: true, // Explicitly enable click-to-browse
+      clickable: true, // Dropzone handles click-to-browse natively
       previewTemplate: '<div style="display:none"></div>', // Hide default preview
-      
-      init: function() {
-        // Make the entire dropzone clickable
-        this.element.addEventListener('click', (e) => {
-          // Don't trigger if clicking on a button or link inside
-          if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A') {
-            this.hiddenFileInput.click();
-          }
-        });
-      }
     });
 
     // Event handlers
