@@ -3953,10 +3953,10 @@ class FlaskAppWrapper(object):
                     with conn.cursor() as cursor:
                         cursor.execute(
                             """
-                            SELECT file_name, ingestion_error
+                            SELECT display_name, ingestion_error
                             FROM documents
                             WHERE NOT is_deleted AND ingestion_status = 'failed'
-                            ORDER BY updated_at DESC
+                            ORDER BY created_at DESC
                             LIMIT 20
                             """
                         )
