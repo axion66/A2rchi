@@ -170,9 +170,11 @@ jobs:
           # Docker on ubuntu-latest uses containerd image store by default.
           # This causes "already exists" errors when multiple compose services
           # share the same image name (e.g. config-seed reuses chatbot image).
-          sudo rm -f /etc/docker/daemon.json.d/containerd-snapshotter.json
+          # Must overwrite daemon.json AND remove drop-in dir to fully revert.
+          echo '{"features":{"containerd-snapshotter":false}}' | sudo tee /etc/docker/daemon.json
+          sudo rm -rf /etc/docker/daemon.json.d
           sudo systemctl restart docker
-          docker info | grep -i storage
+          docker info | grep -i "Storage Driver"
 
       - name: Prepare base image references
         if: needs.build-base-images.outputs.changed == 'true'
