@@ -99,11 +99,9 @@ jobs:
       - name: Ensure scripts are executable
         run: chmod +x scripts/dev/*.sh
 
-      - name: Install Ollama
-        run: curl -fsSL https://ollama.com/install.sh | sh
-
-      - name: Start Ollama server
+      - name: Install Ollama and pull model
         run: |
+          curl -fsSL https://ollama.com/install.sh | sh
           ollama serve &
           for i in $(seq 1 30); do
             if curl -fsS http://localhost:11434/api/tags >/dev/null 2>&1; then
@@ -112,6 +110,7 @@ jobs:
             fi
             sleep 1
           done
+          ollama pull qwen3:4b
 
       - name: Point Dockerfiles to versioned base images
         run: python scripts/dev/update_service_base_images.py --tag "${{ needs.build-images.outputs.tag }}" --switch-source dockerhub
@@ -123,6 +122,7 @@ jobs:
           extra-env: |
             ARCHI_COMPOSE_UP_FLAGS=--build --pull
             SMOKE_OLLAMA_MODEL=qwen3:4b
+            SMOKE_OLLAMA_URL=http://localhost:11434
           config-path: tests/pr_preview_config/pr_preview_config.yaml
           config-destination: configs/ci/ci_config.generated.yaml
           services: chatbot
