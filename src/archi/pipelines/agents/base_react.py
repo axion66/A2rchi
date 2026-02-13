@@ -13,6 +13,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from src.archi.pipelines.agents.utils.prompt_utils import read_prompt
 from src.archi.providers import get_model
+from src.archi.providers.base import ProviderType
 from src.archi.utils.output_dataclass import PipelineOutput
 from src.archi.pipelines.agents.utils.document_memory import DocumentMemory
 from src.archi.pipelines.agents.utils.mcp_utils import AsyncLoopThread
@@ -639,9 +640,20 @@ class BaseReActAgent:
         """Initialise language models for the agent."""
 
         self.llms: Dict[str, Any] = {}
+        providers_config = {}
+        if isinstance(self.config, dict):
+            services_cfg = self.config.get("services", {}) if isinstance(self.config.get("services", {}), dict) else {}
+            chat_cfg = services_cfg.get("chat_app", {}) if isinstance(services_cfg, dict) else {}
+            providers_config = chat_cfg.get("providers", {}) if isinstance(chat_cfg, dict) else {}
+
+        if self.default_provider and not self.default_model:
+            raise ValueError("default_model is required when default_provider is set for agent pipelines.")
+        if self.default_model and not self.default_provider:
+            raise ValueError("default_provider is required when default_model is set for agent pipelines.")
 
         if self.default_provider and self.default_model:
-            instance = get_model(self.default_provider, self.default_model)
+            provider_config = self._build_provider_config(self.default_provider, providers_config)
+            instance = get_model(self.default_provider, self.default_model, provider_config)
             self.llms["chat_model"] = instance
             self.agent_llm = instance
             return
@@ -661,10 +673,32 @@ class BaseReActAgent:
                 continue
 
             provider, model_id = self._parse_provider_model(model_class_name)
-            provider_config = providers_config.get(provider,{})
+            provider_config = self._build_provider_config(provider, providers_config)
             instance = get_model(provider, model_id, provider_config)
             self.llms[model_name] = instance
             initialised_models[model_class_name] = instance
+
+    @staticmethod
+    def _build_provider_config(provider: str, providers_config: Dict[str, Any]) -> dict:
+        provider_key = provider.lower() if isinstance(provider, str) else str(provider)
+        cfg = providers_config.get(provider_key, {}) if isinstance(providers_config, dict) else {}
+        if not cfg:
+            return {}
+
+        extra = {}
+        try:
+            provider_type = ProviderType(provider_key)
+            if provider_type == ProviderType.LOCAL and cfg.get("mode"):
+                extra["local_mode"] = cfg.get("mode")
+        except Exception:
+            pass
+
+        return {
+            "base_url": cfg.get("base_url"),
+            "models": cfg.get("models", []),
+            "default_model": cfg.get("default_model"),
+            "extra_kwargs": extra,
+        }
 
     @staticmethod
     def _parse_provider_model(model_ref: str) -> Tuple[str, str]:
@@ -711,6 +745,10 @@ class BaseReActAgent:
 
     def get_tool_registry(self) -> Dict[str, Callable[[], Any]]:
         """Return a mapping of tool names to callables that build tools."""
+        return {}
+
+    def get_tool_descriptions(self) -> Dict[str, str]:
+        """Return a mapping of tool names to descriptions for UI display."""
         return {}
 
     def _select_tools_from_registry(self, tool_names: Sequence[str]) -> List[Callable]:
@@ -771,10 +809,11 @@ class BaseReActAgent:
         base_tools = list(static_tools) if static_tools is not None else self.tools
         toolset: List[Callable] = list(base_tools)
 
-        if self._mcp_tools is None:
-            built = self._build_mcp_tools()
-            self._mcp_tools = list(built or [])
-        toolset.extend(self._mcp_tools)
+        if "mcp" in self.selected_tool_names:
+            if self._mcp_tools is None:
+                built = self._build_mcp_tools()
+                self._mcp_tools = list(built or [])
+            toolset.extend(self._mcp_tools)
 
         if extra_tools:
             toolset.extend(extra_tools)
@@ -808,7 +847,9 @@ class BaseReActAgent:
 
     def _build_static_tools(self) -> List[Callable]:
         """Build and returns static tools defined in the config."""
-        return []
+        selected = list(self.selected_tool_names or [])
+        static_names = [name for name in selected if name != "mcp"]
+        return self._select_tools_from_registry(static_names)
 
     def _build_mcp_tools(self) -> List[Callable]:
         """Retrieve MCP tools from servers defined in the config and keep those server connections alive"""
