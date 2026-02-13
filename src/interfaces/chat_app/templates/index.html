@@ -88,6 +88,7 @@
               </button>
               <div class="agent-dropdown-menu" role="menu" hidden>
                 <div class="agent-dropdown-list"></div>
+                <div class="agent-dropdown-divider"></div>
                 <button class="agent-dropdown-add" type="button">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                     <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -311,7 +312,7 @@
       <div class="agent-spec-backdrop"></div>
       <div class="agent-spec-panel" role="dialog" aria-modal="true" aria-labelledby="agent-spec-title">
         <div class="agent-spec-header">
-          <h3 id="agent-spec-title">New Agent Spec</h3>
+          <h3 id="agent-spec-title">New Agent</h3>
           <button class="agent-spec-close" aria-label="Close agent spec editor">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -322,8 +323,16 @@
         <div class="agent-spec-body">
           <div class="agent-spec-content">
             <div class="agent-spec-editor-pane">
-              <label class="agent-spec-label" for="agent-spec-editor">Agent spec</label>
-              <textarea id="agent-spec-editor" class="agent-spec-editor" rows="14"></textarea>
+              <div class="agent-spec-field">
+                <label class="agent-spec-label" for="agent-spec-name">Name</label>
+                <input id="agent-spec-name" class="agent-spec-name-input" type="text" placeholder="e.g. My Assistant" autocomplete="off" />
+              </div>
+              <div class="agent-spec-field">
+                <label class="agent-spec-label" for="agent-spec-prompt">Prompt</label>
+                <textarea id="agent-spec-prompt" class="agent-spec-prompt-input" rows="12" placeholder="Describe what this agent does..."></textarea>
+              </div>
+              <!-- hidden textarea kept for serialisation -->
+              <textarea id="agent-spec-editor" class="agent-spec-editor" style="display:none;" rows="14"></textarea>
               <div class="agent-spec-status" id="agent-spec-status" role="alert"></div>
               <div class="agent-spec-actions">
                 <button class="agent-spec-reset" type="button">Reset template</button>
@@ -331,11 +340,12 @@
               </div>
             </div>
             <aside class="agent-spec-tools-pane" aria-label="Available tools">
-              <div class="agent-spec-tools-header">Available tools</div>
+              <div class="agent-spec-tools-header">Tools</div>
               <div class="agent-spec-tools-list"></div>
             </aside>
           </div>
         </div>
+        <div class="agent-spec-resize-handle" aria-hidden="true"></div>
       </div>
     </div>
   </div>

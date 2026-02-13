@@ -621,10 +621,14 @@ const UI = {
       agentSpecClose: document.querySelector('.agent-spec-close'),
       agentSpecTitle: document.getElementById('agent-spec-title'),
       agentSpecEditor: document.getElementById('agent-spec-editor'),
+      agentSpecName: document.getElementById('agent-spec-name'),
+      agentSpecPrompt: document.getElementById('agent-spec-prompt'),
       agentSpecStatus: document.getElementById('agent-spec-status'),
       agentSpecSave: document.querySelector('.agent-spec-save'),
       agentSpecReset: document.querySelector('.agent-spec-reset'),
       agentSpecToolsList: document.querySelector('.agent-spec-tools-list'),
+      agentSpecResizeHandle: document.querySelector('.agent-spec-resize-handle'),
+      agentSpecPanel: document.querySelector('.agent-spec-panel'),
       // Provider selection elements
       providerSelect: document.getElementById('provider-select'),
       modelSelectPrimary: document.getElementById('model-select-primary'),
@@ -719,24 +723,39 @@ const UI = {
       e.stopPropagation();
       this.toggleAgentDropdown();
     });
-    this.elements.agentDropdownAdd?.addEventListener('click', () => {
+    this.elements.agentDropdownAdd?.addEventListener('click', async () => {
       this.closeAgentDropdown();
-      this.openAgentSpecEditor({ mode: 'create' });
+      try {
+        await this.openAgentSpecEditor({ mode: 'create' });
+      } catch (e) {
+        console.error('Failed to open agent spec editor:', e);
+      }
     });
     this.elements.agentDropdownList?.addEventListener('click', (e) => {
       const target = e.target;
       const row = target.closest('.agent-dropdown-item');
       if (!row) return;
-      if (target.classList.contains('agent-dropdown-edit')) {
+      // Handle inline delete confirmation buttons
+      if (target.closest('.agent-dropdown-confirm-yes')) {
+        const name = row.dataset.agentName;
+        this.closeAgentDropdown();
+        this.doDeleteAgent(name);
+        return;
+      }
+      if (target.closest('.agent-dropdown-confirm-no')) {
+        // Cancel: re-render list to remove confirmation state
+        Chat.loadAgents();
+        return;
+      }
+      if (target.closest('.agent-dropdown-edit')) {
         const name = row.dataset.agentName;
         this.closeAgentDropdown();
         this.openAgentSpecEditor({ mode: 'edit', name });
         return;
       }
-      if (target.classList.contains('agent-dropdown-delete')) {
+      if (target.closest('.agent-dropdown-delete')) {
         const name = row.dataset.agentName;
-        this.closeAgentDropdown();
-        this.deleteAgent(name);
+        this.showDeleteConfirmation(row, name);
         return;
       }
       if (row.dataset.agentName && !target.closest('.agent-dropdown-actions')) {
@@ -751,11 +770,13 @@ const UI = {
       this.closeAgentSpecEditor();
     });
     this.elements.agentSpecReset?.addEventListener('click', () => {
-      this.loadAgentSpecTemplate();
+      this.resetAgentSpecForm();
     });
     this.elements.agentSpecSave?.addEventListener('click', () => {
       this.saveAgentSpec();
     });
+    // Resize handle for agent spec modal
+    this.initAgentSpecResize();
     
     // A/B toggle in settings
     this.elements.abCheckbox?.addEventListener('change', (e) => {
@@ -992,6 +1013,28 @@ const UI = {
     this.elements.agentDropdownBtn.setAttribute('aria-expanded', 'false');
   },
 
+  showDeleteConfirmation(row, name) {
+    if (!row) return;
+    row.classList.add('agent-dropdown-item-confirming');
+    row.innerHTML = `
+      <span class="agent-dropdown-confirm-text">Delete "${Utils.escapeHtml(name)}"?</span>
+      <div class="agent-dropdown-confirm-actions">
+        <button class="agent-dropdown-confirm-yes" type="button">Delete</button>
+        <button class="agent-dropdown-confirm-no" type="button">Cancel</button>
+      </div>`;
+  },
+
+  async doDeleteAgent(name) {
+    if (!name) return;
+    try {
+      await API.deleteAgent(Utils.normalizeAgentName(name));
+      await Chat.loadAgents();
+    } catch (e) {
+      console.error('Failed to delete agent:', e);
+      this.setAgentSpecStatus(e.message || 'Unable to delete agent.', 'error');
+    }
+  },
+
   renderAgentsList(agents = [], activeName = null) {
     if (this.elements.agentDropdownLabel) {
       this.elements.agentDropdownLabel.textContent = Utils.normalizeAgentName(activeName) || 'Agent';
@@ -1006,12 +1049,17 @@ const UI = {
         isActive = true;
         activeMatched = true;
       }
+      const checkmark = isActive ? '<svg class="agent-dropdown-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>' : '<span class="agent-dropdown-check-spacer"></span>';
       return `
         <div class="agent-dropdown-item${isActive ? ' active' : ''}" data-agent-name="${Utils.escapeHtml(name)}">
-          <span>${Utils.escapeHtml(name)}</span>
+          <span class="agent-dropdown-name">${checkmark}${Utils.escapeHtml(name)}</span>
           <div class="agent-dropdown-actions">
-            <button class="agent-dropdown-edit" type="button">Edit</button>
-            <button class="agent-dropdown-delete" type="button">Delete</button>
+            <button class="agent-dropdown-edit" type="button" title="Edit">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            </button>
+            <button class="agent-dropdown-delete" type="button" title="Delete">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
           </div>
         </div>`;
     });
@@ -1026,14 +1074,26 @@ const UI = {
     this.setAgentSpecStatus('');
     this.agentSpecMode = mode;
     this.agentSpecName = name;
+    // Restore persisted size
+    this.restoreAgentSpecSize();
     if (this.elements.agentSpecTitle) {
       this.elements.agentSpecTitle.textContent = mode === 'edit' ? `Edit ${name || 'Agent'}` : 'New Agent';
     }
+    // Update reset button label
+    if (this.elements.agentSpecReset) {
+      this.elements.agentSpecReset.textContent = mode === 'edit' ? 'Revert changes' : 'Reset template';
+    }
+    // Clear validation errors
+    this.clearAgentSpecValidation();
     if (mode === 'edit' && name) {
       await this.loadAgentToolPalette();
       await this.loadAgentSpecByName(name);
     } else {
       await this.loadAgentSpecTemplate();
+    }
+    // Auto-focus name in create mode
+    if (mode === 'create') {
+      setTimeout(() => this.elements.agentSpecName?.focus(), 100);
     }
   },
 
@@ -1041,6 +1101,11 @@ const UI = {
     if (this.elements.agentSpecModal) {
       this.elements.agentSpecModal.style.display = 'none';
     }
+  },
+
+  clearAgentSpecValidation() {
+    this.elements.agentSpecName?.classList.remove('field-error');
+    this.elements.agentSpecPrompt?.classList.remove('field-error');
   },
 
   setAgentSpecStatus(message, type = '') {
@@ -1052,17 +1117,76 @@ const UI = {
     }
   },
 
+  /** Parse YAML frontmatter and prompt body from .md content */
+  parseAgentSpec(content) {
+    const match = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
+    if (!match) return { name: '', tools: [], prompt: content.trim() };
+    const yaml = match[1];
+    const prompt = (match[2] || '').trim();
+    const nameMatch = yaml.match(/^name:\s*(.+)$/m);
+    const name = nameMatch ? nameMatch[1].trim() : '';
+    const tools = [];
+    const toolsMatch = yaml.match(/^tools:\s*\n((?:\s+-\s+.+\n?)*)/m);
+    if (toolsMatch) {
+      const lines = toolsMatch[1].split('\n');
+      for (const line of lines) {
+        const m = line.match(/^\s+-\s+(.+)$/);
+        if (m) tools.push(m[1].trim());
+      }
+    }
+    return { name, tools, prompt };
+  },
+
+  /** Serialise structured form fields back to .md format */
+  serialiseAgentSpec(name, tools, prompt) {
+    let yaml = `---\nname: ${name}\n`;
+    if (tools.length) {
+      yaml += 'tools:\n';
+      for (const t of tools) yaml += `  - ${t}\n`;
+    }
+    yaml += '---\n\n';
+    return yaml + prompt;
+  },
+
+  /** Populate structured form fields from parsed data */
+  populateAgentSpecForm({ name = '', tools = [], prompt = '' } = {}) {
+    if (this.elements.agentSpecName) this.elements.agentSpecName.value = name;
+    if (this.elements.agentSpecPrompt) this.elements.agentSpecPrompt.value = prompt;
+    // Update tool checkboxes
+    const checkboxes = this.elements.agentSpecToolsList?.querySelectorAll('input[type="checkbox"]');
+    if (checkboxes) {
+      checkboxes.forEach((cb) => {
+        cb.checked = tools.includes(cb.value);
+      });
+    }
+  },
+
+  /** Collect form fields into the hidden editor textarea for save */
+  collectAgentSpecForm() {
+    const name = this.elements.agentSpecName?.value.trim() || '';
+    const prompt = this.elements.agentSpecPrompt?.value.trim() || '';
+    const tools = [];
+    const checkboxes = this.elements.agentSpecToolsList?.querySelectorAll('input[type="checkbox"]:checked');
+    if (checkboxes) {
+      checkboxes.forEach((cb) => tools.push(cb.value));
+    }
+    return { name, tools, prompt };
+  },
+
   async loadAgentSpecTemplate() {
-    if (!this.elements.agentSpecEditor) return;
-    this.elements.agentSpecEditor.value = 'Loading template...';
     this.setAgentSpecStatus('');
     try {
       const response = await API.getAgentTemplate();
-      this.elements.agentSpecEditor.value = response?.template || '';
-      this.renderAgentToolPalette(response?.tools || []);
+      const template = response?.template || '';
+      if (this.elements.agentSpecEditor) this.elements.agentSpecEditor.value = template;
+      this._lastAvailableTools = response?.tools || [];
+      this.renderAgentToolPalette(this._lastAvailableTools);
+      const parsed = this.parseAgentSpec(template);
+      this.populateAgentSpecForm(parsed);
     } catch (e) {
       console.error('Failed to load agent template:', e);
-      this.elements.agentSpecEditor.value = '';
+      if (this.elements.agentSpecEditor) this.elements.agentSpecEditor.value = '';
+      this.populateAgentSpecForm();
       this.setAgentSpecStatus('Unable to load agent template.', 'error');
     }
   },
@@ -1070,24 +1194,39 @@ const UI = {
   async loadAgentToolPalette() {
     try {
       const response = await API.getAgentTemplate();
-      this.renderAgentToolPalette(response?.tools || []);
+      this._lastAvailableTools = response?.tools || [];
+      this.renderAgentToolPalette(this._lastAvailableTools);
     } catch (e) {
       console.error('Failed to load tool palette:', e);
+      this._lastAvailableTools = [];
       this.renderAgentToolPalette([]);
     }
   },
 
   async loadAgentSpecByName(name) {
-    if (!this.elements.agentSpecEditor) return;
-    this.elements.agentSpecEditor.value = 'Loading agent...';
     this.setAgentSpecStatus('');
     try {
       const response = await API.getAgentSpec(name);
-      this.elements.agentSpecEditor.value = response?.content || '';
+      const content = response?.content || '';
+      if (this.elements.agentSpecEditor) this.elements.agentSpecEditor.value = content;
+      const parsed = this.parseAgentSpec(content);
+      this.populateAgentSpecForm(parsed);
     } catch (e) {
       console.error('Failed to load agent spec:', e);
-      this.elements.agentSpecEditor.value = '';
+      if (this.elements.agentSpecEditor) this.elements.agentSpecEditor.value = '';
+      this.populateAgentSpecForm();
       this.setAgentSpecStatus('Unable to load agent spec.', 'error');
+    }
+  },
+
+  resetAgentSpecForm() {
+    this.clearAgentSpecValidation();
+    this.setAgentSpecStatus('');
+    if (this.agentSpecMode === 'edit' && this.agentSpecName) {
+      // Revert to saved version
+      this.loadAgentSpecByName(this.agentSpecName);
+    } else {
+      this.loadAgentSpecTemplate();
     }
   },
 
@@ -1097,21 +1236,43 @@ const UI = {
       this.elements.agentSpecToolsList.innerHTML = '<div class="agent-spec-tool-desc">No tools available.</div>';
       return;
     }
-    const items = tools.map((tool) => `
-      <div class="agent-spec-tool">
-        <div class="agent-spec-tool-name">${Utils.escapeHtml(tool.name || '')}</div>
-        <div class="agent-spec-tool-desc">${Utils.escapeHtml(tool.description || '')}</div>
-      </div>
-    `);
+    // Get currently selected tools from the form
+    const currentForm = this.collectAgentSpecForm();
+    const selectedTools = currentForm.tools || [];
+    const items = tools.map((tool) => {
+      const toolName = tool.name || '';
+      const checked = selectedTools.includes(toolName) ? 'checked' : '';
+      return `
+      <label class="agent-spec-tool">
+        <input type="checkbox" class="agent-spec-tool-checkbox" value="${Utils.escapeHtml(toolName)}" ${checked} />
+        <div class="agent-spec-tool-info">
+          <div class="agent-spec-tool-name">${Utils.escapeHtml(toolName)}</div>
+          <div class="agent-spec-tool-desc">${Utils.escapeHtml(tool.description || '')}</div>
+        </div>
+      </label>`;
+    });
     this.elements.agentSpecToolsList.innerHTML = items.join('');
   },
 
   async saveAgentSpec() {
-    const content = this.elements.agentSpecEditor?.value || '';
-    if (!content) {
-      this.setAgentSpecStatus('Agent markdown is required.', 'error');
-      return;
+    this.clearAgentSpecValidation();
+    const { name, tools, prompt } = this.collectAgentSpecForm();
+    // Client-side validation
+    let hasError = false;
+    if (!name) {
+      this.elements.agentSpecName?.classList.add('field-error');
+      this.setAgentSpecStatus('Agent name is required.', 'error');
+      hasError = true;
     }
+    if (!prompt) {
+      this.elements.agentSpecPrompt?.classList.add('field-error');
+      if (!hasError) this.setAgentSpecStatus('Prompt is required.', 'error');
+      hasError = true;
+    }
+    if (hasError) return;
+    // Serialise to .md format
+    const content = this.serialiseAgentSpec(name, tools, prompt);
+    if (this.elements.agentSpecEditor) this.elements.agentSpecEditor.value = content;
     if (this.elements.agentSpecSave) {
       this.elements.agentSpecSave.disabled = true;
     }
@@ -1141,6 +1302,46 @@ const UI = {
         this.elements.agentSpecSave.disabled = false;
       }
     }
+  },
+
+  /** Resize handle logic for agent spec modal */
+  initAgentSpecResize() {
+    const handle = this.elements.agentSpecResizeHandle;
+    const panel = this.elements.agentSpecPanel;
+    if (!handle || !panel) return;
+    let startX, startY, startW, startH;
+    const onMouseMove = (e) => {
+      const newW = Math.max(480, startW + (e.clientX - startX));
+      const newH = Math.max(400, startH + (e.clientY - startY));
+      panel.style.width = newW + 'px';
+      panel.style.maxWidth = newW + 'px';
+      panel.style.maxHeight = newH + 'px';
+    };
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      // Persist size
+      localStorage.setItem('archi_agent_spec_width', panel.style.width);
+      localStorage.setItem('archi_agent_spec_height', panel.style.maxHeight);
+    };
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      startX = e.clientX;
+      startY = e.clientY;
+      startW = panel.offsetWidth;
+      startH = panel.offsetHeight;
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    });
+  },
+
+  restoreAgentSpecSize() {
+    const panel = this.elements.agentSpecPanel;
+    if (!panel) return;
+    const w = localStorage.getItem('archi_agent_spec_width');
+    const h = localStorage.getItem('archi_agent_spec_height');
+    if (w) { panel.style.width = w; panel.style.maxWidth = w; }
+    if (h) { panel.style.maxHeight = h; }
   },
 
   toggleSidebar() {
@@ -2680,9 +2881,13 @@ const Chat = {
   },
 
   async deleteAgent(name) {
+    // Legacy path — now handled via inline confirmation in UI
     if (!name) return;
-    const confirmed = window.confirm(`Delete agent "${name}"? This cannot be undone.`);
-    if (!confirmed) return;
+    await this.doDeleteAgent(name);
+  },
+
+  async doDeleteAgent(name) {
+    if (!name) return;
     try {
       await API.deleteAgent(Utils.normalizeAgentName(name));
       await this.loadAgents();
