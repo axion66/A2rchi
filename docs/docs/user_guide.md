@@ -43,7 +43,6 @@ Archi provides these deployable services:
 | Service | Description | Default Port |
 |---------|-------------|-------------|
 | `chatbot` | Web-based chat interface | 7861 |
-| `uploader` | Document upload and management UI | 5003 |
 | `data_manager` | Data ingestion and vectorstore management | 7871 |
 | `piazza` | Piazza forum integration with Slack | — |
 | `redmine-mailer` | Redmine ticket responses via email | — |

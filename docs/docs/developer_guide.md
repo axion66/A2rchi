@@ -53,7 +53,7 @@ class BaseProvider(ABC):
     def list_models(self) -> list[str]: ...
 ```
 
-Providers register themselves via `ProviderType` enum and the `register_provider()` decorator. Factory functions in `src/archi/providers/__init__.py`:
+Providers register themselves via `ProviderType` enum and are registered through `register_provider()`. Factory functions in `src/archi/providers/__init__.py`:
 
 - `get_provider(provider_type)` — returns a provider instance
 - `get_model(provider_type, model_name)` — returns a LangChain `BaseChatModel`
@@ -73,7 +73,7 @@ Built-in providers:
 
 1. Create `src/archi/providers/my_provider.py` extending `BaseProvider`.
 2. Add an entry to the `ProviderType` enum.
-3. Decorate the class with `@register_provider(ProviderType.MY_PROVIDER)`.
+3. Call `register_provider(ProviderType.MY_PROVIDER, MyProvider)` to register it.
 4. Implement `get_model()`, `get_embedding_model()`, and `list_models()`.
 5. Add config keys under `services.chat_app.providers.my_provider`.
 
@@ -85,7 +85,7 @@ The agent system is built around `BaseReActAgent` (`src/archi/archi.py`, ~975 li
 - Manages conversation history, streaming, and tool execution
 - Loads agent specs from markdown files with YAML frontmatter
 
-`AgentSpec` (`src/archi/models/agent_spec.py`) is a dataclass:
+`AgentSpec` (`src/archi/pipelines/agents/agent_spec.py`) is a dataclass:
 
 ```python
 @dataclass
@@ -93,7 +93,7 @@ class AgentSpec:
     name: str
     tools: list[str]
     prompt: str
-    file_path: str
+    source_path: str
 ```
 
 Agent specs are discovered via `list_agent_files()` and loaded via `load_agent_spec()`. The `select_agent_spec()` function picks the correct spec given a name.

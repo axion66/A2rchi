@@ -48,8 +48,8 @@ The main chat interface.
 |-----|------|---------|-------------|
 | `agent_class` | string | `CMSCompOpsAgent` | Pipeline class to run |
 | `agents_dir` | string | — | Path to agent markdown files |
-| `provider` | string | `local` | Default LLM provider |
-| `model` | string | `llama3.2` | Default model |
+| `default_provider` | string | `local` | Default LLM provider |
+| `default_model` | string | `llama3.2` | Default model |
 | `trained_on` | string | — | Description shown in the chat UI |
 | `hostname` | string | `localhost` | Public hostname for the chat interface |
 | `port` | int | `7861` | Internal container port |
@@ -100,13 +100,6 @@ PostgreSQL database settings.
 | `external_port` | int | `7871` | Host-mapped port |
 | `host` | string | `0.0.0.0` | Network binding |
 | `enabled` | bool | `true` | Enable data manager service |
-
-### `services.uploader_app`
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `external_port` | int | `5003` | Host-mapped port |
-| `verify_urls` | bool | — | Verify URLs before ingestion |
 
 ### `services.grafana`
 
@@ -159,8 +152,9 @@ Controls data ingestion, vectorstore behaviour, and retrieval settings.
 | `retrievers.hybrid_retriever.num_documents_to_retrieve` | int | `5` | Top-k documents per query |
 | `retrievers.hybrid_retriever.bm25_weight` | float | `0.6` | BM25 keyword score weight |
 | `retrievers.hybrid_retriever.semantic_weight` | float | `0.4` | Semantic similarity weight |
-| `use_hybrid_search` | bool | `true` | Enable hybrid BM25 + semantic search |
 | `stemming.enabled` | bool | `false` | Enable Porter Stemmer for improved matching |
+
+> **Note:** `use_hybrid_search` is a dynamic runtime setting (managed via the configuration API), not a YAML config key.
 
 ### Sources
 
@@ -237,15 +231,13 @@ archi:
     - QAPipeline
   pipeline_map:
     CMSCompOpsAgent:
-      recursion_limit: 100
-  chain_update_time: 60
+      recursion_limit: 50
 ```
 
 | Key | Type | Description |
 |-----|------|-------------|
 | `pipelines` | list | Pipeline classes to load |
 | `pipeline_map` | dict | Per-pipeline configuration (prompts, models, limits) |
-| `chain_update_time` | int | Polling interval (seconds) for hot-reloading chains |
 
 ### MCP Servers
 
@@ -280,8 +272,8 @@ services:
   chat_app:
     agent_class: CMSCompOpsAgent
     agents_dir: examples/agents
-    provider: local
-    model: llama3.2
+    default_provider: local
+    default_model: llama3.2
     trained_on: "Course documentation"
     hostname: "example.mit.edu"
     external_port: 7861
@@ -315,7 +307,7 @@ archi:
     - CMSCompOpsAgent
   pipeline_map:
     CMSCompOpsAgent:
-      recursion_limit: 100
+      recursion_limit: 50
 ```
 
 > **Tip:** For the full base template with all defaults, see `src/cli/templates/base-config.yaml` in the repository.

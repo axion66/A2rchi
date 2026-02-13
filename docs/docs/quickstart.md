@@ -54,8 +54,8 @@ services:
   chat_app:
     agent_class: CMSCompOpsAgent
     agents_dir: examples/agents
-    provider: local
-    model: llama3.2
+    default_provider: local
+    default_model: llama3.2
     providers:
       local:
         base_url: http://localhost:11434
@@ -91,7 +91,7 @@ Agent specs are Markdown files (see `examples/agents/`) with YAML frontmatter fo
 - `services`: Settings for individual services/interfaces.
   - `chat_app.agent_class`: Agent class to run (pipeline class name).
   - `chat_app.agents_dir`: Local path to agent markdown files (copied into the deployment).
-  - `chat_app.provider`/`chat_app.model`: Default provider/model for chat when no UI override is set.
+  - `chat_app.default_provider`/`chat_app.default_model`: Default provider/model for chat when no UI override is set.
   - `chat_app.providers.local`: Ollama/local provider configuration.
   - `chat_app`: Chat interface configuration, including hostname and descriptive metadata.
   - `vectorstore.backend`: Vector store backend (`postgres` with pgvector).

@@ -28,9 +28,14 @@ archi create --name <name> --config <config.yaml> --env-file <secrets.env> --ser
 |--------|-------------|
 | `--name`, `-n` | Name of the deployment |
 | `--config`, `-c` | Path to YAML configuration file (repeatable for multiple files) |
+| `--agents`, `-a` | Path to a directory of agent markdown files (at least one `*.md` required) |
+
+**Recommended options:**
+
+| Option | Description |
+|--------|-------------|
 | `--env-file`, `-e` | Path to the secrets `.env` file |
 | `--services`, `-s` | Comma-separated list of services to enable (e.g., `chatbot,uploader`) |
-| `--agents`, `-a` | Path to a directory of agent markdown files (at least one `*.md` required) |
 
 **Optional flags:**
 

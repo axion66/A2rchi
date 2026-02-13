@@ -45,37 +45,17 @@ Create an A/B comparison between two model responses.
 
 ## Authentication
 
-### `POST /api/auth/login`
+Authentication routes are served at the application root (not under `/api/`).
 
-Authenticate with email and password.
+### `GET|POST /login`
 
-**Request:**
-```json
-{
-  "email": "user@example.com",
-  "password": "secret123"
-}
-```
+Authenticate with email and password. GET renders the login page; POST processes credentials.
 
-**Response:**
-```json
-{
-  "success": true,
-  "user": {
-    "id": "user_abc123",
-    "email": "user@example.com",
-    "display_name": "John Doe",
-    "is_admin": false
-  },
-  "session_token": "sess_..."
-}
-```
-
-### `POST /api/auth/logout`
+### `GET /logout`
 
 End the current session.
 
-### `GET /api/auth/me`
+### `GET /auth/user`
 
 Get the current authenticated user.
 
@@ -118,7 +98,7 @@ Update user preferences (model, temperature, prompts, theme).
 
 ### `PUT /api/users/me/api-keys/{provider}`
 
-Set a BYOK API key. Provider: `openrouter`, `openai`, `anthropic`, `gemini`.
+Set a BYOK API key. Provider: `openrouter`, `openai`, `anthropic`.
 
 ### `DELETE /api/users/me/api-keys/{provider}`
 
@@ -205,17 +185,21 @@ Get configuration change audit log. **Admin only.**
 
 ## Agents
 
-### `GET /api/agents`
+### `GET /api/agents/list`
 
 List all available agent specs.
 
-### `GET /api/agents/<name>`
+### `GET /api/agents/spec`
 
-Get a specific agent spec (name, tools, prompt).
+Get a specific agent spec (name, tools, prompt). Pass `name` as a query parameter.
+
+### `GET /api/agents/template`
+
+Get the template for creating a new agent (available tools, defaults).
 
 ### `POST /api/agents`
 
-Create a new agent spec.
+Create or update an agent spec.
 
 **Request:**
 ```json
@@ -226,15 +210,11 @@ Create a new agent spec.
 }
 ```
 
-### `PUT /api/agents/<name>`
+### `DELETE /api/agents`
 
-Update an existing agent spec.
+Delete an agent spec. Pass `name` as a query parameter or in the request body.
 
-### `DELETE /api/agents/<name>`
-
-Delete an agent spec.
-
-### `POST /api/agents/select`
+### `POST /api/agents/active`
 
 Set the active agent for the current session.
 

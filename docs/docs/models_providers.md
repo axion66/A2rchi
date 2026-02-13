@@ -11,7 +11,7 @@ All providers extend the `BaseProvider` abstract class and are registered in a g
 | OpenAI | `openai` | `OPENAI_API_KEY` | `gpt-4o` | `ChatOpenAI` |
 | Anthropic | `anthropic` | `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514` | `ChatAnthropic` |
 | Google Gemini | `gemini` | `GOOGLE_API_KEY` | `gemini-2.0-flash` | `ChatGoogleGenerativeAI` |
-| OpenRouter | `openrouter` | `OPENROUTER_API_KEY` | `anthropic/claude-3.5-sonnet` | `ChatOpenAI` (custom base URL) |
+| OpenRouter | `openrouter` | `OPENROUTER_API_KEY` | `anthropic/claude-sonnet-4` | `ChatOpenAI` (custom base URL) |
 | Local (Ollama/vLLM) | `local` | N/A | Dynamic (fetched from server) | `ChatOllama` or `ChatOpenAI` |
 
 ### Key Concepts
@@ -32,8 +32,8 @@ Providers are configured per-service in your deployment's configuration file. Ea
 ```yaml
 services:
   chat_app:
-    provider: openai
-    model: gpt-4o
+    default_provider: openai
+    default_model: gpt-4o
 ```
 
 **Secrets:**
@@ -47,8 +47,8 @@ OPENAI_API_KEY=sk-...
 ```yaml
 services:
   chat_app:
-    provider: anthropic
-    model: claude-sonnet-4-20250514
+    default_provider: anthropic
+    default_model: claude-sonnet-4-20250514
 ```
 
 **Secrets:**
@@ -62,8 +62,8 @@ ANTHROPIC_API_KEY=sk-ant-...
 ```yaml
 services:
   chat_app:
-    provider: gemini
-    model: gemini-2.0-flash
+    default_provider: gemini
+    default_model: gemini-2.0-flash
     providers:
       gemini:
         enabled: true
@@ -86,8 +86,8 @@ To make OpenRouter the default:
 ```yaml
 services:
   chat_app:
-    provider: openrouter
-    model: anthropic/claude-3.5-sonnet
+    default_provider: openrouter
+    default_model: anthropic/claude-sonnet-4
 ```
 
 **Secrets:**
@@ -105,8 +105,8 @@ Run open-source models locally via [Ollama](https://ollama.ai):
 ```yaml
 services:
   chat_app:
-    provider: local
-    model: llama3.2
+    default_provider: local
+    default_model: llama3.2
     providers:
       local:
         base_url: http://localhost:11434
@@ -125,8 +125,8 @@ For `openai_compat` mode:
 ```yaml
 services:
   chat_app:
-    provider: local
-    model: my-model
+    default_provider: local
+    default_model: my-model
     providers:
       local:
         base_url: http://localhost:8000/v1
@@ -183,15 +183,16 @@ Uses HuggingFace models locally. Optionally requires `HUGGINGFACEHUB_API_TOKEN` 
 
 BYOK allows users to provide their own API keys for LLM providers at runtime, enabling cost attribution, provider flexibility, and privacy.
 
+> **Supported Providers:** BYOK session keys work with all configured provider types (OpenAI, Anthropic, OpenRouter, Gemini, etc.). The Settings UI shows status indicators for each provider.
+
 ### Key Hierarchy
 
 API keys are resolved in the following order (highest priority first):
 
-1. **Environment Variables**: Admin-configured keys (e.g., `OPENAI_API_KEY`)
-2. **Docker Secrets**: Keys mounted at `/run/secrets/`
-3. **Session Storage**: User-provided keys via the Settings UI
+1. **Session Storage**: User-provided keys via the Settings UI (BYOK)
+2. **Environment Variables / Docker Secrets**: Admin-configured keys (e.g., `OPENAI_API_KEY` or keys mounted at `/run/secrets/`)
 
-> **Note:** Environment variable keys always take precedence. If an admin configures a key via an environment variable, users cannot override it.
+> **Note:** When a user provides a session key, it overrides any environment-level key for that user's requests. Environment keys serve as the default fallback for users who have not configured their own key.
 
 ### Using BYOK in the Chat Interface
 

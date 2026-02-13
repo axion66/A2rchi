@@ -123,7 +123,7 @@ archi:
     - CMSCompOpsAgent
   pipeline_map:
     CMSCompOpsAgent:
-      recursion_limit: 100
+      recursion_limit: 50
 ```
 
 The `recursion_limit` controls the maximum number of ReAct reasoning steps.
@@ -203,8 +203,12 @@ data_manager:
   chunk_size: 1000
   chunk_overlap: 0
   reset_collection: true
-  num_documents_to_retrieve: 5
   distance_metric: cosine
+  retrievers:
+    hybrid_retriever:
+      num_documents_to_retrieve: 5
+      bm25_weight: 0.6
+      semantic_weight: 0.4
 ```
 
 | Setting | Description | Default |
@@ -213,18 +217,19 @@ data_manager:
 | `chunk_size` | Maximum characters per text chunk | `1000` |
 | `chunk_overlap` | Overlapping characters between chunks | `0` |
 | `reset_collection` | Wipe and recreate collection on startup | `true` |
-| `num_documents_to_retrieve` | Top-k documents per query | `5` |
+| `retrievers.hybrid_retriever.num_documents_to_retrieve` | Top-k documents per query | `5` |
 | `distance_metric` | Similarity metric: `cosine`, `l2`, or `ip` | `cosine` |
 
 ### Hybrid Search
 
-Combine semantic search with keyword-based BM25 search for improved retrieval:
+Hybrid search (semantic + BM25 keyword retrieval) is enabled by default as a dynamic runtime setting. The weights are configurable in your YAML:
 
 ```yaml
 data_manager:
-  use_hybrid_search: true
-  bm25_weight: 0.6
-  semantic_weight: 0.4
+  retrievers:
+    hybrid_retriever:
+      bm25_weight: 0.6
+      semantic_weight: 0.4
 ```
 
 ### Stemming
@@ -239,7 +244,7 @@ data_manager:
 
 ### Supported Document Formats
 
-`.txt`, `.C`, `.md`, `.py`, `.html`, `.pdf`
+`.txt`, `.md`, `.py`, `.c`, `.C`, `.h`, `.sh`, `.html`, `.htm`, `.pdf`, `.json`, `.yaml`, `.yml`, `.csv`, `.tsv`, `.log`, `.rst`, `.php`
 
 ### Document Synchronization
 

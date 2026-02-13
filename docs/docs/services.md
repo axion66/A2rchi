@@ -36,8 +36,8 @@ services:
   chat_app:
     agent_class: CMSCompOpsAgent
     agents_dir: examples/agents
-    provider: local
-    model: llama3.2
+    default_provider: local
+    default_model: llama3.2
     trained_on: "Course documentation"
     hostname: "example.mit.edu"
     port: 7861
@@ -52,27 +52,11 @@ archi create [...] --services chatbot
 
 ---
 
-## Document Uploader
+## Document Upload
 
-A web interface for uploading and managing documents in the vector store.
+Document upload functionality is built into the **Data Manager** service. Documents can be uploaded via the uploader web interface or by copying files directly into the data directory.
 
-**Default port:** `5003`
-
-### Configuration
-
-```yaml
-services:
-  uploader_app:
-    external_port: 5003
-```
-
-### Running
-
-```bash
-archi create [...] --services chatbot,uploader
-```
-
-See [Data Sources — Document Uploader](data_sources.md#document-uploader) for first-time setup instructions.
+See [Data Sources — Adding Documents Manually](data_sources.md#adding-documents-manually) for setup instructions.
 
 ---
 

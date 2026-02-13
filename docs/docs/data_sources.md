@@ -207,15 +207,9 @@ archi create [...] --sources redmine
 
 ## Adding Documents Manually
 
-### Document Uploader
+### Document Upload (via Chat UI)
 
-Enable the uploader service for a web-based document management interface:
-
-```bash
-archi create [...] --services chatbot,uploader
-```
-
-The uploader runs on port `5003` by default (check with `docker ps` or `podman ps`).
+The chatbot service includes a built-in document upload interface. When logged in to the chat UI, navigate to `/upload` to upload documents through your browser.
 
 **First-time setup — create an admin account:**
 
@@ -224,7 +218,7 @@ docker exec -it <CONTAINER-ID> bash
 python -u src/bin/service_create_account.py
 ```
 
-Run the script from the `/root/archi` directory inside the container. After creating an account, visit the uploader's port in your browser to log in and upload documents.
+Run the script from the `/root/archi` directory inside the container. After creating an account, visit the chat UI to log in and upload documents.
 
 ### Directly Copying Files
 
