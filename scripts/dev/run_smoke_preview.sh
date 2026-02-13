@@ -153,17 +153,15 @@ if smoke_model:
         models.append(smoke_model)
     local_cfg["models"] = models
     local_cfg["default_model"] = smoke_model
-    # Also patch pipeline_map model references
-    pipeline_map = archi.get("pipeline_map", {})
-    for pipe_name, pipe_cfg in pipeline_map.items():
-        req_models = (pipe_cfg.get("models") or {}).get("required", {})
-        for key, val in list(req_models.items()):
-            if isinstance(val, str) and val.startswith("local/"):
-                req_models[key] = f"local/{smoke_model}"
+    local_cfg.setdefault("enabled", True)
+    chat_cfg["default_provider"] = "local"
+    chat_cfg["default_model"] = smoke_model
 if smoke_url:
     local_cfg["base_url"] = smoke_url
-archi["providers"] = providers
-cfg["archi"] = archi
+providers["local"] = local_cfg
+chat_cfg["providers"] = providers
+services["chat_app"] = chat_cfg
+cfg["services"] = services
 with open(config_dest, "w", encoding="utf-8") as handle:
     yaml.safe_dump(cfg, handle, sort_keys=False)
 PY
@@ -307,8 +305,8 @@ import yaml
 rendered = os.environ.get("RENDERED_CONFIG")
 with open(rendered, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
-pipelines = (cfg.get("archi") or {}).get("pipelines") or []
-print(pipelines[0] if pipelines else "")
+chat_cfg = (cfg.get("services") or {}).get("chat_app") or {}
+print(chat_cfg.get("agent_class", ""))
 PY
 )"
 
@@ -387,7 +385,7 @@ import yaml
 rendered = os.environ.get("RENDERED_CONFIG")
 with open(rendered, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
-local_cfg = ((cfg.get("archi") or {}).get("providers") or {}).get("local") or {}
+local_cfg = (((cfg.get("services") or {}).get("chat_app") or {}).get("providers") or {}).get("local") or {}
 print(local_cfg.get("base_url", "http://localhost:11434"))
 PY
 )"
@@ -398,7 +396,7 @@ import yaml
 rendered = os.environ.get("RENDERED_CONFIG")
 with open(rendered, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
-local_cfg = ((cfg.get("archi") or {}).get("providers") or {}).get("local") or {}
+local_cfg = (((cfg.get("services") or {}).get("chat_app") or {}).get("providers") or {}).get("local") or {}
 models = local_cfg.get("models") or []
 print(models[0] if models else "")
 PY
