@@ -64,6 +64,14 @@ fi
   python3 - < tests/smoke/tools_smoke.py
 
 info "Running ReAct smoke check..."
-python3 tests/smoke/react_smoke.py
+"${tool}" exec -i -w /root/archi \
+  -e BASE_URL="http://localhost:2786" \
+  -e ARCHI_CONFIG_NAME="${config_name}" \
+  -e DM_BASE_URL="${DM_BASE_URL}" \
+  -e OLLAMA_URL="${OLLAMA_URL}" \
+  -e OLLAMA_HOST="${ollama_host}" \
+  -e OLLAMA_MODEL="${OLLAMA_MODEL}" \
+  "${container_name}" \
+  python3 tests/smoke/react_smoke.py
 
 info "Combined smoke checks passed for ${NAME}"
