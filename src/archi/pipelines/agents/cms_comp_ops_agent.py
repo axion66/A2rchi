@@ -2,10 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Callable, Dict, List, Sequence, Optional
-
-from langchain_core.documents import Document
-from langchain.agents.middleware import TodoListMiddleware, LLMToolSelectorMiddleware
+from typing import Any, Callable, Dict, List
 
 from src.utils.logging import get_logger
 from src.archi.pipelines.agents.base_react import BaseReActAgent
@@ -18,7 +15,6 @@ from src.archi.pipelines.agents.tools import (
     create_retriever_tool,
     RemoteCatalogClient,
 )
-from src.archi.pipelines.agents.utils.history_utils import infer_speaker
 
 logger = get_logger(__name__)
 
@@ -137,54 +133,6 @@ class CMSCompOpsAgent(BaseReActAgent):
     #         max_tools=3,
     #     )
     #     return [todolist_middleware, llmtoolselector_middleware]
-
-    def _store_documents(self, stage: str, docs: Sequence[Document]) -> None:
-        """Centralised helper used by tools to record documents into the active memory."""
-        memory = self.active_memory
-        if not memory:
-            return
-        # Prefer memory convenience method if available
-        try:
-            logger.debug("Recording %d documents from stage '%s' via record_documents", len(docs), stage)
-            memory.record_documents(stage, docs)
-        except Exception:
-            # fallback to explicit record + note
-            memory.record(stage, docs)
-            memory.note(f"{stage} returned {len(list(docs))} document(s).")
-
-    def _prepare_inputs(self, history: Any, **kwargs) -> Dict[str, Any]:
-        """Create list of messages using LangChain's formatting."""
-        history = history or []
-        history_messages = [infer_speaker(msg[0])(msg[1]) for msg in history]
-        return {"history": history_messages}
-
-    def _prepare_agent_inputs(self, **kwargs) -> Dict[str, Any]:
-        """Prepare agent state and formatted inputs shared by invoke/stream."""
-
-        # event-level memory (which documents were retrieved)
-        memory = self.start_run_memory()
-
-        # refresh vs connection
-        vectorstore = kwargs.get("vectorstore")
-        if vectorstore:
-            self._update_vector_retrievers(vectorstore)
-        else:
-            self._vector_retrievers = None
-            self._vector_tools = None
-        extra_tools = self._vector_tools if self._vector_tools else None
-
-        self.refresh_agent(extra_tools=extra_tools)
-
-        inputs = self._prepare_inputs(history=kwargs.get("history"))
-        history_messages = inputs["history"]
-        if history_messages:
-            memory.note(f"History contains {len(history_messages)} message(s).")
-            last_message = history_messages[-1]
-            content = self._message_content(last_message)
-            if content:
-                snippet = content if len(content) <= 200 else f"{content[:197]}..."
-                memory.note(f"Latest user message: {snippet}")
-        return {"messages": history_messages}
 
     def _update_vector_retrievers(self, vectorstore: Any) -> None:
         """Instantiate or refresh the vectorstore retriever tool using hybrid retrieval."""
