@@ -57,8 +57,8 @@ class FlaskAppWrapper:
         self.app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100 MB upload limit
 
         self.auth_config = (self.services_config or {}).get("data_manager", {}).get("auth", {}) or {}
-        self.auth_enabled = bool(self.auth_config.get("enabled", True))
-        self.api_token = (self.auth_config.get("api_token") or "").strip() or None
+        self.auth_enabled = bool(self.auth_config.get("enabled", False))
+        self.api_token = read_secret("DM_API_TOKEN") or None
         self.admin_users = {
             user.strip().lower()
             for user in (self.auth_config.get("admins") or [])

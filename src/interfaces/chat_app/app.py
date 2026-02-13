@@ -1801,8 +1801,7 @@ class FlaskAppWrapper(object):
         dm_port = dm_config.get("port", 5001)
         self.data_manager_url = f"http://{dm_host}:{dm_port}"
         # API token for service-to-service auth with data-manager
-        dm_auth = dm_config.get("auth", {}) or {}
-        dm_token = (dm_auth.get("api_token") or "").strip() or None
+        dm_token = read_secret("DM_API_TOKEN") or None
         self._dm_headers = {"Authorization": f"Bearer {dm_token}"} if dm_token else {}
         logger.info(f"Data manager service URL: {self.data_manager_url}")
 
