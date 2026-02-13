@@ -624,6 +624,7 @@ const UI = {
       agentSpecStatus: document.getElementById('agent-spec-status'),
       agentSpecSave: document.querySelector('.agent-spec-save'),
       agentSpecReset: document.querySelector('.agent-spec-reset'),
+      agentSpecToolsList: document.querySelector('.agent-spec-tools-list'),
       // Provider selection elements
       providerSelect: document.getElementById('provider-select'),
       modelSelectPrimary: document.getElementById('model-select-primary'),
@@ -1029,6 +1030,7 @@ const UI = {
       this.elements.agentSpecTitle.textContent = mode === 'edit' ? `Edit ${name || 'Agent'}` : 'New Agent';
     }
     if (mode === 'edit' && name) {
+      await this.loadAgentToolPalette();
       await this.loadAgentSpecByName(name);
     } else {
       await this.loadAgentSpecTemplate();
@@ -1057,10 +1059,21 @@ const UI = {
     try {
       const response = await API.getAgentTemplate();
       this.elements.agentSpecEditor.value = response?.template || '';
+      this.renderAgentToolPalette(response?.tools || []);
     } catch (e) {
       console.error('Failed to load agent template:', e);
       this.elements.agentSpecEditor.value = '';
       this.setAgentSpecStatus('Unable to load agent template.', 'error');
+    }
+  },
+
+  async loadAgentToolPalette() {
+    try {
+      const response = await API.getAgentTemplate();
+      this.renderAgentToolPalette(response?.tools || []);
+    } catch (e) {
+      console.error('Failed to load tool palette:', e);
+      this.renderAgentToolPalette([]);
     }
   },
 
@@ -1076,6 +1089,21 @@ const UI = {
       this.elements.agentSpecEditor.value = '';
       this.setAgentSpecStatus('Unable to load agent spec.', 'error');
     }
+  },
+
+  renderAgentToolPalette(tools = []) {
+    if (!this.elements.agentSpecToolsList) return;
+    if (!tools.length) {
+      this.elements.agentSpecToolsList.innerHTML = '<div class="agent-spec-tool-desc">No tools available.</div>';
+      return;
+    }
+    const items = tools.map((tool) => `
+      <div class="agent-spec-tool">
+        <div class="agent-spec-tool-name">${Utils.escapeHtml(tool.name || '')}</div>
+        <div class="agent-spec-tool-desc">${Utils.escapeHtml(tool.description || '')}</div>
+      </div>
+    `);
+    this.elements.agentSpecToolsList.innerHTML = items.join('');
   },
 
   async saveAgentSpec() {

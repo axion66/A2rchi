@@ -66,8 +66,8 @@ class ImageToTextWrapper:
         image_prompts = grader_cfg.get("prompts", {}).get("image_processing", {})
         self.image_processor = archi(
             pipeline="ImageProcessingPipeline",
-            default_provider=grader_cfg.get("provider"),
-            default_model=grader_cfg.get("model"),
+            default_provider=grader_cfg.get("default_provider"),
+            default_model=grader_cfg.get("default_model"),
             prompt_overrides=image_prompts,
         )
 
@@ -121,8 +121,8 @@ class GradingWrapper:
         grading_prompts = grader_cfg.get("prompts", {}).get("grading", {})
         self.grader = archi(
             pipeline="GradingPipeline",
-            default_provider=grader_cfg.get("provider"),
-            default_model=grader_cfg.get("model"),
+            default_provider=grader_cfg.get("default_provider"),
+            default_model=grader_cfg.get("default_model"),
             prompt_overrides=grading_prompts,
         )
 

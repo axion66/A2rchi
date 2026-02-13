@@ -9,7 +9,7 @@ from piazza_api import Piazza as PiazzaAPI
 
 from src.archi.archi import archi
 from pathlib import Path
-from src.archi.agents import AgentSpecError, select_agent_spec
+from src.archi.pipelines.agents.agent_spec import AgentSpecError, select_agent_spec
 from src.data_manager.data_manager import DataManager
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
@@ -39,8 +39,8 @@ class PiazzaAIWrapper:
         self.archi = archi(
             pipeline=agent_class,
             agent_spec=agent_spec,
-            default_provider=piazza_cfg.get("provider"),
-            default_model=piazza_cfg.get("model"),
+            default_provider=piazza_cfg.get("default_provider"),
+            default_model=piazza_cfg.get("default_model"),
             prompt_overrides=prompt_overrides,
         )
 

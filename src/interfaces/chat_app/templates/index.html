@@ -320,12 +320,20 @@
           </button>
         </div>
         <div class="agent-spec-body">
-          <label class="agent-spec-label" for="agent-spec-editor">Agent Markdown</label>
-          <textarea id="agent-spec-editor" class="agent-spec-editor" rows="14"></textarea>
-          <div class="agent-spec-status" id="agent-spec-status" role="alert"></div>
-          <div class="agent-spec-actions">
-            <button class="agent-spec-reset" type="button">Reset template</button>
-            <button class="agent-spec-save" type="button">Save</button>
+          <div class="agent-spec-content">
+            <div class="agent-spec-editor-pane">
+              <label class="agent-spec-label" for="agent-spec-editor">Agent spec</label>
+              <textarea id="agent-spec-editor" class="agent-spec-editor" rows="14"></textarea>
+              <div class="agent-spec-status" id="agent-spec-status" role="alert"></div>
+              <div class="agent-spec-actions">
+                <button class="agent-spec-reset" type="button">Reset template</button>
+                <button class="agent-spec-save" type="button">Save</button>
+              </div>
+            </div>
+            <aside class="agent-spec-tools-pane" aria-label="Available tools">
+              <div class="agent-spec-tools-header">Available tools</div>
+              <div class="agent-spec-tools-list"></div>
+            </aside>
           </div>
         </div>
       </div>

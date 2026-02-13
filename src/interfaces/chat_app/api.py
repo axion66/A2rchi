@@ -19,7 +19,7 @@ from src.utils.postgres_service_factory import PostgresServiceFactory
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.utils.config_access import get_full_config
-from src.archi.agents import AgentSpecError, load_agent_spec
+from src.archi.pipelines.agents.agent_spec import AgentSpecError, load_agent_spec
 
 logger = get_logger(__name__)
 

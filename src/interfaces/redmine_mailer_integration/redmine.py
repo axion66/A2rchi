@@ -9,7 +9,7 @@ from redminelib import Redmine as RedmineClient
 
 from src.archi.archi import archi
 from pathlib import Path
-from src.archi.agents import AgentSpecError, select_agent_spec
+from src.archi.pipelines.agents.agent_spec import AgentSpecError, select_agent_spec
 from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
 from src.data_manager.data_manager import DataManager
 from src.interfaces.redmine_mailer_integration.utils import sender
@@ -52,8 +52,8 @@ class RedmineAIWrapper:
             agent_spec = select_agent_spec(agents_dir)
         except AgentSpecError as exc:
             raise ValueError(f"Failed to load agent spec: {exc}") from exc
-        default_provider = self.redmine_config.get("provider")
-        default_model = self.redmine_config.get("model")
+        default_provider = self.redmine_config.get("default_provider")
+        default_model = self.redmine_config.get("default_model")
         self.archi = archi(
             pipeline=agent_class,
             agent_spec=agent_spec,
