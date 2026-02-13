@@ -132,10 +132,43 @@ class ConfigurationManager:
             pipeline_requirements = self._get_active_pipeline_requirements(config)
             required_fields = static_requirements + pipeline_requirements
             self._validate_config(required_fields, config)
+            self._validate_chat_app_config(config, services)
             self._validate_source_fields(config, sources)
 
         self._collect_embedding_metadata()
         self._collect_input_lists()
+
+    def _validate_chat_app_config(self, config: Dict[str, Any], services: List[str]) -> None:
+        if not services or "chatbot" not in services:
+            return
+        services_cfg = config.get("services", {}) or {}
+        chat_cfg = services_cfg.get("chat_app", {}) or {}
+
+        if "provider" in chat_cfg or "model" in chat_cfg:
+            raise ValueError(
+                "Legacy keys detected: 'services.chat_app.provider'/'services.chat_app.model'. "
+                "Use 'services.chat_app.default_provider' and 'services.chat_app.default_model' instead."
+            )
+        if "agent_dir" in chat_cfg and "agents_dir" not in chat_cfg:
+            raise ValueError("Missing required field: 'services.chat_app.agents_dir' (did you mean 'agent_dir'?)")
+
+        required = [
+            ("agent_class", "services.chat_app.agent_class"),
+            ("agents_dir", "services.chat_app.agents_dir"),
+            ("default_provider", "services.chat_app.default_provider"),
+            ("default_model", "services.chat_app.default_model"),
+        ]
+        for key, path in required:
+            value = chat_cfg.get(key)
+            if not value:
+                raise ValueError(f"Missing required field: '{path}' in the configuration")
+
+        agents_dir = Path(str(chat_cfg.get("agents_dir"))).expanduser()
+        if agents_dir.exists():
+            if not agents_dir.is_dir():
+                raise ValueError(f"agents_dir must be a directory: '{agents_dir}'")
+            if not list(agents_dir.glob("*.md")):
+                raise ValueError(f"agents_dir must contain at least one .md file: '{agents_dir}'")
 
     def _validate_source_fields(self, config: Dict[str, Any], sources: List[str]) -> None:
         if not sources:

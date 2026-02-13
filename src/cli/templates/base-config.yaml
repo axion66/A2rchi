@@ -73,8 +73,8 @@ services:
   chat_app:
     agent_class: {{ services.chat_app.agent_class | default("CMSCompOpsAgent", true) }}
     agents_dir: "{{ services.chat_app.agents_dir | default('', true) }}"
-    provider: {{ services.chat_app.provider | default("local", true) }}
-    model: {{ services.chat_app.model | default("llama3.2", true) }}
+    default_provider: {{ services.chat_app.default_provider | default("local", true) }}
+    default_model: {{ services.chat_app.default_model | default("llama3.2", true) }}
     prompts: {{ services.chat_app.prompts | default({}, true) }}
     providers:
       local:

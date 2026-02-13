@@ -253,8 +253,8 @@ class ConfigService:
     def _derive_chat_defaults(config: Dict[str, Any]) -> tuple[Optional[str], Optional[str], Optional[str]]:
         chat_cfg = config.get("services", {}).get("chat_app", {}) if isinstance(config, dict) else {}
         agent_class = chat_cfg.get("agent_class") or chat_cfg.get("pipeline")
-        provider = chat_cfg.get("provider")
-        model = chat_cfg.get("model")
+        provider = chat_cfg.get("default_provider")
+        model = chat_cfg.get("default_model")
         return agent_class, provider, model
     
     # =========================================================================

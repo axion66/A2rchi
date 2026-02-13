@@ -18,7 +18,7 @@ from ragas.metrics import (answer_relevancy, context_precision, context_recall,
                            faithfulness)
 
 from src.archi.archi import archi
-from src.archi.agents import AgentSpecError, select_agent_spec
+from src.archi.pipelines.agents.agent_spec import AgentSpecError, select_agent_spec
 from src.archi.providers import get_model
 from src.utils.env import read_secret
 from src.utils.logging import get_logger, setup_logging
@@ -189,8 +189,8 @@ class Benchmarker:
         self.chain = archi(
             pipeline,
             agent_spec=agent_spec,
-            default_provider=chat_cfg.get("provider"),
-            default_model=chat_cfg.get("model"),
+            default_provider=chat_cfg.get("default_provider"),
+            default_model=chat_cfg.get("default_model"),
             prompt_overrides=chat_cfg.get("prompts", {}),
         )
 
