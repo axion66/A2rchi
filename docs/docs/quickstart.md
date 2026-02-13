@@ -125,22 +125,38 @@ Other services may require additional secrets; see the [User Guide](user_guide.m
 
 ## Creating an Archi Deployment
 
-Create your deployment with the CLI:
+Create your deployment with the CLI. A CPU-only deployment with a local Ollama model:
 
 ```bash
-archi create --name my-archi --config examples/deployments/basic-ollama/config.yaml --podman --env-file .secrets.env --services chatbot --gpu-ids all --agents examples/agents
+archi create -n my-archi \
+  --config examples/deployments/basic-ollama/config.yaml \
+  --env-file .secrets.env \
+  --services chatbot \
+  --agents examples/agents
 ```
 
-This command specifies:
+To use GPU acceleration, add `--gpu-ids`:
 
-- `--name`: Deployment name.
-- `--config`: Path to the configuration file.
-- `--podman`: Use Podman for container management (`docker` is the default).
-- `--env-file`: Path to the secrets file.
-- `--services`: Services to deploy (only the `chatbot` service in this example but others can be included separated by commas).
-- `--agents`: Path to a directory of agent markdown files.
+```bash
+archi create -n my-archi \
+  --config examples/deployments/basic-ollama/config.yaml \
+  --env-file .secrets.env \
+  --services chatbot \
+  --agents examples/agents \
+  --gpu-ids all
+```
 
-Note that this command will create a deployment using only the link sources specified in the `data_manager.sources.links.input_lists` by default, if other sources (such as git-based documentation or pages under sso) want to be included they must be included using the `--sources` flag and in the configuration file.
+| Flag | Description |
+|------|-------------|
+| `--name` / `-n` | Deployment name |
+| `--config` / `-c` | Path to configuration file |
+| `--env-file` / `-e` | Path to the secrets `.env` file |
+| `--services` / `-s` | Comma-separated services to deploy |
+| `--agents` / `-a` | **(Required)** Path to a directory of agent markdown files |
+| `--gpu-ids` | GPU IDs to use (e.g., `0`, `0,1`, or `all`) |
+| `--podman` | Use Podman instead of Docker |
+
+> **Note:** By default the deployment uses only the link sources in your config's `data_manager.sources.links.input_lists`. To include other sources (git, JIRA, etc.), use the `--sources` flag and add their config under `data_manager.sources`.
 
 <details>
 <summary>Example output</summary>
@@ -192,3 +208,22 @@ Existing deployments:
 ```
 
 (Additional details will follow for each deployment.)
+
+---
+
+## Next Steps
+
+Once your deployment is running:
+
+- **Chat UI**: Open `http://localhost:7861` in your browser to start chatting.
+- **Data Viewer**: Navigate to the `/data` page in the chat UI to browse ingested documents.
+- **Upload Documents**: If you deployed the `uploader` service, access the upload interface at its configured port.
+
+From here, explore the rest of the documentation:
+
+- [User Guide](user_guide.md) — overview of all capabilities
+- [Agents & Tools](agents_tools.md) — customize agent behavior and prompts
+- [Models & Providers](models_providers.md) — switch to cloud LLMs (OpenAI, Anthropic, Gemini)
+- [Configuration Reference](configuration.md) — full YAML config schema
+- [CLI Reference](cli_reference.md) — all CLI commands and options
+- [Troubleshooting](troubleshooting.md) — common issues and fixes
