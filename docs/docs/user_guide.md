@@ -56,11 +56,11 @@ In addition to the required `--name`, `--config/--config-dir`, `--env-file`, and
 2. **`--sources` / `-src`**: Enable additional ingestion sources (`git`, `sso`, `jira`, `redmine`, ...). Provide a comma-separated list.
 3. **`--gpu-ids`**: Mount specific GPUs (`--gpu-ids all` or `--gpu-ids 0,1`). The legacy `--gpu` flag still works but maps to `all`.
 4. **`--tag`**: Override the local image tag (defaults to `2000`). Handy when building multiple configurations side-by-side.
-5. **`--agents` / `-a`**: Path to a directory of agent markdown files. At least one `*.md` file is required.
+5. **Agent specs**: Set `services.chat_app.agents_dir` to a directory of agent markdown files. At least one `*.md` file is required.
 
 ### Agent specs
 
-Agent specs live in a directory you pass via `--agents`. Each `*.md` file must include:
+Agent specs live in the directory specified by `services.chat_app.agents_dir`. Each `*.md` file must include:
 
 - YAML frontmatter with `name` and `tools`
 - The prompt in the Markdown body (everything after the frontmatter)

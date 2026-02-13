@@ -49,7 +49,6 @@ def cli():
               help="Comma-separated list of services")
 @click.option('--sources', '-src', callback=parse_sources_option,
               help="Comma-separated list of data sources: git,sso,jira,redmine")
-@click.option('--agents', '-a', 'agents_dir', type=str, required=True, help="Path to agents directory")
 @click.option('--podman', '-p', is_flag=True, help="Use Podman instead of Docker")
 @click.option('--gpu-ids', callback=parse_gpu_ids_option, help='GPU configuration: "all" or comma-separated IDs')
 @click.option('--tag', '-t', type=str, default="2000", help="Image tag for built containers")
@@ -58,7 +57,7 @@ def cli():
 @click.option('--force', '-f', is_flag=True, help="Force deployment creation, overwriting existing deployment")
 @click.option('--dry', '--dry-run', is_flag=True, help="Validate configuration and show what would be created without actually deploying")
 def create(name: str, config_files: list, config_dir: str, env_file: str, services: list, sources: list,
-           agents_dir: str, force: bool, dry: bool, verbosity: int, **other_flags):
+           force: bool, dry: bool, verbosity: int, **other_flags):
     """Create an ARCHI deployment with selected services and data sources."""
 
     if not (bool(config_files) ^ bool(config_dir)): 
@@ -160,7 +159,6 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
             compose_config,
             config_manager,
             secrets_manager,
-            agents_dir=agents_dir,
             **other_flags,
         )
 
@@ -275,7 +273,6 @@ def delete(name: str, rmi: bool, rmv: bool, keep_files: bool, list_deployments: 
 @click.option('--config', '-c', 'config_files', type=str, multiple=True, help="Path to .yaml archi configuration")
 @click.option('--config-dir', '-cd', 'config_dir', type=str, help="Path to configs directory")
 @click.option('--env-file', '-e', type=str, required=False, help="Path to .env file with secrets")
-@click.option('--agents', '-a', 'agents_dir', type=str, required=False, help="Path to agents directory")
 @click.option('--no-build', is_flag=True, help="Restart without rebuilding the image")
 @click.option('--with-deps', is_flag=True, help="Also restart dependent services")
 @click.option('--podman', '-p', is_flag=True, default=False, help="specify if podman is being used")
@@ -286,7 +283,6 @@ def restart(
     config_files: tuple,
     config_dir: Optional[str],
     env_file: Optional[str],
-    agents_dir: Optional[str],
     no_build: bool,
     with_deps: bool,
     podman: bool,
@@ -395,7 +391,6 @@ def restart(
             compose_config,
             config_manager,
             secrets_manager,
-            agents_dir=agents_dir,
             host_mode=host_mode,
             allow_port_reuse=True,
         )
@@ -477,7 +472,6 @@ def list_deployments():
 @click.option('--config', '-c', 'config_file', type=str, help="Path to .yaml archi configuration")
 @click.option('--config-dir', '-cd', 'config_dir', type=str, help="Path to configs directory")
 @click.option('--env-file', '-e', type=str, required=False, help="Path to .env file with 'secrets")
-@click.option('--agents', '-a', 'agents_dir', type=str, required=True, help="Path to agents directory")
 @click.option('--hostmode', 'host_mode', is_flag=True, help="Use host network mode")
 @click.option('--sources', '-src', callback=parse_sources_option,
               help="Comma-separated list of data sources: git,sso,jira,redmine")
@@ -486,7 +480,7 @@ def list_deployments():
 @click.option('--force', '-f', is_flag=True, help="Force deployment creation, overwriting existing deployment")
 @click.option('--tag', '-t', type=str, default="2000", help="Image tag for built containers")
 @click.option('--verbosity', '-v', type=int, default=3, help="Logging verbosity level (0-4)")
-def evaluate(name: str, config_file: str, config_dir: str, env_file: str, agents_dir: str, host_mode: bool, sources: list,
+def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_mode: bool, sources: list,
              force: bool, verbosity: int, **other_flags):
     """Create an ARCHI deployment with selected services and data sources."""
     if not (bool(config_file) ^ bool(config_dir)): 
@@ -575,7 +569,6 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, agents
             compose_config,
             config_manager,
             secrets_manager,
-            agents_dir=agents_dir,
             **other_flags,
         )
 

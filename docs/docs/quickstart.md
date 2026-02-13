@@ -45,7 +45,7 @@ Once you have chosen the services, sources, and agent class you want to use, cre
 
 > **Important:** The configuration file follows the format of `src/cli/templates/base-config.yaml`. Any fields not specified in your configuration will be populated with the defaults from this template.
 
-Example configuration for the `chatbot` service using a local Ollama model and an agent spec from `--agents`:
+Example configuration for the `chatbot` service using a local Ollama model and agent specs from `services.chat_app.agents_dir`:
 
 ```yaml
 name: my_archi
@@ -54,8 +54,8 @@ services:
   chat_app:
     agent_class: CMSCompOpsAgent
     agents_dir: examples/agents
-    provider: local
-    model: llama3.2
+    default_provider: local
+    default_model: llama3.2
     providers:
       local:
         base_url: http://localhost:11434
@@ -91,7 +91,7 @@ Agent specs are Markdown files (see `examples/agents/`) with YAML frontmatter fo
 - `services`: Settings for individual services/interfaces.
   - `chat_app.agent_class`: Agent class to run (pipeline class name).
   - `chat_app.agents_dir`: Local path to agent markdown files (copied into the deployment).
-  - `chat_app.provider`/`chat_app.model`: Default provider/model for chat when no UI override is set.
+  - `chat_app.default_provider`/`chat_app.default_model`: Default provider/model for chat when no UI override is set.
   - `chat_app.providers.local`: Ollama/local provider configuration.
   - `chat_app`: Chat interface configuration, including hostname and descriptive metadata.
   - `vectorstore.backend`: Vector store backend (`postgres` with pgvector).
@@ -128,7 +128,7 @@ Other services may require additional secrets; see the [User Guide](user_guide.m
 Create your deployment with the CLI:
 
 ```bash
-archi create --name my-archi --config examples/deployments/basic-ollama/config.yaml --podman --env-file .secrets.env --services chatbot --gpu-ids all --agents examples/agents
+archi create --name my-archi --config examples/deployments/basic-ollama/config.yaml --podman --env-file .secrets.env --services chatbot --gpu-ids all
 ```
 
 This command specifies:
@@ -138,7 +138,7 @@ This command specifies:
 - `--podman`: Use Podman for container management (`docker` is the default).
 - `--env-file`: Path to the secrets file.
 - `--services`: Services to deploy (only the `chatbot` service in this example but others can be included separated by commas).
-- `--agents`: Path to a directory of agent markdown files.
+- Agent specs are loaded from `services.chat_app.agents_dir` in the config.
 
 Note that this command will create a deployment using only the link sources specified in the `data_manager.sources.links.input_lists` by default, if other sources (such as git-based documentation or pages under sso) want to be included they must be included using the `--sources` flag and in the configuration file.
 
@@ -146,7 +146,7 @@ Note that this command will create a deployment using only the link sources spec
 <summary>Example output</summary>
 
 ```bash
-archi create --name my-archi --config examples/deployments/basic-ollama/config.yaml --podman --env-file .secrets.env --services chatbot --gpu-ids all --agents examples/agents
+archi create --name my-archi --config examples/deployments/basic-ollama/config.yaml --podman --env-file .secrets.env --services chatbot --gpu-ids all
 ```
 
 ```
