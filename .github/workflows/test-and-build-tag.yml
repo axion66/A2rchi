@@ -139,10 +139,10 @@ jobs:
         with:
           deployment-name: release-${{ github.run_id }}
           extra-env: |
-            ARCHI_COMPOSE_UP_FLAGS=--build --pull --add-host=host.docker.internal:host-gateway
+            ARCHI_COMPOSE_UP_FLAGS=--build --pull
             SMOKE_OLLAMA_MODEL=qwen3:4b
             SMOKE_OLLAMA_URL=http://localhost:11434
-            SMOKE_OLLAMA_HOST=http://host.docker.internal:11434
+            SMOKE_OLLAMA_HOST=http://localhost:11434
           config-path: tests/pr_preview_config/pr_preview_config.yaml
           config-destination: configs/ci/ci_config.generated.yaml
           services: chatbot
