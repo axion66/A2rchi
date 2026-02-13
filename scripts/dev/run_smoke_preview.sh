@@ -183,16 +183,28 @@ if [[ -z "${AGENTS_DIR}" ]]; then
   exit 1
 fi
 
-CONFIG_DEST="${CONFIG_DEST}" AGENTS_DIR="${AGENTS_DIR}" python - <<'PY'
+CONFIG_DEST="${CONFIG_DEST}" AGENTS_DIR="${AGENTS_DIR}" REPO_ROOT="$(pwd)" python - <<'PY'
 import os
 from pathlib import Path
+import importlib.util
 import yaml
 
 agents_dir = Path(os.environ.get("AGENTS_DIR", ""))
 if not agents_dir.exists() or not agents_dir.is_dir():
     raise SystemExit(f"agents_dir does not exist: {agents_dir}")
 
-from src.archi.pipelines.agents.agent_spec import list_agent_files, load_agent_spec
+repo_root = Path(os.environ.get("REPO_ROOT", ".")).resolve()
+agent_spec_path = repo_root / "src" / "archi" / "pipelines" / "agents" / "agent_spec.py"
+if not agent_spec_path.exists():
+    raise SystemExit(f"agent_spec.py not found at {agent_spec_path}")
+
+spec = importlib.util.spec_from_file_location("agent_spec", agent_spec_path)
+if spec is None or spec.loader is None:
+    raise SystemExit("Unable to import agent_spec module")
+agent_spec = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(agent_spec)
+list_agent_files = agent_spec.list_agent_files
+load_agent_spec = agent_spec.load_agent_spec
 
 agent_files = list_agent_files(agents_dir)
 if not agent_files:
