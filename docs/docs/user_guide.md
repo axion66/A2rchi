@@ -62,9 +62,8 @@ In addition to the required `--name`, `--config/--config-dir`, `--env-file`, and
 
 Agent specs live in a directory you pass via `--agents`. Each `*.md` file must include:
 
-- A top-level `# Name` heading
-- A `## Tools` section with a bullet list of tool names
-- A `## Prompt` section containing the inline system prompt
+- YAML frontmatter with `name` and `tools`
+- The prompt in the Markdown body (everything after the frontmatter)
 
 The service selects the first agent spec in lexicographic order.
 The `tools` list enables a subset of tools defined by the agent class.
@@ -632,12 +631,12 @@ We support the following model classes in `models.py` for models accessed via AP
 
 OpenRouter uses the OpenAI-compatible API. No config entry is required for API-key providers; if
 `OPENROUTER_API_KEY` is set, the provider appears in the chat UI. To make OpenRouter the default,
-set `services.chat_app.provider` and `services.chat_app.model` accordingly.
+set `services.chat_app.default_provider` and `services.chat_app.default_model` accordingly.
 
 ### Ollama
 
-Configure Ollama under `services.chat_app.providers.local`, and set `services.chat_app.provider: local` with
-`services.chat_app.model` to the model id you want as the default. Example:
+Configure Ollama under `services.chat_app.providers.local`, and set `services.chat_app.default_provider: local` with
+`services.chat_app.default_model` to the model id you want as the default. Example:
 
 ```yaml
 services:

@@ -77,7 +77,7 @@ data_manager:
   chunk_size: 1000
 ```
 
-Agent specs are Markdown files (see `examples/agents/`) with `# Name`, `## Tools`, and `## Prompt` sections.
+Agent specs are Markdown files (see `examples/agents/`) with YAML frontmatter for `name` and `tools`, and the prompt in the Markdown body.
 
 <details>
 <summary>Explanation of configuration parameters</summary>
