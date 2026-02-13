@@ -51,9 +51,8 @@ class RemoteCatalogClient:
         cfg = config or {}
         services_cfg = cfg.get("services", {}) if isinstance(cfg, dict) else {}
         data_manager_cfg = services_cfg.get("data_manager", {}) if isinstance(services_cfg, dict) else {}
-        auth_cfg = data_manager_cfg.get("auth", {}) if isinstance(data_manager_cfg, dict) else {}
 
-        api_token = (auth_cfg.get("api_token") or "").strip() or None
+        api_token = read_secret("DM_API_TOKEN") or None
 
         return cls(
             base_url=data_manager_cfg.get("base_url"),
