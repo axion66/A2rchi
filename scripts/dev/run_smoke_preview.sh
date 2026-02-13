@@ -26,6 +26,7 @@ SMOKE_DUMP_LOGS="${SMOKE_DUMP_LOGS:-true}"
 SMOKE_FORCE_CREATE="${SMOKE_FORCE_CREATE:-true}"
 SMOKE_OLLAMA_MODEL="${SMOKE_OLLAMA_MODEL:-}"
 SMOKE_OLLAMA_URL="${SMOKE_OLLAMA_URL:-}"
+SMOKE_OLLAMA_HOST="${SMOKE_OLLAMA_HOST:-}"
 SMOKE_TIMEOUT="${SMOKE_TIMEOUT:-900}"
 export USE_PODMAN
 
@@ -127,6 +128,9 @@ local_cfg = (chat_cfg.get("providers") or {}).get("local") or {}
 print(local_cfg.get("base_url", "http://localhost:11434"))
 PY
 )"
+fi
+if [[ -z "${SMOKE_OLLAMA_HOST}" ]]; then
+  SMOKE_OLLAMA_HOST="${SMOKE_OLLAMA_URL}"
 fi
 if [[ -z "${SMOKE_OLLAMA_MODEL}" ]]; then
   echo "Unable to determine Ollama model from ${CONFIG_DEST}. Set SMOKE_OLLAMA_MODEL." >&2
@@ -245,8 +249,8 @@ if [[ "${ENV_FILE}" == "${DEFAULT_ENV_FILE}" ]]; then
   ENV_FILE_CREATED=1
   : > "${ENV_FILE}"
   echo "PG_PASSWORD=$(openssl rand -base64 32)" >> "${ENV_FILE}"
-  if [[ -n "${SMOKE_OLLAMA_URL}" ]]; then
-    echo "OLLAMA_HOST=${SMOKE_OLLAMA_URL}" >> "${ENV_FILE}"
+  if [[ -n "${SMOKE_OLLAMA_HOST}" ]]; then
+    echo "OLLAMA_HOST=${SMOKE_OLLAMA_HOST}" >> "${ENV_FILE}"
   fi
 else
   info "Using existing env file ${ENV_FILE}; leaving it unchanged."
@@ -407,6 +411,7 @@ local_cfg = (((cfg.get("services") or {}).get("chat_app") or {}).get("providers"
 print(local_cfg.get("base_url", "http://localhost:11434"))
 PY
 )"
+export OLLAMA_HOST="${SMOKE_OLLAMA_HOST:-${OLLAMA_URL}}"
 export OLLAMA_MODEL="$(RENDERED_CONFIG="${RENDERED_CONFIG}" python - <<'PY'
 import os
 import yaml

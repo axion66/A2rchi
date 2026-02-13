@@ -213,7 +213,8 @@ jobs:
           extra-env: |
             ARCHI_COMPOSE_UP_FLAGS=--build --force-recreate --add-host=host.docker.internal:host-gateway
             SMOKE_OLLAMA_MODEL=qwen3:4b
-            SMOKE_OLLAMA_URL=http://host.docker.internal:11434
+            SMOKE_OLLAMA_URL=http://localhost:11434
+            SMOKE_OLLAMA_HOST=http://host.docker.internal:11434
             SMOKE_CLEANUP=false
           use-podman: "false"
 
