@@ -15,6 +15,12 @@ jobs:
       ARCHI_DIR: ${{ github.workspace }}/archi-local
 
     steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          docker system prune -af || true
+          df -h /
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
