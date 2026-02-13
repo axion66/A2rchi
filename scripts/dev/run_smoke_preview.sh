@@ -107,9 +107,10 @@ import yaml
 config_dest = os.environ.get("CONFIG_DEST")
 with open(config_dest, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
-local_cfg = ((cfg.get("archi") or {}).get("providers") or {}).get("local") or {}
+chat_cfg = (cfg.get("services") or {}).get("chat_app") or {}
+local_cfg = (chat_cfg.get("providers") or {}).get("local") or {}
 models = local_cfg.get("models") or []
-print(models[0] if models else "")
+print(chat_cfg.get("default_model") or (models[0] if models else ""))
 PY
 )"
 fi
@@ -121,7 +122,8 @@ import yaml
 config_dest = os.environ.get("CONFIG_DEST")
 with open(config_dest, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
-local_cfg = ((cfg.get("archi") or {}).get("providers") or {}).get("local") or {}
+chat_cfg = (cfg.get("services") or {}).get("chat_app") or {}
+local_cfg = (chat_cfg.get("providers") or {}).get("local") or {}
 print(local_cfg.get("base_url", "http://localhost:11434"))
 PY
 )"
@@ -138,8 +140,9 @@ config_dest = os.environ.get("CONFIG_DEST")
 smoke_model = os.environ.get("SMOKE_OLLAMA_MODEL")
 with open(config_dest, "r", encoding="utf-8") as handle:
     cfg = yaml.safe_load(handle) or {}
-archi = cfg.setdefault("archi", {})
-providers = archi.setdefault("providers", {})
+services = cfg.setdefault("services", {})
+chat_cfg = services.setdefault("chat_app", {})
+providers = chat_cfg.setdefault("providers", {})
 local_cfg = providers.setdefault("local", {})
 models = local_cfg.get("models") or []
 if smoke_model:
@@ -148,10 +151,48 @@ if smoke_model:
     else:
         models.append(smoke_model)
 local_cfg["models"] = models
-archi["providers"] = providers
-cfg["archi"] = archi
+chat_cfg["default_model"] = smoke_model or chat_cfg.get("default_model")
+providers["local"] = local_cfg
+services["chat_app"] = chat_cfg
+cfg["services"] = services
 with open(config_dest, "w", encoding="utf-8") as handle:
     yaml.safe_dump(cfg, handle, sort_keys=False)
+PY
+
+AGENTS_DIR="$(CONFIG_DEST="${CONFIG_DEST}" python - <<'PY'
+import os
+import yaml
+
+config_dest = os.environ.get("CONFIG_DEST")
+with open(config_dest, "r", encoding="utf-8") as handle:
+    cfg = yaml.safe_load(handle) or {}
+chat_cfg = (cfg.get("services") or {}).get("chat_app") or {}
+print(chat_cfg.get("agents_dir", ""))
+PY
+)"
+
+if [[ -z "${AGENTS_DIR}" ]]; then
+  echo "agents_dir is missing from ${CONFIG_DEST}" >&2
+  exit 1
+fi
+
+CONFIG_DEST="${CONFIG_DEST}" AGENTS_DIR="${AGENTS_DIR}" python - <<'PY'
+import os
+from pathlib import Path
+import yaml
+
+agents_dir = Path(os.environ.get("AGENTS_DIR", ""))
+if not agents_dir.exists() or not agents_dir.is_dir():
+    raise SystemExit(f"agents_dir does not exist: {agents_dir}")
+
+from src.archi.pipelines.agents.agent_spec import list_agent_files, load_agent_spec
+
+agent_files = list_agent_files(agents_dir)
+if not agent_files:
+    raise SystemExit(f"agents_dir has no .md files: {agents_dir}")
+
+for path in agent_files:
+    load_agent_spec(path)
 PY
 
 if ! command -v ollama >/dev/null 2>&1; then
