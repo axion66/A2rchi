@@ -113,7 +113,7 @@ services:
     port: {{ services.data_manager.port | default(7871, true) }}
     external_port: {{ services.data_manager.external_port | default(7871, true) }}
     host: {{ services.data_manager.host | default("0.0.0.0", true) }}
-    hostname: {{ services.data_manager.hostname | default('host.containers.internal' if host_mode else 'data-manager', true) }}
+    hostname: {{ services.data_manager.hostname | default('localhost' if host_mode else 'data-manager', true) }}
     template_folder: "{{ services.data_manager.template_folder | default('/root/archi/src/interfaces/chat_app/templates', true) }}"
     static_folder: "{{ services.data_manager.static_folder | default('/root/archi/src/interfaces/chat_app/static', true) }}"
     flask_debug_mode: {{ services.data_manager.flask_debug_mode | default(false, true) }}
