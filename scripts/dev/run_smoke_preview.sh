@@ -198,10 +198,13 @@ agent_spec_path = repo_root / "src" / "archi" / "pipelines" / "agents" / "agent_
 if not agent_spec_path.exists():
     raise SystemExit(f"agent_spec.py not found at {agent_spec_path}")
 
-spec = importlib.util.spec_from_file_location("agent_spec", agent_spec_path)
+module_name = "archi_agent_spec"
+spec = importlib.util.spec_from_file_location(module_name, agent_spec_path)
 if spec is None or spec.loader is None:
     raise SystemExit("Unable to import agent_spec module")
 agent_spec = importlib.util.module_from_spec(spec)
+import sys
+sys.modules[module_name] = agent_spec
 spec.loader.exec_module(agent_spec)
 list_agent_files = agent_spec.list_agent_files
 load_agent_spec = agent_spec.load_agent_spec
