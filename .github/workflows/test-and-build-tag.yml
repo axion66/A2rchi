@@ -2,7 +2,7 @@ name: Test and Build Tag
 
 env:
   ARCHI_DIR: ${{ github.workspace }}/archi-local
-  REGISTRY_PREFIX: archi
+  REGISTRY_PREFIX: a2rchi
 
 on:
   workflow_dispatch:
