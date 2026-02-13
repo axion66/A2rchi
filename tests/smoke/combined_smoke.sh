@@ -45,11 +45,20 @@ if [[ -z "${config_name}" ]]; then
   echo "[combined-smoke] ERROR: ARCHI_CONFIG_NAME is required for container tool checks" >&2
   exit 1
 fi
+ollama_host="${OLLAMA_HOST:-${OLLAMA_URL}}"
+if [[ -n "${ollama_host}" ]]; then
+  info "Checking Ollama connectivity from container (${ollama_host})..."
+  if ! "${tool}" exec -i "${container_name}" curl -fsS "${ollama_host}/api/tags" >/dev/null 2>&1; then
+    echo "[combined-smoke] ERROR: Chat container cannot reach Ollama at ${ollama_host}" >&2
+    exit 1
+  fi
+fi
 "${tool}" exec -i -w /root/archi \
   -e ARCHI_CONFIG_NAME="${config_name}" \
   -e ARCHI_CONFIG_PATH="/root/archi/configs/${config_name}.yaml" \
   -e DM_BASE_URL="${DM_BASE_URL}" \
   -e OLLAMA_URL="${OLLAMA_URL}" \
+  -e OLLAMA_HOST="${ollama_host}" \
   -e OLLAMA_MODEL="${OLLAMA_MODEL}" \
   "${container_name}" \
   python3 - < tests/smoke/tools_smoke.py

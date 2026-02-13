@@ -245,6 +245,9 @@ if [[ "${ENV_FILE}" == "${DEFAULT_ENV_FILE}" ]]; then
   ENV_FILE_CREATED=1
   : > "${ENV_FILE}"
   echo "PG_PASSWORD=$(openssl rand -base64 32)" >> "${ENV_FILE}"
+  if [[ -n "${SMOKE_OLLAMA_URL}" ]]; then
+    echo "OLLAMA_HOST=${SMOKE_OLLAMA_URL}" >> "${ENV_FILE}"
+  fi
 else
   info "Using existing env file ${ENV_FILE}; leaving it unchanged."
 fi
