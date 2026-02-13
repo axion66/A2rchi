@@ -157,7 +157,7 @@ services:
       - {{ secret.lower() }}
       {% endfor %}
     volumes:
-      - {{ chatbot_volume_name }}:/root/data/
+      - {{ data_manager_volume_name }}:/root/data/
       - ./configs:/root/archi/configs
       - ./data/prompts:/root/archi/data/prompts:ro
       {% for prompt_file in prompt_files | default([]) -%}

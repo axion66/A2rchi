@@ -226,6 +226,10 @@ class VectorStoreManager:
         if not files_to_add:
             return
 
+        # Mark all documents as 'embedding' before starting
+        for filehash in files_to_add:
+            self._catalog.update_ingestion_status(filehash, "embedding")
+
         files_to_add_items = list(files_to_add.items())
         apply_stemming = self._data_manager_config.get("stemming", {}).get("enabled", False)
         if apply_stemming:
@@ -240,9 +244,11 @@ class VectorStoreManager:
                 loader = self.loader(file_path)
             except Exception as exc:
                 logger.error(f"Failed to load file: {file_path}. Skipping. Exception: {exc}")
+                self._catalog.update_ingestion_status(filehash, "failed", str(exc))
                 return None
 
             if loader is None:
+                self._catalog.update_ingestion_status(filehash, "failed", f"Unsupported file format: {file_path}")
                 return None
 
             file_level_metadata = self._load_file_metadata(filehash)
@@ -250,6 +256,7 @@ class VectorStoreManager:
                 docs = loader.load()
             except Exception as exc:
                 logger.error("Failed to read file %s. Skipping. Exception: %s", file_path, exc)
+                self._catalog.update_ingestion_status(filehash, "failed", str(exc))
                 return None
 
             split_docs = self.text_splitter.split_documents(docs)
@@ -283,6 +290,7 @@ class VectorStoreManager:
 
             if not chunks:
                 logger.info(f"No chunks generated for {filename}; skipping.")
+                self._catalog.update_ingestion_status(filehash, "failed", "No text chunks could be extracted")
                 return None
 
             return filename, chunks, metadatas
@@ -306,6 +314,7 @@ class VectorStoreManager:
                         files_to_add.get(filehash),
                         exc,
                     )
+                    self._catalog.update_ingestion_status(filehash, "failed", str(exc))
                     continue
                 if result:
                     processed_results[filehash] = result
@@ -317,15 +326,25 @@ class VectorStoreManager:
         try:
             with conn.cursor() as cursor:
                 import json
-
-                for filehash, file_path in files_to_add_items:
+                
+                total_files = len(files_to_add_items)
+                for file_idx, (filehash, file_path) in enumerate(files_to_add_items):
                     processed = processed_results.get(filehash)
                     if not processed:
                         continue
 
                     filename, chunks, metadatas = processed
-                    embeddings = self.embedding_model.embed_documents(chunks)
-
+                    logger.info(f"Embedding file {file_idx+1}/{total_files}: {filename} ({len(chunks)} chunks)")
+                    
+                    try:
+                        embeddings = self.embedding_model.embed_documents(chunks)
+                    except Exception as exc:
+                        logger.error(f"Failed to embed {filename}: {exc}")
+                        self._catalog.update_ingestion_status(filehash, "failed", str(exc))
+                        continue
+                    
+                    logger.info(f"Finished embedding {filename}")
+                    
                     # Get document_id from the catalog (documents table)
                     document_id = self._catalog.get_document_id(filehash)
                     if document_id is None:
@@ -356,6 +375,13 @@ class VectorStoreManager:
                         template="(%s, %s, %s, %s::vector, %s::jsonb)",
                     )
                     logger.debug(f"Added {len(insert_data)} chunks for {filename} (document_id={document_id})")
+                    
+                    # Update ingested_at timestamp and mark as embedded
+                    if document_id is not None:
+                        cursor.execute(
+                            "UPDATE documents SET ingested_at = NOW(), ingestion_status = 'embedded', ingestion_error = NULL, indexed_at = NOW() WHERE id = %s",
+                            (document_id,)
+                        )
 
                 conn.commit()
         finally:

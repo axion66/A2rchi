@@ -31,3 +31,9 @@ openspec/*/proposal.md
 node_modules/
 test-results/
 playwright-report/
+
+# Data artifacts from local testing
+git/
+local_files/
+raw_local_files/
+websites/
