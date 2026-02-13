@@ -6,10 +6,13 @@ import uuid
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from threading import Lock
 from typing import Any, Dict, Iterator, List, Optional
 from pathlib import Path
 from urllib.parse import urlparse
 from functools import wraps
+
+import requests
 
 import mistune as mt
 import numpy as np
@@ -34,14 +37,17 @@ from src.utils.config_service import ConfigService
 from src.archi.utils.output_dataclass import PipelineOutput
 # from src.data_manager.data_manager import DataManager
 from src.data_manager.data_viewer_service import DataViewerService
+from src.data_manager.vectorstore.manager import VectorStoreManager
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.utils.config_access import get_full_config, get_services_config, get_global_config, get_dynamic_config
+from src.utils.config_service import ConfigService
 from src.utils.sql import (
     SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO,
     SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP,
     SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION,
     SQL_INSERT_TOOL_CALLS, SQL_QUERY_CONVO_WITH_FEEDBACK, SQL_DELETE_REACTION_FEEDBACK,
+    SQL_GET_REACTION_FEEDBACK,
     SQL_INSERT_AB_COMPARISON, SQL_UPDATE_AB_PREFERENCE, SQL_GET_AB_COMPARISON,
     SQL_GET_PENDING_AB_COMPARISON, SQL_DELETE_AB_COMPARISON, SQL_GET_AB_COMPARISONS_BY_CONVERSATION,
     SQL_CREATE_AGENT_TRACE, SQL_UPDATE_AGENT_TRACE, SQL_GET_AGENT_TRACE,
@@ -155,6 +161,9 @@ class ChatWrapper:
     Wrapper which holds functionality for the chatbot
     """
     def __init__(self):
+        # Threading lock for database operations
+        self.lock = Lock()
+        
         # load configs
         self.config = get_full_config()
         self.global_config = self.config["global"]
@@ -172,6 +181,15 @@ class ChatWrapper:
         embedding_name = self.config["data_manager"]["embedding_name"]
         self.similarity_score_reference = self.config["data_manager"]["embedding_class_map"][embedding_name]["similarity_score_reference"]
         self.sources_config = self.config["data_manager"]["sources"]
+
+        # initialize vectorstore manager for embedding uploads (needs class-mapped config)
+        vectorstore_config = get_full_config(resolve_embeddings=True)
+        self.vector_manager = VectorStoreManager(
+            config=vectorstore_config,
+            global_config=vectorstore_config["global"],
+            data_path=self.data_path,
+            pg_config=self.pg_config,
+        )
 
         # initialize data viewer service for per-chat document selection
         self.data_viewer = DataViewerService(data_path=self.data_path, pg_config=self.pg_config)
@@ -517,6 +535,22 @@ class ChatWrapper:
         self.cursor.close()
         self.conn.close()
         self.cursor, self.conn = None, None
+
+    def get_reaction_feedback(self, message_id: int):
+        """
+        Get the current reaction (like/dislike) for a message.
+        Returns 'like', 'dislike', or None.
+        """
+        if message_id is None:
+            return None
+        self.conn = psycopg2.connect(**self.pg_config)
+        self.cursor = self.conn.cursor()
+        self.cursor.execute(SQL_GET_REACTION_FEEDBACK, (message_id,))
+        row = self.cursor.fetchone()
+        self.cursor.close()
+        self.conn.close()
+        self.cursor, self.conn = None, None
+        return row[0] if row else None
 
     # =========================================================================
     # A/B Comparison Methods
@@ -1576,6 +1610,31 @@ class ChatWrapper:
                     if include_tool_steps:
                         yield trace_event
                         
+                elif event_type == "thinking_start":
+                    trace_event = {
+                        "type": "thinking_start",
+                        "step_id": output.metadata.get("step_id", ""),
+                        "timestamp": timestamp,
+                        "conversation_id": context.conversation_id,
+                    }
+                    trace_events.append(trace_event)
+                    if include_tool_steps:
+                        yield trace_event
+                        
+                elif event_type == "thinking_end":
+                    thinking_content = output.metadata.get("thinking_content", "")
+                    trace_event = {
+                        "type": "thinking_end",
+                        "step_id": output.metadata.get("step_id", ""),
+                        "duration_ms": output.metadata.get("duration_ms"),
+                        "thinking_content": thinking_content,
+                        "timestamp": timestamp,
+                        "conversation_id": context.conversation_id,
+                    }
+                    trace_events.append(trace_event)
+                    if include_tool_steps:
+                        yield trace_event
+                        
                 elif event_type == "text":
                     # Stream text content
                     content = getattr(output, "answer", "") or ""
@@ -1664,6 +1723,24 @@ class ChatWrapper:
             # Calculate total duration
             total_duration_ms = int((time.time() - stream_start_time) * 1000)
             
+            # Extract usage and model from final output metadata
+            usage = None
+            model = None
+            if last_output and last_output.metadata:
+                usage = last_output.metadata.get("usage")
+                model = last_output.metadata.get("model")
+            
+            # Append usage summary to trace events so it's available in historical views
+            if usage:
+                trace_events.append({
+                    "type": "usage",
+                    "prompt_tokens": usage.get("prompt_tokens", 0),
+                    "completion_tokens": usage.get("completion_tokens", 0),
+                    "total_tokens": usage.get("total_tokens", 0),
+                    "context_window": usage.get("context_window", 0),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+
             # Update trace with final state
             if trace_id:
                 user_message_id = message_ids[0] if message_ids and len(message_ids) > 1 else None
@@ -1686,6 +1763,8 @@ class ChatWrapper:
                 "trace_id": trace_id,
                 "server_response_msg_ts": timestamps["server_response_msg_ts"].timestamp(),
                 "final_response_msg_ts": datetime.now().timestamp(),
+                "usage": usage,
+                "model": model,
             }
 
         except GeneratorExit:
@@ -1755,6 +1834,7 @@ class FlaskAppWrapper(object):
         self.app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
         # SESSION_COOKIE_SECURE should be True in production (HTTPS only)
         # Leave it False for local development to work over HTTP
+        self.app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB upload limit
         
         self.app.config['ACCOUNTS_FOLDER'] = self.global_config["ACCOUNTS_PATH"]
         os.makedirs(self.app.config['ACCOUNTS_FOLDER'], exist_ok=True)
@@ -1766,6 +1846,20 @@ class FlaskAppWrapper(object):
         }
         self.conn = None
         self.cursor = None
+
+        # Initialize config service for dynamic settings
+        self.config_service = ConfigService(pg_config=self.pg_config)
+
+        # Data manager service URL for upload proxy
+        dm_config = self.services_config.get("data_manager", {})
+        # Use 'hostname' for service discovery (Docker network name), fallback to 'host' for local dev
+        dm_host = dm_config.get("hostname") or dm_config.get("host", "localhost")
+        dm_port = dm_config.get("port", 5001)
+        self.data_manager_url = f"http://{dm_host}:{dm_port}"
+        # API token for service-to-service auth with data-manager
+        dm_token = read_secret("DM_API_TOKEN") or None
+        self._dm_headers = {"Authorization": f"Bearer {dm_token}"} if dm_token else {}
+        logger.info(f"Data manager service URL: {self.data_manager_url}")
 
         # Initialize authentication methods
         self.oauth = None
@@ -1843,11 +1937,36 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/data', 'data_viewer', self.require_auth(self.data_viewer_page))
         self.add_endpoint('/api/data/documents', 'list_data_documents', self.require_auth(self.list_data_documents), methods=["GET"])
         self.add_endpoint('/api/data/documents/<document_hash>/content', 'get_data_document_content', self.require_auth(self.get_data_document_content), methods=["GET"])
+        self.add_endpoint('/api/data/documents/<document_hash>/chunks', 'get_data_document_chunks', self.require_auth(self.get_data_document_chunks), methods=["GET"])
         self.add_endpoint('/api/data/documents/<document_hash>/enable', 'enable_data_document', self.require_auth(self.enable_data_document), methods=["POST"])
         self.add_endpoint('/api/data/documents/<document_hash>/disable', 'disable_data_document', self.require_auth(self.disable_data_document), methods=["POST"])
         self.add_endpoint('/api/data/bulk-enable', 'bulk_enable_documents', self.require_auth(self.bulk_enable_documents), methods=["POST"])
         self.add_endpoint('/api/data/bulk-disable', 'bulk_disable_documents', self.require_auth(self.bulk_disable_documents), methods=["POST"])
         self.add_endpoint('/api/data/stats', 'get_data_stats', self.require_auth(self.get_data_stats), methods=["GET"])
+
+        # Data uploader endpoints
+        logger.info("Adding data uploader API endpoints")
+        self.add_endpoint('/upload', 'upload_page', self.require_auth(self.upload_page))
+        self.add_endpoint('/api/upload/file', 'upload_file', self.require_auth(self.upload_file), methods=["POST"])
+        self.add_endpoint('/api/upload/url', 'upload_url', self.require_auth(self.upload_url), methods=["POST"])
+        self.add_endpoint('/api/upload/git', 'upload_git', self.require_auth(self.upload_git), methods=["POST", "DELETE"])
+        self.add_endpoint('/api/upload/git/refresh', 'refresh_git', self.require_auth(self.refresh_git), methods=["POST"])
+        self.add_endpoint('/api/upload/jira', 'upload_jira', self.require_auth(self.upload_jira), methods=["POST"])
+        self.add_endpoint('/api/upload/embed', 'trigger_embedding', self.require_auth(self.trigger_embedding), methods=["POST"])
+        self.add_endpoint('/api/upload/status', 'get_embedding_status', self.require_auth(self.get_embedding_status), methods=["GET"])
+        self.add_endpoint('/api/upload/documents', 'list_upload_documents', self.require_auth(self.list_upload_documents), methods=["GET"])
+        self.add_endpoint('/api/upload/documents/grouped', 'list_upload_documents_grouped', self.require_auth(self.list_upload_documents_grouped), methods=["GET"])
+        self.add_endpoint('/api/upload/documents/<document_hash>/retry', 'retry_document', self.require_auth(self.retry_document), methods=["POST"])
+        self.add_endpoint('/api/upload/documents/retry-all-failed', 'retry_all_failed', self.require_auth(self.retry_all_failed), methods=["POST"])
+        self.add_endpoint('/api/sources/git', 'list_git_sources', self.require_auth(self.list_git_sources), methods=["GET"])
+        self.add_endpoint('/api/sources/jira', 'list_jira_sources', self.require_auth(self.list_jira_sources), methods=["GET", "DELETE"])
+        self.add_endpoint('/api/sources/schedules', 'source_schedules', self.require_auth(self.source_schedules_dispatch), methods=["GET", "PUT"])
+
+        # Database viewer endpoints (admin only)
+        logger.info("Adding database viewer API endpoints")
+        self.add_endpoint('/admin/database', 'database_viewer_page', self.require_auth(self.database_viewer_page))
+        self.add_endpoint('/api/admin/database/tables', 'list_database_tables', self.require_auth(self.list_database_tables), methods=["GET"])
+        self.add_endpoint('/api/admin/database/query', 'run_database_query', self.require_auth(self.run_database_query), methods=["POST"])
 
         # add unified auth endpoints
         if self.auth_enabled:
@@ -2008,7 +2127,7 @@ class FlaskAppWrapper(object):
         return decorated_function
 
     def health(self):
-        return jsonify({"status": "OK"}, 200)
+        return jsonify({"status": "OK"}), 200
 
     def configs(self, **configs):
         for config, value in configs:
@@ -2940,14 +3059,25 @@ class FlaskAppWrapper(object):
         self.chat.lock.acquire()
         logger.info("Acquired lock file")
         try:
-            # Get the JSON data from the request body
             data = request.json
-
-            # Extract the HTML content and any other data you need
             message_id = data.get('message_id')
 
+            if not message_id:
+                logger.warning("Like request missing message_id")
+                return jsonify({'error': 'message_id is required'}), 400
+
+            # Check current state for toggle behavior
+            current_reaction = self.chat.get_reaction_feedback(message_id)
+            
+            # Always delete existing reaction first
             self.chat.delete_reaction_feedback(message_id)
 
+            # If already liked, just remove (toggle off) - don't re-add
+            if current_reaction == 'like':
+                response = {'message': 'Reaction removed', 'state': None}
+                return jsonify(response), 200
+
+            # Otherwise, add the like
             feedback = {
                 "message_id"   : message_id,
                 "feedback"     : "like",
@@ -2959,15 +3089,13 @@ class FlaskAppWrapper(object):
             }
             self.chat.insert_feedback(feedback)
 
-            response = {'message': 'Liked'}
+            response = {'message': 'Liked', 'state': 'like'}
             return jsonify(response), 200
 
         except Exception as e:
             logger.error(f"Request failed: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
-        # According to the Python documentation: https://docs.python.org/3/tutorial/errors.html#defining-clean-up-actions
-        # this will still execute, before the function returns in the try or except block.
         finally:
             self.chat.lock.release()
             logger.info("Released lock file")
@@ -2981,18 +3109,30 @@ class FlaskAppWrapper(object):
         self.chat.lock.acquire()
         logger.info("Acquired lock file")
         try:
-            # Get the JSON data from the request body
             data = request.json
-
-            # Extract the HTML content and any other data you need
             message_id = data.get('message_id')
+
+            if not message_id:
+                logger.warning("Dislike request missing message_id")
+                return jsonify({'error': 'message_id is required'}), 400
+
             feedback_msg = data.get('feedback_msg')
             incorrect = data.get('incorrect')
             unhelpful = data.get('unhelpful')
             inappropriate = data.get('inappropriate')
 
+            # Check current state for toggle behavior
+            current_reaction = self.chat.get_reaction_feedback(message_id)
+            
+            # Always delete existing reaction first
             self.chat.delete_reaction_feedback(message_id)
 
+            # If already disliked, just remove (toggle off) - don't re-add
+            if current_reaction == 'dislike':
+                response = {'message': 'Reaction removed', 'state': None}
+                return jsonify(response), 200
+
+            # Otherwise, add the dislike
             feedback = {
                 "message_id"   : message_id,
                 "feedback"     : "dislike",
@@ -3004,15 +3144,13 @@ class FlaskAppWrapper(object):
             }
             self.chat.insert_feedback(feedback)
 
-            response = {'message': 'Disliked'}
+            response = {'message': 'Disliked', 'state': 'dislike'}
             return jsonify(response), 200
 
         except Exception as e:
             logger.error(f"Request failed: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
-        # According to the Python documentation: https://docs.python.org/3/tutorial/errors.html#defining-clean-up-actions
-        # this will still execute, before the function returns in the try or except block.
         finally:
             self.chat.lock.release()
             logger.info("Released lock file")
@@ -3148,21 +3286,53 @@ class FlaskAppWrapper(object):
             history_rows = cursor.fetchall()
             history_rows = collapse_assistant_sequences(history_rows, sender_name=ARCHI_SENDER, sender_index=0)
 
+            # Build messages list with trace data for assistant messages
+            messages = []
+            
+            # Batch-fetch trace data for all assistant messages to avoid N+1 queries
+            assistant_mids = [row[2] for row in history_rows if row[0] == ARCHI_SENDER and row[2]]
+            trace_map = {}
+            if assistant_mids:
+                placeholders = ','.join(['%s'] * len(assistant_mids))
+                cursor.execute(f"""
+                    SELECT trace_id, conversation_id, message_id, user_message_id,
+                           config_id, pipeline_name, events, started_at, completed_at,
+                           status, total_tool_calls, total_tokens_used, total_duration_ms,
+                           cancelled_by, cancellation_reason, created_at
+                    FROM agent_traces
+                    WHERE message_id IN ({placeholders})
+                """, tuple(assistant_mids))
+                for trace_row in cursor.fetchall():
+                    trace_map[trace_row[2]] = trace_row
+            
+            for row in history_rows:
+                msg = {
+                    'sender': row[0],
+                    'content': row[1],
+                    'message_id': row[2],
+                    'feedback': row[3],
+                    'comment_count': row[4] if len(row) > 4 else 0,
+                }
+                
+                # Attach trace data if present
+                if row[0] == ARCHI_SENDER and row[2] and row[2] in trace_map:
+                    trace_row = trace_map[row[2]]
+                    msg['trace'] = {
+                        'trace_id': trace_row[0],
+                        'events': trace_row[6],  # events JSON
+                        'status': trace_row[9],
+                        'total_tool_calls': trace_row[10],
+                        'total_duration_ms': trace_row[12],
+                    }
+                
+                messages.append(msg)
+
             conversation = {
                 'conversation_id': meta_row[0],
                 'title': meta_row[1] or "New Conversation",
                 'created_at': meta_row[2].isoformat() if meta_row[2] else None,
                 'last_message_at': meta_row[3].isoformat() if meta_row[3] else None,
-                'messages': [
-                    {
-                        'sender': row[0],
-                        'content': row[1],
-                        'message_id': row[2],
-                        'feedback': row[3],
-                        'comment_count': row[4] if len(row) > 4 else 0,
-                    }
-                    for row in history_rows
-                ]
+                'messages': messages
             }
 
             # clean up database connection state
@@ -3550,6 +3720,28 @@ class FlaskAppWrapper(object):
             logger.error(f"Error getting document content for {document_hash}: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
+    def get_data_document_chunks(self, document_hash: str):
+        """
+        Get chunks for a document.
+
+        URL params:
+        - document_hash: The document's SHA-256 hash
+
+        Returns:
+            JSON with hash, chunks (list of {index, text, start_char, end_char})
+        """
+        try:
+            chunks = self.chat.data_viewer.get_document_chunks(document_hash)
+            return jsonify({
+                'hash': document_hash,
+                'chunks': chunks,
+                'total': len(chunks)
+            }), 200
+
+        except Exception as e:
+            logger.error(f"Error getting chunks for {document_hash}: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
     def enable_data_document(self, document_hash: str):
         """
         Enable a document for the current chat.
@@ -3679,6 +3871,1017 @@ class FlaskAppWrapper(object):
         except Exception as e:
             logger.error(f"Error getting data stats: {str(e)}")
             return jsonify({'error': str(e)}), 500
+
+    # =========================================================================
+    # Data Uploader Endpoints
+    # =========================================================================
+
+    def upload_page(self):
+        """Render the data upload page."""
+        return render_template('upload.html')
+
+    def upload_file(self):
+        """
+        Handle file uploads via multipart form data.
+        Proxies to data-manager service.
+        """
+        try:
+            upload = request.files.get("file")
+            if not upload:
+                return jsonify({"error": "missing_file"}), 400
+
+            # Read file into memory to avoid stream position / exhaustion issues
+            file_bytes = upload.stream.read()
+            filename = upload.filename or "upload"
+            content_type = upload.content_type or "application/octet-stream"
+
+            # Proxy to data-manager service (long timeout for large files)
+            resp = requests.post(
+                f"{self.data_manager_url}/document_index/upload",
+                files={"file": (filename, file_bytes, content_type)},
+                headers=self._dm_headers,
+                timeout=600,
+                allow_redirects=False,
+            )
+
+            # Detect auth redirect (data-manager returns 302 → login page)
+            if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+                logger.error("Data-manager rejected upload (auth redirect to %s)", resp.headers.get("Location"))
+                return jsonify({"error": "Data manager authentication failed"}), 502
+
+            # Safely parse the response — data-manager may return
+            # an empty body or non-JSON on error (e.g. OOM, crash).
+            try:
+                data = resp.json()
+            except ValueError:
+                logger.error(
+                    "Data-manager returned non-JSON response for upload "
+                    "(status=%s, body=%r)",
+                    resp.status_code,
+                    resp.text[:500],
+                )
+                return jsonify({
+                    "error": f"Data manager error (HTTP {resp.status_code})"
+                }), 502
+
+            if resp.status_code == 200 and data.get("status") == "ok":
+                return jsonify({
+                    "success": True,
+                    "filename": filename,
+                    "path": data.get("path", "")
+                }), 200
+            else:
+                return jsonify({"error": data.get("error", "upload_failed")}), resp.status_code
+
+        except requests.exceptions.ConnectionError:
+            logger.error("Data manager service unavailable")
+            return jsonify({"error": "data_manager_unavailable"}), 503
+        except requests.exceptions.Timeout:
+            logger.error("Data manager timed out processing upload")
+            return jsonify({"error": "Upload timed out — file may be too large"}), 504
+        except Exception as e:
+            logger.error(f"Error uploading file: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def upload_url(self):
+        """
+        Scrape and ingest content from a URL.
+        Proxies to data-manager service.
+        """
+        try:
+            data = request.json or {}
+            url = data.get("url", "").strip()
+
+            if not url:
+                return jsonify({"error": "missing_url"}), 400
+
+            # Proxy to data-manager service
+            resp = requests.post(
+                f"{self.data_manager_url}/document_index/upload_url",
+                data={"url": url},
+                headers=self._dm_headers,
+                timeout=300,
+                allow_redirects=False,
+            )
+
+            if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+                logger.error("Data-manager rejected upload_url (auth redirect)")
+                return jsonify({"error": "Data manager authentication failed"}), 502
+
+            try:
+                dm_data = resp.json()
+            except ValueError:
+                logger.error(
+                    "Data-manager returned non-JSON for upload_url (status=%s, body=%r)",
+                    resp.status_code,
+                    resp.text[:500],
+                )
+                return jsonify({"error": f"Data manager error (HTTP {resp.status_code})"}), 502
+
+            if resp.status_code == 200 and dm_data.get("status") == "ok":
+                return jsonify({
+                    "success": True,
+                    "url": url,
+                    "resources_scraped": 1
+                }), 200
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": dm_data.get("error", "scrape_failed"),
+                    "url": url
+                }), resp.status_code if resp.status_code != 200 else 400
+
+        except requests.exceptions.ConnectionError:
+            logger.error("Data manager service unavailable")
+            return jsonify({"error": "data_manager_unavailable"}), 503
+        except Exception as e:
+            logger.error(f"Error uploading URL: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def upload_git(self):
+        """
+        Clone and ingest a Git repository (POST), or delete a git repo (DELETE).
+        Proxies to data-manager service.
+        """
+        try:
+            if request.method == 'DELETE':
+                return self._delete_git_repo()
+            
+            data = request.json or {}
+            repo_url = data.get("repo_url", "").strip()
+
+            if not repo_url:
+                return jsonify({"error": "missing_repo_url"}), 400
+
+            # Proxy to data-manager service
+            resp = requests.post(
+                f"{self.data_manager_url}/document_index/add_git_repo",
+                data={"repo_url": repo_url},
+                headers=self._dm_headers,
+                timeout=300,  # Git clones can take a while
+                allow_redirects=False,
+            )
+
+            if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+                logger.error("Data-manager rejected add_git_repo (auth redirect)")
+                return jsonify({"error": "Data manager authentication failed"}), 502
+
+            try:
+                dm_data = resp.json()
+            except ValueError:
+                logger.error("Data-manager returned non-JSON for add_git_repo (status=%s)", resp.status_code)
+                return jsonify({"error": f"Data manager error (HTTP {resp.status_code})"}), 502
+
+            if resp.status_code == 200 and dm_data.get("status") == "ok":
+                return jsonify({
+                    "success": True,
+                    "repo_url": repo_url,
+                    "message": "Repository cloned. Documents will be embedded shortly."
+                }), 200
+            else:
+                return jsonify({"error": dm_data.get("error", "git_clone_failed")}), resp.status_code
+
+        except requests.exceptions.ConnectionError:
+            logger.error("Data manager service unavailable")
+            return jsonify({"error": "data_manager_unavailable"}), 503
+        except Exception as e:
+            logger.error(f"Error cloning Git repo: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def _delete_git_repo(self):
+        """
+        Delete a Git repository and all its indexed documents.
+        Marks documents as deleted in the database and removes their chunks.
+        """
+        try:
+            data = request.json or {}
+            repo_name = data.get("repo_name", "").strip()
+            
+            if not repo_name:
+                return jsonify({"error": "missing_repo_name"}), 400
+            
+            # Build a pattern to match the repo URL
+            # repo_name could be a URL (https://github.com/org/repo) or just a repo name (org/repo)
+            # URLs in database are like: https://github.com/pallets/click/blob/main/file.py
+            conn = psycopg2.connect(**self.chat.pg_config)
+            try:
+                with conn.cursor() as cursor:
+                    # First, get the resource hashes of documents to delete
+                    cursor.execute("""
+                        SELECT resource_hash FROM documents 
+                        WHERE source_type = 'git' 
+                          AND NOT is_deleted
+                          AND (
+                              url LIKE %s
+                              OR url LIKE %s
+                          )
+                    """, (f'{repo_name}/%', f'%/{repo_name}/%'))
+                    hashes_to_delete = [row[0] for row in cursor.fetchall()]
+                    
+                    if hashes_to_delete:
+                        # Delete chunks for these documents
+                        cursor.execute("""
+                            DELETE FROM document_chunks 
+                            WHERE metadata->>'resource_hash' = ANY(%s)
+                        """, (hashes_to_delete,))
+                        chunks_deleted = cursor.rowcount
+                        logger.info(f"Deleted {chunks_deleted} chunks for {len(hashes_to_delete)} documents")
+                    
+                    # Mark documents as deleted
+                    cursor.execute("""
+                        UPDATE documents 
+                        SET is_deleted = TRUE, deleted_at = NOW()
+                        WHERE source_type = 'git' 
+                          AND NOT is_deleted
+                          AND (
+                              url LIKE %s
+                              OR url LIKE %s
+                          )
+                    """, (f'{repo_name}/%', f'%/{repo_name}/%'))
+                    deleted_count = cursor.rowcount
+                    conn.commit()
+                    
+                logger.info(f"Deleted {deleted_count} documents from git repo: {repo_name}")
+                return jsonify({
+                    "success": True,
+                    "deleted_count": deleted_count,
+                    "message": f"Removed {deleted_count} documents from repository"
+                }), 200
+            finally:
+                conn.close()
+                
+        except Exception as e:
+            logger.error(f"Error deleting Git repo: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def refresh_git(self):
+        """
+        Refresh (re-clone) a Git repository to get latest changes.
+        Proxies to data-manager service.
+        """
+        try:
+            # Handle JSON parsing errors gracefully
+            try:
+                data = request.json
+            except Exception:
+                return jsonify({"error": "invalid_json"}), 400
+            
+            if data is None:
+                return jsonify({"error": "invalid_json"}), 400
+            
+            repo_name = data.get("repo_name")
+            
+            # Type validation: repo_name must be a string
+            if repo_name is None or not isinstance(repo_name, str):
+                return jsonify({"error": "invalid_repo_name_type"}), 400
+            
+            repo_name = repo_name.strip()
+
+            if not repo_name:
+                return jsonify({"error": "missing_repo_name"}), 400
+            
+            # Input validation: reject overly long inputs (max 500 chars for repo names/URLs)
+            if len(repo_name) > 500:
+                return jsonify({"error": "repo_name_too_long"}), 400
+
+            # The repo_name might be a URL or just a name
+            # Try to reconstruct the full URL if needed
+            if repo_name.startswith('http'):
+                repo_url = repo_name
+            else:
+                # Query the database to find the full URL
+                try:
+                    conn = psycopg2.connect(**self.chat.pg_config)
+                except Exception as db_err:
+                    logger.error(f"Database connection failed: {db_err}")
+                    return jsonify({"error": "database_unavailable"}), 503
+                try:
+                    with conn.cursor() as cursor:
+                        cursor.execute("""
+                            SELECT DISTINCT 
+                                CASE 
+                                    WHEN url LIKE 'https://github.com/%' THEN
+                                        regexp_replace(url, '^(https://github.com/[^/]+/[^/]+).*', '\\1')
+                                    WHEN url LIKE 'https://gitlab.com/%' THEN
+                                        regexp_replace(url, '^(https://gitlab.com/[^/]+/[^/]+).*', '\\1')
+                                    ELSE url
+                                END as repo_url
+                            FROM documents 
+                            WHERE source_type = 'git' 
+                              AND NOT is_deleted
+                              AND url LIKE %s
+                            LIMIT 1
+                        """, (f'%/{repo_name}%',))
+                        row = cursor.fetchone()
+                        if not row:
+                            return jsonify({"error": "repo_not_found"}), 404
+                        repo_url = row[0]
+                finally:
+                    conn.close()
+
+            # Proxy to data-manager service to re-clone
+            resp = requests.post(
+                f"{self.data_manager_url}/document_index/add_git_repo",
+                data={"repo_url": repo_url},
+                headers=self._dm_headers,
+                timeout=300,
+                allow_redirects=False,
+            )
+
+            if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+                logger.error("Data-manager rejected git refresh (auth redirect)")
+                return jsonify({"error": "Data manager authentication failed"}), 502
+
+            # Try to parse JSON response, handle non-JSON gracefully
+            try:
+                dm_data = resp.json()
+            except (ValueError, requests.exceptions.JSONDecodeError):
+                logger.warning(f"Data manager returned non-JSON response: {resp.status_code}")
+                if resp.status_code >= 500:
+                    return jsonify({"error": "data_manager_error"}), 503
+                return jsonify({"error": "git_refresh_failed"}), resp.status_code or 400
+
+            if resp.status_code == 200 and dm_data.get("status") == "ok":
+                return jsonify({
+                    "success": True,
+                    "repo_url": repo_url,
+                    "message": "Repository refreshed."
+                }), 200
+            else:
+                # Return the data manager's status code but cap at 503 for server errors
+                status = resp.status_code if resp.status_code < 500 else 503
+                return jsonify({"error": dm_data.get("error", "git_refresh_failed")}), status
+
+        except requests.exceptions.ConnectionError:
+            logger.error("Data manager service unavailable")
+            return jsonify({"error": "data_manager_unavailable"}), 503
+        except requests.exceptions.Timeout:
+            logger.error("Data manager request timed out")
+            return jsonify({"error": "data_manager_timeout"}), 503
+        except Exception as e:
+            logger.error(f"Error refreshing Git repo: {str(e)}")
+            return jsonify({"error": "internal_error"}), 503
+
+    def upload_jira(self):
+        """
+        Sync issues from a Jira project.
+        Proxies to data-manager service.
+        """
+        try:
+            data = request.json or {}
+            project_key = data.get("project_key", "").strip()
+
+            if not project_key:
+                return jsonify({"error": "missing_project_key"}), 400
+
+            # Proxy to data-manager service
+            resp = requests.post(
+                f"{self.data_manager_url}/document_index/add_jira_project",
+                data={"project_key": project_key},
+                headers=self._dm_headers,
+                timeout=300,
+                allow_redirects=False,
+            )
+
+            if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+                logger.error("Data-manager rejected jira sync (auth redirect)")
+                return jsonify({"error": "Data manager authentication failed"}), 502
+
+            try:
+                dm_data = resp.json()
+            except ValueError:
+                logger.error("Data-manager returned non-JSON for add_jira_project (status=%s)", resp.status_code)
+                return jsonify({"error": f"Data manager error (HTTP {resp.status_code})"}), 502
+
+            if resp.status_code == 200 and dm_data.get("status") == "ok":
+                return jsonify({
+                    "success": True,
+                    "project_key": project_key
+                }), 200
+            else:
+                return jsonify({"error": dm_data.get("error", "jira_sync_failed")}), resp.status_code
+
+        except requests.exceptions.ConnectionError:
+            logger.error("Data manager service unavailable")
+            return jsonify({"error": "data_manager_unavailable"}), 503
+        except Exception as e:
+            logger.error(f"Error syncing Jira project: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def trigger_embedding(self):
+        """
+        Trigger embedding/vectorstore update for recently uploaded documents.
+
+        This synchronizes the documents catalog with the vectorstore,
+        creating embeddings for any new documents that haven't been processed yet.
+
+        Returns:
+            JSON with embedding status including any failures
+        """
+        try:
+            logger.info("Triggering vectorstore update...")
+            self.chat.vector_manager.update_vectorstore()
+            logger.info("Vectorstore update completed")
+
+            # Check for failed documents after processing
+            failed_docs = []
+            try:
+                conn = psycopg2.connect(**self.chat.pg_config)
+                try:
+                    with conn.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            SELECT display_name, ingestion_error
+                            FROM documents
+                            WHERE NOT is_deleted AND ingestion_status = 'failed'
+                            ORDER BY created_at DESC
+                            LIMIT 20
+                            """
+                        )
+                        failed_docs = [
+                            {"file": row[0], "error": row[1] or "Unknown error"}
+                            for row in cursor.fetchall()
+                        ]
+                finally:
+                    conn.close()
+            except Exception as db_err:
+                logger.warning(f"Could not check for failed documents: {db_err}")
+
+            if failed_docs:
+                return jsonify({
+                    "success": True,
+                    "partial": True,
+                    "message": f"{len(failed_docs)} document(s) failed to process.",
+                    "failed": failed_docs,
+                }), 200
+
+            return jsonify({
+                "success": True,
+                "message": "Embedding complete. Documents are now searchable."
+            }), 200
+
+        except Exception as e:
+            logger.error(f"Error triggering embedding: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def get_embedding_status(self):
+        """
+        Get the current embedding/ingestion status.
+
+        Returns:
+            JSON with counts of documents by ingestion status
+        """
+        try:
+            conn = psycopg2.connect(**self.chat.pg_config)
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT ingestion_status, COUNT(*) as count
+                        FROM documents
+                        WHERE NOT is_deleted
+                        GROUP BY ingestion_status
+                        """
+                    )
+                    status_counts = {row[0]: row[1] for row in cursor.fetchall()}
+            finally:
+                conn.close()
+
+            pending = status_counts.get("pending", 0)
+            embedding = status_counts.get("embedding", 0)
+            embedded = status_counts.get("embedded", 0)
+            failed = status_counts.get("failed", 0)
+            total = pending + embedding + embedded + failed
+            
+            return jsonify({
+                "documents_in_catalog": total,
+                "documents_embedded": embedded,
+                "pending_embedding": pending,
+                "is_synced": pending == 0 and embedding == 0,
+                "status_counts": {
+                    "pending": pending,
+                    "embedding": embedding,
+                    "embedded": embedded,
+                    "failed": failed,
+                },
+            }), 200
+
+        except Exception as e:
+            logger.error(f"Error getting embedding status: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def list_upload_documents(self):
+        """
+        List documents with their ingestion status for the upload page.
+
+        Query params:
+            status: Filter by ingestion status (pending, embedding, embedded, failed)
+            source_type: Filter by source type
+            search: Search by display name
+            limit: Max results (default 50)
+            offset: Pagination offset (default 0)
+        
+        Returns:
+            JSON with documents, total, status_counts
+        """
+        try:
+            from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
+            
+            catalog = PostgresCatalogService(
+                data_path=self.chat.data_path,
+                pg_config=self.chat.pg_config,
+            )
+            
+            result = catalog.list_documents_with_status(
+                status_filter=request.args.get("status"),
+                source_type=request.args.get("source_type"),
+                search=request.args.get("search"),
+                limit=int(request.args.get("limit", 50)),
+                offset=int(request.args.get("offset", 0)),
+            )
+            return jsonify(result), 200
+        except Exception as e:
+            logger.error(f"Error listing upload documents: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def retry_document(self, document_hash):
+        """
+        Reset a failed document back to pending so it can be retried.
+
+        Args:
+            document_hash: The resource_hash of the document to retry
+        
+        Returns:
+            JSON with success status
+        """
+        try:
+            from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
+            
+            catalog = PostgresCatalogService(
+                data_path=self.chat.data_path,
+                pg_config=self.chat.pg_config,
+            )
+            
+            reset = catalog.reset_failed_document(document_hash)
+            if reset:
+                return jsonify({"success": True, "message": "Document reset to pending"}), 200
+            else:
+                return jsonify({"error": "Document not found or not in failed state"}), 404
+        except Exception as e:
+            logger.error(f"Error retrying document: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def retry_all_failed(self):
+        """
+        Reset all failed documents back to pending so they can be retried.
+
+        Returns:
+            JSON with count of documents reset
+        """
+        try:
+            from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
+
+            catalog = PostgresCatalogService(
+                data_path=self.chat.data_path,
+                pg_config=self.chat.pg_config,
+            )
+
+            count = catalog.reset_all_failed_documents()
+            return jsonify({"success": True, "count": count, "message": f"{count} document(s) reset to pending"}), 200
+        except Exception as e:
+            logger.error(f"Error retrying all failed documents: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def list_upload_documents_grouped(self):
+        """
+        List documents grouped by source origin for the unified status section.
+
+        Query params:
+            show_all: If 'true', include all groups (not just actionable). Default false.
+            expand: Source group name to load full document list for.
+
+        Returns:
+            JSON with groups and aggregate status_counts
+        """
+        try:
+            from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
+
+            catalog = PostgresCatalogService(
+                data_path=self.chat.data_path,
+                pg_config=self.chat.pg_config,
+            )
+
+            result = catalog.list_documents_grouped(
+                show_all=request.args.get("show_all", "false").lower() == "true",
+                expand=request.args.get("expand"),
+            )
+            return jsonify(result), 200
+        except Exception as e:
+            logger.error(f"Error listing grouped documents: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def list_git_sources(self):
+        """
+        List currently synced Git repositories.
+
+        Returns:
+            JSON with list of git sources
+        """
+        try:
+            # Query unique git repos from the database directly
+            conn = psycopg2.connect(**self.chat.pg_config)
+            try:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                    # Get unique git repos by extracting the repo URL from document URLs
+                    cursor.execute("""
+                        SELECT DISTINCT 
+                            CASE 
+                                WHEN url LIKE 'https://github.com/%' THEN
+                                    regexp_replace(url, '^(https://github.com/[^/]+/[^/]+).*', '\\1')
+                                WHEN url LIKE 'https://gitlab.com/%' THEN
+                                    regexp_replace(url, '^(https://gitlab.com/[^/]+/[^/]+).*', '\\1')
+                                ELSE url
+                            END as repo_url,
+                            COUNT(*) as file_count,
+                            MAX(indexed_at) as last_updated
+                        FROM documents 
+                        WHERE source_type = 'git' 
+                          AND NOT is_deleted
+                          AND url IS NOT NULL
+                        GROUP BY 1
+                        ORDER BY last_updated DESC NULLS LAST
+                    """)
+                    rows = cursor.fetchall()
+            finally:
+                conn.close()
+
+            sources = []
+            for row in rows:
+                repo_url = row['repo_url']
+                if repo_url:
+                    # Extract repo name from URL
+                    name = repo_url.rstrip('/').split('/')[-1].replace('.git', '')
+                    sources.append({
+                        'name': name,
+                        'url': repo_url,
+                        'file_count': row['file_count'],
+                        'last_updated': row['last_updated'].isoformat() if row['last_updated'] else None
+                    })
+
+            return jsonify({"sources": sources}), 200
+
+        except Exception as e:
+            logger.error(f"Error listing Git sources: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def list_jira_sources(self):
+        """
+        List currently synced Jira projects (GET), or delete a project (DELETE).
+
+        Returns:
+            JSON with list of jira sources or deletion status
+        """
+        try:
+            if request.method == 'DELETE':
+                return self._delete_jira_project()
+                
+            sources = []
+            seen_projects = set()
+
+            result = self.chat.data_viewer.list_documents(source_type='jira', limit=1000)
+            for doc in result.get('documents', []):
+                # Parse project key from display name or URL
+                display_name = doc.get('display_name', '')
+                # Jira documents often have display_name like "PROJECT-123: Title"
+                if display_name:
+                    project_key = display_name.split('-')[0] if '-' in display_name else display_name
+                    if project_key and project_key not in seen_projects:
+                        seen_projects.add(project_key)
+                        sources.append({
+                            'project_key': project_key,
+                            'name': project_key,
+                        })
+
+            return jsonify({"sources": sources}), 200
+
+        except Exception as e:
+            logger.error(f"Error listing Jira sources: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def _delete_jira_project(self):
+        """
+        Delete a Jira project and all its synced tickets.
+        Marks documents as deleted in the database and removes their chunks.
+        """
+        try:
+            data = request.json or {}
+            project_key = data.get("project_key", "").strip()
+            
+            if not project_key:
+                return jsonify({"error": "missing_project_key"}), 400
+            
+            conn = psycopg2.connect(**self.chat.pg_config)
+            try:
+                with conn.cursor() as cursor:
+                    # First, get the resource hashes of documents to delete
+                    cursor.execute("""
+                        SELECT resource_hash FROM documents 
+                        WHERE source_type = 'jira' 
+                          AND NOT is_deleted
+                          AND display_name LIKE %s
+                    """, (f'{project_key}-%',))
+                    hashes_to_delete = [row[0] for row in cursor.fetchall()]
+                    
+                    if hashes_to_delete:
+                        # Delete chunks for these documents
+                        cursor.execute("""
+                            DELETE FROM document_chunks 
+                            WHERE metadata->>'resource_hash' = ANY(%s)
+                        """, (hashes_to_delete,))
+                        chunks_deleted = cursor.rowcount
+                        logger.info(f"Deleted {chunks_deleted} chunks for {len(hashes_to_delete)} Jira documents")
+                    
+                    # Mark documents from this Jira project as deleted
+                    cursor.execute("""
+                        UPDATE documents 
+                        SET is_deleted = TRUE, deleted_at = NOW()
+                        WHERE source_type = 'jira' 
+                          AND NOT is_deleted
+                          AND display_name LIKE %s
+                    """, (f'{project_key}-%',))
+                    deleted_count = cursor.rowcount
+                    conn.commit()
+                    
+                logger.info(f"Deleted {deleted_count} documents from Jira project: {project_key}")
+                return jsonify({
+                    "success": True,
+                    "deleted_count": deleted_count,
+                    "message": f"Removed {deleted_count} tickets from project {project_key}"
+                }), 200
+            finally:
+                conn.close()
+                
+        except Exception as e:
+            logger.error(f"Error deleting Jira project: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def source_schedules_dispatch(self):
+        """Route /api/sources/schedules to GET or PUT handler."""
+        if request.method == "PUT":
+            return self.update_source_schedule()
+        return self.get_source_schedules()
+
+    def get_source_schedules(self):
+        """
+        Get all source sync schedules.
+
+        Returns:
+            JSON with source schedules
+        """
+        try:
+            schedules = self.config_service.get_source_schedules()
+            
+            # Convert cron expressions to UI-friendly values
+            schedule_display = {}
+            cron_to_ui = {
+                '': 'disabled',
+                '0 * * * *': 'hourly',
+                '0 */6 * * *': 'every_6h',
+                '0 0 * * *': 'daily',
+            }
+            
+            for source, cron in schedules.items():
+                schedule_display[source] = {
+                    'cron': cron,
+                    'display': cron_to_ui.get(cron, 'custom'),
+                }
+            
+            return jsonify({"schedules": schedule_display}), 200
+
+        except Exception as e:
+            logger.error(f"Error getting source schedules: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    def update_source_schedule(self):
+        """
+        Update the schedule for a specific data source.
+
+        PUT body (JSON):
+        - source: Source name (e.g., 'jira', 'git', 'links')
+        - schedule: Schedule value ('disabled', 'hourly', 'every_6h', 'daily', or cron expression)
+
+        Returns:
+            JSON with updated schedules
+        """
+        try:
+            data = request.json or {}
+            source = data.get("source", "").strip()
+            schedule = data.get("schedule", "").strip()
+
+            if not source:
+                return jsonify({"error": "missing_source"}), 400
+            
+            valid_sources = ['jira', 'git', 'links', 'local_files', 'redmine', 'sso']
+            if source not in valid_sources:
+                return jsonify({"error": f"invalid_source, must be one of {valid_sources}"}), 400
+
+            # Get current user for audit logging, if available
+            user_id = None
+            if session.get('logged_in'):
+                user = session.get('user', {})
+                user_id = user.get('username') or user.get('email') or 'anonymous'
+            
+            schedules = self.config_service.update_source_schedule(
+                source, 
+                schedule,
+                updated_by=user_id
+            )
+
+            # Notify data-manager to reload schedules immediately
+            reload_result = None
+            try:
+                response = requests.post(
+                    f"{self.data_manager_url}/api/reload-schedules",
+                    headers=self._dm_headers,
+                    timeout=10,
+                    allow_redirects=False,
+                )
+                if response.is_redirect or response.status_code in (301, 302, 303, 307, 308):
+                    logger.warning("Data-manager rejected schedule reload (auth redirect)")
+                elif response.ok:
+                    reload_result = response.json()
+                    logger.info(f"Data-manager reloaded schedules: {reload_result}")
+                else:
+                    logger.warning(f"Data-manager schedule reload failed: {response.status_code}")
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"Could not notify data-manager to reload schedules: {e}")
+
+            return jsonify({
+                "success": True,
+                "schedules": schedules,
+                "reload_result": reload_result
+            }), 200
+
+        except Exception as e:
+            logger.error(f"Error updating source schedule: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    # =========================================================================
+    # Database Viewer Endpoints
+    # =========================================================================
+
+    def database_viewer_page(self):
+        """Render the database viewer page."""
+        return render_template('database.html')
+
+    def list_database_tables(self):
+        """
+        List all tables in the database.
+
+        Returns:
+            JSON with list of tables and their row counts
+        """
+        conn = None
+        cursor = None
+        try:
+            conn = psycopg2.connect(
+                host=self.pg_config.get("host", "postgres"),
+                port=self.pg_config.get("port", 5432),
+                database=self.pg_config.get("database", "archi"),
+                user=self.pg_config.get("user", "archi"),
+                password=self.pg_config.get("password"),
+            )
+            cursor = conn.cursor()
+
+            # Get list of tables with row counts
+            # Note: pg_stat_user_tables uses 'relname' not 'tablename' in some PostgreSQL versions
+            cursor.execute("""
+                SELECT 
+                    schemaname,
+                    relname as tablename,
+                    n_live_tup as row_count
+                FROM pg_stat_user_tables
+                ORDER BY schemaname, relname
+            """)
+
+            tables = []
+            for row in cursor.fetchall():
+                tables.append({
+                    'schema': row[0],
+                    'name': row[1],
+                    'row_count': row[2],
+                })
+
+            return jsonify({"tables": tables}), 200
+
+        except Exception as e:
+            logger.error(f"Error listing database tables: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+    def run_database_query(self):
+        """
+        Execute a read-only SQL query.
+
+        POST body (JSON):
+        - query: The SQL query to execute
+
+        Returns:
+            JSON with columns and rows
+        """
+        conn = None
+        cursor = None
+        try:
+            data = request.json or {}
+            query = data.get("query", "").strip()
+
+            if not query:
+                return jsonify({"error": "missing_query"}), 400
+
+            # Reject multiple statements (semicolon-separated)
+            # Strip trailing semicolons+whitespace, then check for remaining semicolons
+            query_stripped = query.rstrip('; \t\n')
+            if ';' in query_stripped:
+                return jsonify({"error": "only_single_statement", "message": "Only a single SQL statement is allowed"}), 400
+
+            # Basic security: only allow SELECT statements
+            query_upper = query_stripped.upper().strip()
+            if not query_upper.startswith("SELECT"):
+                return jsonify({"error": "only_select_allowed", "message": "Only SELECT queries are allowed"}), 400
+
+            # Block dangerous patterns - check for keywords as separate tokens
+            dangerous_keywords = [
+                'DROP', 'DELETE', 'INSERT', 'UPDATE', 'ALTER', 'CREATE',
+                'TRUNCATE', 'GRANT', 'REVOKE', 'COPY', 'EXECUTE', 'EXEC',
+                'INTO', 'CALL',
+            ]
+            # Split on non-word characters and check for exact keyword matches
+            tokens = set(re.findall(r'\b\w+\b', query_upper))
+            for keyword in dangerous_keywords:
+                if keyword in tokens:
+                    return jsonify({"error": "forbidden_operation", "message": f"Operation '{keyword}' is not allowed"}), 400
+
+            # Block function calls that can read/write the filesystem or execute commands
+            dangerous_functions = [
+                'PG_READ_FILE', 'PG_READ_BINARY_FILE', 'PG_WRITE_FILE',
+                'LO_IMPORT', 'LO_EXPORT', 'LO_GET', 'LO_PUT',
+                'PG_LS_DIR', 'PG_STAT_FILE',
+                'DBLINK', 'DBLINK_EXEC',
+            ]
+            for func in dangerous_functions:
+                if func in tokens:
+                    return jsonify({"error": "forbidden_function", "message": f"Function '{func}' is not allowed"}), 400
+
+            conn = psycopg2.connect(
+                host=self.pg_config.get("host", "postgres"),
+                port=self.pg_config.get("port", 5432),
+                database=self.pg_config.get("database", "archi"),
+                user=self.pg_config.get("user", "archi"),
+                password=self.pg_config.get("password"),
+            )
+
+            # Enforce read-only at the database level
+            conn.set_session(readonly=True, autocommit=False)
+            cursor = conn.cursor()
+
+            # Set a statement timeout to prevent runaway queries (30 seconds)
+            cursor.execute("SET statement_timeout = '30s'")
+
+            # Add a LIMIT if not present to prevent runaway queries
+            if "LIMIT" not in query_upper:
+                query_stripped += " LIMIT 1000"
+
+            cursor.execute(query_stripped)
+
+            columns = [desc[0] for desc in cursor.description] if cursor.description else []
+            rows = cursor.fetchall()
+
+            # Convert rows to list of dicts for JSON serialization
+            result_rows = []
+            for row in rows:
+                result_rows.append([
+                    str(cell) if cell is not None else None
+                    for cell in row
+                ])
+
+            return jsonify({
+                "columns": columns,
+                "rows": result_rows,
+                "row_count": len(result_rows),
+            }), 200
+
+        except Exception as e:
+            logger.error(f"Error executing query: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
 
     def is_authenticated(self):
         """

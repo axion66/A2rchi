@@ -539,6 +539,7 @@ class TemplateManager:
 
     def _probe_port(self, port: int) -> Optional[str]:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 sock.bind(("0.0.0.0", port))
             except OSError as exc:

@@ -332,6 +332,9 @@
     </div>
   </div>
 
+  <!-- Theme init (must load before page renders) -->
+  <script src="{{ url_for('static', filename='modules/theme-init.js') }}"></script>
+  
   <!-- App script -->
   <script src="{{ url_for('static', filename='chat.js') }}"></script>
 </body>

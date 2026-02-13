@@ -76,6 +76,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    shm_size: 1gb
   
   config-seed:
     image: {{ chatbot_image | default(benchmarking_image) }}:{{ chatbot_tag | default(benchmarking_tag) }}
@@ -156,7 +157,7 @@ services:
       - {{ secret.lower() }}
       {% endfor %}
     volumes:
-      - {{ chatbot_volume_name }}:/root/data/
+      - {{ data_manager_volume_name }}:/root/data/
       - ./configs:/root/archi/configs
       - ./data/prompts:/root/archi/data/prompts:ro
       - ./data/agents:/root/archi/agents

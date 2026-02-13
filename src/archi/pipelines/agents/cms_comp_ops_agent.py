@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Sequence
 import json
 import os
+from typing import Any, Callable, Dict, List, Sequence, Optional
 
 from langchain_core.documents import Document
-import asyncio
-import nest_asyncio
 from langchain.agents.middleware import TodoListMiddleware, LLMToolSelectorMiddleware
 
 from src.utils.logging import get_logger
@@ -18,7 +16,6 @@ from src.archi.pipelines.agents.tools import (
     create_metadata_search_tool,
     create_metadata_schema_tool,
     create_retriever_tool,
-    initialize_mcp_client,
     RemoteCatalogClient,
 )
 from src.archi.pipelines.agents.utils.history_utils import infer_speaker
@@ -37,7 +34,6 @@ class CMSCompOpsAgent(BaseReActAgent):
     ) -> None:
         super().__init__(config, *args, **kwargs)
 
-        self.mcp_client = None
         self.catalog_service = RemoteCatalogClient.from_deployment_config(self.config)
         self._vector_retrievers = None
         self._vector_tool = None
@@ -99,43 +95,6 @@ class CMSCompOpsAgent(BaseReActAgent):
 
     def _build_vector_tool_placeholder(self) -> List[Callable]:
         return []
-
-    def _build_mcp_tools(self) -> List[Callable]:
-        try:
-            nest_asyncio.apply()
-            mcp_servers = self._load_mcp_servers()
-            client, mcp_tools = asyncio.run(initialize_mcp_client(mcp_servers))
-            self.mcp_client = client
-
-            def make_synchronous(async_tool):
-                def sync_wrapper(*args, **kwargs):
-                    return asyncio.run(async_tool.coroutine(*args, **kwargs))
-
-                async_tool.func = sync_wrapper
-                return async_tool
-
-            if mcp_tools:
-                synchronous_mcp_tools = [make_synchronous(t) for t in mcp_tools]
-                logger.info("Loaded and patched %d MCP tools for sync execution.", len(synchronous_mcp_tools))
-                return synchronous_mcp_tools
-        except Exception as exc:
-            logger.error("Failed to load MCP tools: %s", exc, exc_info=True)
-        return []
-
-    @staticmethod
-    def _load_mcp_servers() -> Dict[str, Any]:
-        raw = os.environ.get("ARCHI_MCP_SERVERS") or os.environ.get("MCP_SERVERS")
-        if not raw:
-            return {}
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError:
-            logger.warning("Invalid MCP servers JSON in ARCHI_MCP_SERVERS/MCP_SERVERS.")
-            return {}
-        if not isinstance(payload, dict):
-            logger.warning("MCP servers payload must be a JSON object.")
-            return {}
-        return payload
 
     # def _build_static_middleware(self) -> List[Callable]:
     #     """
@@ -206,9 +165,9 @@ class CMSCompOpsAgent(BaseReActAgent):
         retrievers_cfg = self.dm_config.get("retrievers", {})
         hybrid_cfg = retrievers_cfg.get("hybrid_retriever", {})
 
-        k = hybrid_cfg["num_documents_to_retrieve"]
-        bm25_weight = hybrid_cfg["bm25_weight"]
-        semantic_weight = hybrid_cfg["semantic_weight"]
+        k = hybrid_cfg.get("num_documents_to_retrieve", 5)
+        bm25_weight = hybrid_cfg.get("bm25_weight", 0.6)
+        semantic_weight = hybrid_cfg.get("semantic_weight", 0.4)
 
         hybrid_retriever = HybridRetriever(
             vectorstore=vectorstore,

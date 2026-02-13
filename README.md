@@ -4,7 +4,7 @@
 
 # _archi_ - AI Augmented Research Chat Intelligence
 
-[![CI](https://github.com/mit-submit/archi/actions/workflows/pr-preview.yml/badge.svg)](https://github.com/mit-submit/archi/actions/workflows/pr-preview.yml)
+[![CI](https://github.com/archi-physics/archi/actions/workflows/pr-preview.yml/badge.svg)](https://github.com/archi-physics/archi/actions/workflows/pr-preview.yml)
 [![Docs](https://img.shields.io/badge/docs-online-blue)](https://archi-physics.github.io/archi/)
 
 _archi_ is a retrieval-augmented generation framework for research and education teams who need a low-barrier to entry, configurable, private, and extensible assistant. The system was first developed at MIT for the SubMIT computing project, and now powers chat, ticketing, and course-support workflows across academia and research organizations.
