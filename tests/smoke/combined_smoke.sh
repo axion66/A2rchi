@@ -71,6 +71,7 @@ info "Running ReAct smoke check..."
   -e OLLAMA_URL="${OLLAMA_URL}" \
   -e OLLAMA_HOST="${ollama_host}" \
   -e OLLAMA_MODEL="${OLLAMA_MODEL}" \
+  -e REACT_SMOKE_PROMPT="${REACT_SMOKE_PROMPT:-Reply with exactly: ok}" \
   "${container_name}" \
   python3 - < tests/smoke/react_smoke.py
 
