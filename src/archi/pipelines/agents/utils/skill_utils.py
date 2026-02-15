@@ -1,9 +1,12 @@
 """
 Utility for loading skill files that provide domain-specific knowledge to agent tools.
 
-Skills are markdown files stored in a configurable subdirectory (default: ``skills/``)
-alongside the agent's configuration file.  They are appended to tool descriptions so
-the LLM has context about field names, query patterns, and domain conventions.
+Skills are markdown files stored in a configurable directory.  They are appended to
+tool descriptions so the LLM has context about field names, query patterns, and
+domain conventions.
+
+The skills directory is resolved from ``services.chat_app.skills_dir`` in the
+runtime config.  If not set, the skill cannot be loaded and ``None`` is returned.
 """
 
 from __future__ import annotations
@@ -16,29 +19,41 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
+def _resolve_skills_dir(config: Dict[str, Any]) -> Optional[Path]:
+    """Resolve the skills directory from the services.chat_app config."""
+    chat_cfg = config.get("services", {}).get("chat_app", {})
+    skills_dir = chat_cfg.get("skills_dir")
+    if skills_dir:
+        return Path(skills_dir)
+
+    return None
+
+
 def load_skill(skill_name: str, config: Dict[str, Any]) -> Optional[str]:
     """
     Load a skill markdown file by name from the configured skills directory.
 
-    Skills are markdown files stored in a directory specified by ``skills_dir``
-    in the config (relative to config_path), defaulting to ``skills/`` if not specified.
-    Returns ``None`` if the skill file doesn't exist or cannot be read.
+    The skills directory is read from ``services.chat_app.skills_dir`` in the
+    runtime config.  Returns ``None`` if the directory is not configured, the
+    skill file doesn't exist, or it cannot be read.
 
     Args:
         skill_name: Name of the skill file (without .md extension).
-        config: Agent config dict (automatically contains ``config_path`` and optionally ``skills_dir``).
+        config: Runtime config dict (from ``get_full_config()``).
 
     Returns:
         Skill content as string, or ``None`` if not found.
     """
-    config_path = config.get("config_path")
-    if not config_path:
-        logger.warning("No config_path in config; cannot load skill '%s'", skill_name)
+    skills_dir = _resolve_skills_dir(config)
+    if skills_dir is None:
+        logger.warning(
+            "No skills_dir configured in services.chat_app.skills_dir; "
+            "cannot load skill '%s'",
+            skill_name,
+        )
         return None
 
-    # Allow configurable skills directory, default to "skills"
-    skills_dir = config.get("skills_dir", "skills")
-    skill_path = Path(config_path).parent / skills_dir / f"{skill_name}.md"
+    skill_path = skills_dir / f"{skill_name}.md"
     if not skill_path.exists():
         logger.warning("Skill file not found: %s", skill_path)
         return None

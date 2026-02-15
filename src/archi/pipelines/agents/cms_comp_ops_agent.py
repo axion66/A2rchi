@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from typing import Any, Callable, Dict, List
 
 from src.utils.logging import get_logger
@@ -49,10 +48,17 @@ class CMSCompOpsAgent(BaseReActAgent):
         self.rebuild_static_middleware()
         self.refresh_agent()
 
+    @property
+    def _chat_app_config(self) -> Dict[str, Any]:
+        """Return the services.chat_app config section."""
+        return self.config.get("services", {}).get("chat_app", {})
+
     def _init_monit(self) -> None:
         """Initialize the MONIT OpenSearch client if credentials and config are available."""
         monit_token = read_secret("MONIT_GRAFANA_TOKEN")
-        monit_url = self.pipeline_config.get("tools", {}).get("monit", {}).get("url")
+        monit_url = (
+            self._chat_app_config.get("tools", {}).get("monit", {}).get("url")
+        )
 
         if monit_token and monit_url:
             try:
@@ -63,7 +69,7 @@ class CMSCompOpsAgent(BaseReActAgent):
                 logger.warning("Failed to initialize MONIT OpenSearch client: %s", e)
         elif not monit_url:
             logger.info(
-                "No MONIT URL configured in pipeline_map.CMSCompOpsAgent.tools.monit.url; "
+                "No MONIT URL configured in services.chat_app.tools.monit.url; "
                 "MONIT OpenSearch tools not available"
             )
         else:
