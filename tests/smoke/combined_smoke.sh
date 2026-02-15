@@ -72,6 +72,6 @@ info "Running ReAct smoke check..."
   -e OLLAMA_HOST="${ollama_host}" \
   -e OLLAMA_MODEL="${OLLAMA_MODEL}" \
   "${container_name}" \
-  python3 tests/smoke/react_smoke.py
+  python3 - < tests/smoke/react_smoke.py
 
 info "Combined smoke checks passed for ${NAME}"
