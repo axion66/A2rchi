@@ -109,11 +109,7 @@ GIT_USERNAME=your_username
 GIT_TOKEN=your_token
 ```
 
-### Running
-
-```bash
-archi create [...] --config config.yaml --services chatbot
-```
+Once enabled in config, deploy normally with `archi create --config <config.yaml> --services <...>`.
 
 ---
 
@@ -161,11 +157,7 @@ data_manager:
 JIRA_PAT=<your_jira_personal_access_token>
 ```
 
-### Running
-
-```bash
-archi create [...] --config config.yaml --services chatbot
-```
+Once enabled in config, deploy normally with `archi create --config <config.yaml> --services <...>`.
 
 ---
 
@@ -191,11 +183,7 @@ REDMINE_USER=...
 REDMINE_PW=...
 ```
 
-### Running
-
-```bash
-archi create [...] --config config.yaml --services chatbot
-```
+Once enabled in config, deploy normally with `archi create --config <config.yaml> --services <...>`.
 
 > To automate email replies to resolved tickets, also enable the `redmine-mailer` service. See [Services](services.md).
 

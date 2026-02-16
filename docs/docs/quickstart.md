@@ -37,7 +37,24 @@ See the [User Guide](user_guide.md) for detailed information about each service 
 
 ## Pipelines
 
-Archi supports several pipelines (agent classes and classic pipelines). The active agent class is configured per service, and the agent prompt/tools are defined in agent markdown files.
+Archi supports several pipelines (agentic and not). The active agent class is configured per service, and the agent prompt/tools are defined in agent markdown files.
+
+Example agent spec file (`examples/agents/default.md`):
+
+```markdown
+---
+name: CMS CompOps Default
+tools:
+  - search_local_files
+  - search_metadata_index
+  - list_metadata_schema
+  - fetch_catalog_document
+  - search_vectorstore_hybrid
+---
+
+You are a CMS CompOps assistant.
+Use tools to gather evidence before answering, and keep responses concise.
+```
 
 ## Configuration
 
@@ -128,12 +145,14 @@ Other services may require additional secrets; see the [User Guide](user_guide.m
 
 ## Creating an Archi Deployment with Ollama
 
-> **Starting without Ollama?** Use the same `archi create ...` command shape, but switch your config to a non-Ollama provider (OpenAI, Anthropic, Gemini, OpenRouter, or local OpenAI-compatible) as shown in [Models & Providers](models_providers.md#quick-start-by-provider).
-
 Create your deployment with the CLI. A deployment with a local Ollama model (make sure you specify in the `config.yaml` the URL of your Ollama instance):
 
 ```bash
-archi create --name my-archi --config examples/deployments/basic-ollama/config.yaml --podman --env-file .secrets.env --services chatbot
+archi create --name my-archi \
+  --config examples/deployments/basic-ollama/config.yaml \
+  --podman \
+  --env-file .secrets.env \
+  --services chatbot
 ```
 
 | Flag | Description |

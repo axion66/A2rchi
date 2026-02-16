@@ -78,16 +78,33 @@ Required secret: `GOOGLE_API_KEY`
 
 ### OpenRouter
 
+OpenRouter uses an OpenAI-compatible API to access models from multiple providers.
+
 ```yaml
 services:
   chat_app:
     default_provider: openrouter
-    default_model: anthropic/claude-sonnet-4
+    default_model: anthropic/claude-3.5-sonnet
 ```
 
 Required secret: `OPENROUTER_API_KEY`
 
 Optional secrets: `OPENROUTER_SITE_URL`, `OPENROUTER_APP_NAME`
+
+### Local Models (Ollama)
+
+```yaml
+services:
+  chat_app:
+    default_provider: local
+    default_model: llama3.2
+    providers:
+      local:
+        base_url: http://localhost:11434
+        mode: ollama
+        models:
+          - llama3.2
+```
 
 ### Local OpenAI-compatible server (vLLM, LM Studio, etc.)
 
@@ -106,113 +123,10 @@ services:
 
 Secret usually not required unless your local server enforces API auth.
 
-### OpenAI
-
-```yaml
-services:
-  chat_app:
-    default_provider: openai
-    default_model: gpt-4o
-```
-
-**Secrets:**
-
-```bash
-OPENAI_API_KEY=sk-...
-```
-
-### Anthropic
-
-```yaml
-services:
-  chat_app:
-    default_provider: anthropic
-    default_model: claude-sonnet-4-20250514
-```
-
-**Secrets:**
-
-```bash
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-### Google Gemini
-
-```yaml
-services:
-  chat_app:
-    default_provider: gemini
-    default_model: gemini-2.0-flash
-    providers:
-      gemini:
-        enabled: true
-```
-
-Available models: `gemini-2.0-flash`, `gemini-2.0-flash-thinking`, `gemini-1.5-pro`, `gemini-1.5-flash`.
-
-**Secrets:**
-
-```bash
-GOOGLE_API_KEY=AIza...
-```
-
-### OpenRouter
-
-OpenRouter uses an OpenAI-compatible API to access models from multiple providers. No special config entry is required — if `OPENROUTER_API_KEY` is set, the provider appears automatically in the chat UI.
-
-To make OpenRouter the default:
-
-```yaml
-services:
-  chat_app:
-    default_provider: openrouter
-    default_model: anthropic/claude-sonnet-4
-```
-
-**Secrets:**
-
-```bash
-OPENROUTER_API_KEY=sk-or-...
-OPENROUTER_SITE_URL=https://your-site.com    # optional, for attribution
-OPENROUTER_APP_NAME=My Archi Instance        # optional, for attribution
-```
-
-### Local Models (Ollama)
-
-Run open-source models locally via [Ollama](https://ollama.ai):
-
-```yaml
-services:
-  chat_app:
-    default_provider: local
-    default_model: llama3.2
-    providers:
-      local:
-        base_url: http://localhost:11434
-        mode: ollama
-        models:
-          - llama3.2
-```
-
 The `local` provider supports two modes:
 
 - **`ollama`** (default): Uses `ChatOllama`. Models are dynamically fetched from the Ollama server's `/api/tags` endpoint.
 - **`openai_compat`**: Uses `ChatOpenAI` with a custom base URL. Suitable for vLLM, LM Studio, or other OpenAI-compatible servers.
-
-For `openai_compat` mode:
-
-```yaml
-services:
-  chat_app:
-    default_provider: local
-    default_model: my-model
-    providers:
-      local:
-        base_url: http://localhost:8000/v1
-        mode: openai_compat
-        models:
-          - my-model
-```
 
 > **Note:** For GPU setup with local models, see [Advanced Setup & Deployment](advanced_setup_deploy.md#running-llms-locally-on-your-gpus).
 
