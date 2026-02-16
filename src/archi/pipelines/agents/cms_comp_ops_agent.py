@@ -125,8 +125,10 @@ class CMSCompOpsAgent(BaseReActAgent):
             },
         }
 
-        # Only register MONIT tools if the client was successfully initialized
-        if self._monit_client is not None:
+        # Keep this safe for lightweight introspection paths that call
+        # get_tool_registry()/get_tool_descriptions() on an uninitialized
+        # instance (constructed via __new__).
+        if getattr(self, "_monit_client", None) is not None:
             defs["monit_opensearch_search"] = {
                 "builder": self._build_monit_opensearch_search_tool,
                 "description": "Search MONIT OpenSearch for CMS Rucio events.",
