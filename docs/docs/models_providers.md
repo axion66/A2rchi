@@ -11,7 +11,7 @@ All providers extend the `BaseProvider` abstract class and are registered in a g
 | OpenAI | `openai` | `OPENAI_API_KEY` | `gpt-4o` | `ChatOpenAI` |
 | Anthropic | `anthropic` | `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514` | `ChatAnthropic` |
 | Google Gemini | `gemini` | `GOOGLE_API_KEY` | `gemini-2.0-flash` | `ChatGoogleGenerativeAI` |
-| OpenRouter | `openrouter` | `OPENROUTER_API_KEY` | `anthropic/claude-sonnet-4` | `ChatOpenAI` (custom base URL) |
+| OpenRouter | `openrouter` | `OPENROUTER_API_KEY` | `anthropic/claude-3.5-sonnet` | `ChatOpenAI` (custom base URL) |
 | Local (Ollama/vLLM) | `local` | N/A | Dynamic (fetched from server) | `ChatOllama` or `ChatOpenAI` |
 
 ### Key Concepts
@@ -26,6 +26,85 @@ All providers extend the `BaseProvider` abstract class and are registered in a g
 ## Configuring Providers
 
 Providers are configured per-service in your deployment's configuration file. Each service can specify a default provider and model, plus provider-specific settings.
+
+## Quick Start by Provider
+
+Use this flow if you want to start with a provider other than Ollama:
+
+1. Start from `examples/deployments/basic-ollama/config.yaml` and copy it to a new file.
+2. Change `services.chat_app.default_provider` and `services.chat_app.default_model`.
+3. If you are not using `local`, remove `services.chat_app.providers.local`.
+4. Add provider-specific `services.chat_app.providers.<provider>` settings only when needed (for example `local` mode/base URL).
+5. Put required secrets in your `.env` file.
+6. Run `archi create --name my-archi --config <your-config>.yaml --podman --env-file .secrets.env --services chatbot`.
+
+Minimal provider snippets for `services.chat_app`:
+
+### OpenAI
+
+```yaml
+services:
+  chat_app:
+    default_provider: openai
+    default_model: gpt-4o
+```
+
+Required secret: `OPENAI_API_KEY`
+
+### Anthropic
+
+```yaml
+services:
+  chat_app:
+    default_provider: anthropic
+    default_model: claude-sonnet-4-20250514
+```
+
+Required secret: `ANTHROPIC_API_KEY`
+
+### Google Gemini
+
+```yaml
+services:
+  chat_app:
+    default_provider: gemini
+    default_model: gemini-2.0-flash
+    providers:
+      gemini:
+        enabled: true
+```
+
+Required secret: `GOOGLE_API_KEY`
+
+### OpenRouter
+
+```yaml
+services:
+  chat_app:
+    default_provider: openrouter
+    default_model: anthropic/claude-sonnet-4
+```
+
+Required secret: `OPENROUTER_API_KEY`
+
+Optional secrets: `OPENROUTER_SITE_URL`, `OPENROUTER_APP_NAME`
+
+### Local OpenAI-compatible server (vLLM, LM Studio, etc.)
+
+```yaml
+services:
+  chat_app:
+    default_provider: local
+    default_model: my-model
+    providers:
+      local:
+        base_url: http://localhost:8000/v1
+        mode: openai_compat
+        models:
+          - my-model
+```
+
+Secret usually not required unless your local server enforces API auth.
 
 ### OpenAI
 
