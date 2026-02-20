@@ -2163,8 +2163,10 @@ class FlaskAppWrapper(object):
                 return f(*args, **kwargs)
             
             if not session.get('logged_in'):
-                # Return 401 Unauthorized response instead of redirecting
-                return jsonify({'error': 'Unauthorized', 'message': 'Authentication required'}), 401
+                if request.path.startswith('/api/'):
+                    return jsonify({'error': 'Unauthorized', 'message': 'Authentication required'}), 401
+                else:   
+                    return redirect(url_for('login'))
             
             return f(*args, **kwargs)
         return decorated_function
