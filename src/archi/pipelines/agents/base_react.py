@@ -1113,8 +1113,18 @@ class BaseReActAgent:
         )
 
     def _recursion_limit(self) -> int:
-        """Read and validate recursion limit from pipeline config."""
-        value = self.pipeline_config.get("recursion_limit", self.DEFAULT_RECURSION_LIMIT)
+        """Read and validate recursion limit from config."""
+        value = None
+        if isinstance(self.pipeline_config, dict):
+            value = self.pipeline_config.get("recursion_limit")
+        if value is None and isinstance(self.config, dict):
+            services_cfg = self.config.get("services", {})
+            if isinstance(services_cfg, dict):
+                chat_cfg = services_cfg.get("chat_app", {})
+                if isinstance(chat_cfg, dict):
+                    value = chat_cfg.get("recursion_limit")
+        if value is None:
+            value = self.DEFAULT_RECURSION_LIMIT
         try:
             limit = int(value)
             if limit <= 0:
