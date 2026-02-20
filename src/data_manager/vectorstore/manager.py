@@ -225,6 +225,7 @@ class VectorStoreManager:
         """Add files to PostgreSQL vectorstore."""
         if not files_to_add:
             return
+        commit_batch_size = 25
 
         # Mark all documents as 'embedding' before starting
         for filehash in files_to_add:
@@ -328,6 +329,7 @@ class VectorStoreManager:
                 import json
                 
                 total_files = len(files_to_add_items)
+                files_since_commit = 0
                 for file_idx, (filehash, file_path) in enumerate(files_to_add_items):
                     processed = processed_results.get(filehash)
                     if not processed:
@@ -335,14 +337,28 @@ class VectorStoreManager:
 
                     filename, chunks, metadatas = processed
                     logger.info(f"Embedding file {file_idx+1}/{total_files}: {filename} ({len(chunks)} chunks)")
-                    
+
+                    savepoint_name = f"sp_embed_{file_idx}"
+                    cursor.execute(f"SAVEPOINT {savepoint_name}")
                     try:
                         embeddings = self.embedding_model.embed_documents(chunks)
                     except Exception as exc:
                         logger.error(f"Failed to embed {filename}: {exc}")
-                        self._catalog.update_ingestion_status(filehash, "failed", str(exc))
+                        cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint_name}")
+                        cursor.execute(
+                            """UPDATE documents
+                               SET ingestion_status = 'failed', ingestion_error = %s
+                               WHERE resource_hash = %s AND NOT is_deleted""",
+                            (str(exc), filehash),
+                        )
+                        cursor.execute(f"RELEASE SAVEPOINT {savepoint_name}")
+                        files_since_commit += 1
+                        if files_since_commit >= commit_batch_size:
+                            conn.commit()
+                            logger.info("Committed embedding progress batch (%d files)", files_since_commit)
+                            files_since_commit = 0
                         continue
-                    
+
                     logger.info(f"Finished embedding {filename}")
                     
                     # Get document_id from the catalog (documents table)
@@ -364,26 +380,48 @@ class VectorStoreManager:
                             clean_metadata_json,
                         ))
 
-                    logger.debug(f"Inserting data in {filename} document_id = {document_id}")
-                    psycopg2.extras.execute_values(
-                        cursor,
-                        """
-                        INSERT INTO document_chunks (document_id, chunk_index, chunk_text, embedding, metadata)
-                        VALUES %s
-                        """,
-                        insert_data,
-                        template="(%s, %s, %s, %s::vector, %s::jsonb)",
-                    )
-                    logger.debug(f"Added {len(insert_data)} chunks for {filename} (document_id={document_id})")
-                    
-                    # Update ingested_at timestamp and mark as embedded
-                    if document_id is not None:
-                        cursor.execute(
-                            "UPDATE documents SET ingested_at = NOW(), ingestion_status = 'embedded', ingestion_error = NULL, indexed_at = NOW() WHERE id = %s",
-                            (document_id,)
+                    try:
+                        logger.debug(f"Inserting data in {filename} document_id = {document_id}")
+                        psycopg2.extras.execute_values(
+                            cursor,
+                            """
+                            INSERT INTO document_chunks (document_id, chunk_index, chunk_text, embedding, metadata)
+                            VALUES %s
+                            """,
+                            insert_data,
+                            template="(%s, %s, %s, %s::vector, %s::jsonb)",
                         )
+                        logger.debug(f"Added {len(insert_data)} chunks for {filename} (document_id={document_id})")
 
-                conn.commit()
+                        # Update timestamps and mark as embedded
+                        cursor.execute(
+                            """UPDATE documents
+                               SET ingested_at = NOW(), ingestion_status = 'embedded',
+                                   ingestion_error = NULL, indexed_at = NOW()
+                               WHERE resource_hash = %s AND NOT is_deleted""",
+                            (filehash,),
+                        )
+                        cursor.execute(f"RELEASE SAVEPOINT {savepoint_name}")
+                    except Exception as exc:
+                        logger.error(f"Failed to store vectors for {filename}: {exc}")
+                        cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint_name}")
+                        cursor.execute(
+                            """UPDATE documents
+                               SET ingestion_status = 'failed', ingestion_error = %s
+                               WHERE resource_hash = %s AND NOT is_deleted""",
+                            (str(exc), filehash),
+                        )
+                        cursor.execute(f"RELEASE SAVEPOINT {savepoint_name}")
+
+                    files_since_commit += 1
+                    if files_since_commit >= commit_batch_size:
+                        conn.commit()
+                        logger.info("Committed embedding progress batch (%d files)", files_since_commit)
+                        files_since_commit = 0
+
+                if files_since_commit > 0:
+                    conn.commit()
+                    logger.info("Committed final embedding progress batch (%d files)", files_since_commit)
         finally:
             conn.close()
 
