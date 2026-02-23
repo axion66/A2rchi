@@ -103,14 +103,8 @@ class VectorStoreManager:
     def delete_existing_collection_if_reset(self) -> None:
         """Delete the collection if reset_collection is enabled.
 
-        Uses TRUNCATE to unconditionally remove all document_chunks, which:
-        - Bypasses TOAST reads (avoids corruption errors during cleanup)
-        - Is faster than row-by-row DELETE for large tables
-        - Guarantees a completely clean slate before re-ingestion
-
-        The corresponding rows in the ``documents`` table have their
-        ``ingestion_status`` reset to ``'pending'`` so that the next
-        ``update_vectorstore`` call will re-embed them cleanly.
+        Truncates the ``document_chunks`` table and resets all documents'
+        ingestion status to ``'pending'`` so they get re-embedded.
         """
         if not self._data_manager_config.get("reset_collection", False):
             return
@@ -118,14 +112,10 @@ class VectorStoreManager:
         conn = psycopg2.connect(**self._pg_config)
         try:
             with conn.cursor() as cursor:
-                # 1. TRUNCATE is DDL — it removes all rows without scanning
-                #    them, so it cannot trip over corrupted TOAST values.
-                #    CASCADE ensures any FK-dependent rows are also removed.
                 cursor.execute("TRUNCATE TABLE document_chunks CASCADE")
                 logger.info("Truncated document_chunks table")
 
-                # 2. Reset ingestion status so documents are re-embedded on the
-                #    next update_vectorstore call.
+                # Reset ingestion status so all documents get re-embedded.
                 cursor.execute(
                     """
                     UPDATE documents
@@ -137,19 +127,15 @@ class VectorStoreManager:
                 )
                 reset_docs = cursor.rowcount
 
-                # 3. Commit the TRUNCATE + status reset, then VACUUM FULL to
-                #    reclaim space and rebuild the TOAST table (prevents
-                #    residual corruption from affecting future inserts).
                 conn.commit()
 
-                # VACUUM cannot run inside a transaction block.
                 conn.autocommit = True
                 cursor.execute("VACUUM FULL document_chunks")
                 conn.autocommit = False
 
                 logger.info(
                     "reset_collection is enabled; truncated document_chunks, "
-                    "reset %d documents, and vacuumed table for collection %s",
+                    "reset %d documents for collection %s",
                     reset_docs, self.collection_name,
                 )
         except Exception as exc:
