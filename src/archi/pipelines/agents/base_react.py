@@ -1196,7 +1196,7 @@ class BaseReActAgent:
         chunk = older[:chunk_size]
 
         summary = self._summarize_messages(chunk)
-        summary_message = SystemMessage(content="Summary of earlier conversation:\n" + summary)
+        summary_message = AIMessage(content="Summary of earlier conversation:\n" + summary)
         return [summary_message] + older[chunk_size:] + recent
 
 
