@@ -101,26 +101,69 @@ class VectorStoreManager:
         logger.info(f"VectorStoreManager initialized: collection={self.collection_name}")
 
     def delete_existing_collection_if_reset(self) -> None:
-        """Delete the collection if reset_collection is enabled."""
+        """Delete the collection if reset_collection is enabled.
+
+        Uses TRUNCATE to unconditionally remove all document_chunks, which:
+        - Bypasses TOAST reads (avoids corruption errors during cleanup)
+        - Is faster than row-by-row DELETE for large tables
+        - Guarantees a completely clean slate before re-ingestion
+
+        The corresponding rows in the ``documents`` table have their
+        ``ingestion_status`` reset to ``'pending'`` so that the next
+        ``update_vectorstore`` call will re-embed them cleanly.
+        """
         if not self._data_manager_config.get("reset_collection", False):
             return
 
         conn = psycopg2.connect(**self._pg_config)
         try:
             with conn.cursor() as cursor:
+                # 1. TRUNCATE is DDL — it removes all rows without scanning
+                #    them, so it cannot trip over corrupted TOAST values.
+                #    CASCADE ensures any FK-dependent rows are also removed.
+                cursor.execute("TRUNCATE TABLE document_chunks CASCADE")
+                logger.info("Truncated document_chunks table")
+
+                # 2. Reset ingestion status so documents are re-embedded on the
+                #    next update_vectorstore call.
                 cursor.execute(
                     """
-                    DELETE FROM document_chunks
-                    WHERE metadata->>'collection' = %s OR metadata->>'collection' IS NULL
-                    """,
-                    (self.collection_name,)
+                    UPDATE documents
+                    SET ingestion_status = 'pending',
+                        ingestion_error = NULL,
+                        indexed_at = NULL
+                    WHERE NOT is_deleted
+                    """
                 )
-                deleted = cursor.rowcount
+                reset_docs = cursor.rowcount
+
+                # 3. Commit the TRUNCATE + status reset, then VACUUM FULL to
+                #    reclaim space and rebuild the TOAST table (prevents
+                #    residual corruption from affecting future inserts).
                 conn.commit()
+
+                # VACUUM cannot run inside a transaction block.
+                conn.autocommit = True
+                cursor.execute("VACUUM FULL document_chunks")
+                conn.autocommit = False
+
                 logger.info(
-                    f"reset_collection is enabled; deleted {deleted} chunks from collection {self.collection_name}"
+                    "reset_collection is enabled; truncated document_chunks, "
+                    "reset %d documents, and vacuumed table for collection %s",
+                    reset_docs, self.collection_name,
                 )
+        except Exception as exc:
+            logger.error("Failed during collection reset: %s", exc)
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
         finally:
+            try:
+                conn.autocommit = False
+            except Exception:
+                pass
             conn.close()
 
     def fetch_collection(self):
